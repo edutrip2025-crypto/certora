@@ -15,6 +15,7 @@ import {
 const state = {
   auth: null,
   context: null,
+  authLoginInFlight: false,
   authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
@@ -4653,6 +4654,17 @@ async function createCourseFromWizard() {
 async function loadSessionContext() {
   stopAdminPolling();
   const context = await api("GET", "/auth/me/context");
+  if (context?.setup_required) {
+    state.context = null;
+    setSessionBadge("Account setup required");
+    el.logoutBtns.forEach((b) => {
+      b.disabled = false;
+    });
+    openAccountSetupForCurrentUser();
+    if (el.signupName && context.full_name) el.signupName.value = context.full_name;
+    if (el.signupEmail && context.email) el.signupEmail.value = context.email;
+    return null;
+  }
   state.context = context;
   setSessionBadge(`${context.full_name} (${context.role})`);
   el.logoutBtns.forEach((b) => {
@@ -4750,6 +4762,7 @@ async function initFirebase() {
     state.context = null;
     if (state.authRoleSetupInFlight) return;
     if (!user) {
+      state.authLoginInFlight = false;
       setSessionBadge("Not signed in");
       el.logoutBtns.forEach((b) => {
         b.disabled = true;
@@ -4759,8 +4772,13 @@ async function initFirebase() {
       return;
     }
     try {
-      await loadSessionContext();
+      const context = await loadSessionContext();
+      if (state.authLoginInFlight && context) toast("Login successful");
+      if (state.authLoginInFlight && !context) toast("Complete account setup by choosing Student or Provider.", "error");
+      state.authLoginInFlight = false;
+      if (!context) return;
     } catch (err) {
+      state.authLoginInFlight = false;
       log("session_error", String(err));
       if (isRoleRegistrationRequiredError(err)) {
         openAccountSetupForCurrentUser();
@@ -4825,9 +4843,10 @@ function bindEvents() {
   $("loginBtn")?.addEventListener("click", async () => {
     if (!ensureAuthReady()) return;
     try {
+      state.authLoginInFlight = true;
       await signInWithEmailAndPassword(state.auth, el.loginEmail.value.trim(), el.loginPassword.value);
-      toast("Login successful");
     } catch (err) {
+      state.authLoginInFlight = false;
       toast(formatAuthError(err, "Login failed"), "error");
       log("login_error", String(err));
     }
@@ -4836,20 +4855,11 @@ function bindEvents() {
   $("googleBtn")?.addEventListener("click", async () => {
     if (!ensureAuthReady()) return;
     try {
+      state.authLoginInFlight = true;
       const provider = new GoogleAuthProvider();
       await signInWithPopup(state.auth, provider);
-      try {
-        await api("GET", "/auth/me/context");
-      } catch (err) {
-        if (isRoleRegistrationRequiredError(err)) {
-          openAccountSetupForCurrentUser();
-          toast("Complete account setup by choosing Student or Provider.", "error");
-          return;
-        }
-        throw err;
-      }
-      toast("Google login successful");
     } catch (err) {
+      state.authLoginInFlight = false;
       toast(formatAuthError(err, "Google login failed"), "error");
       log("google_error", String(err));
     }

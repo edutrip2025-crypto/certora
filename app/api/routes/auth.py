@@ -63,11 +63,24 @@ def me(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/me/context")
-def me_context(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def me_context(
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    firebase_uid, email, fallback_name = _firebase_identity_or_401(token)
+    current_user = db.scalar(select(User).where(User.email == email)) if email else None
+    if not current_user:
+        return {
+            "setup_required": True,
+            "firebase_uid": firebase_uid,
+            "email": email,
+            "full_name": fallback_name,
+        }
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
     approval_status = approval.status if approval else ApprovalStatus.APPROVED
     rejection_reason = approval.rejection_reason if approval else None
     return {
+        "setup_required": False,
         "id": current_user.id,
         "email": current_user.email,
         "full_name": current_user.full_name,
