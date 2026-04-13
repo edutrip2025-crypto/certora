@@ -1,6 +1,6 @@
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -78,17 +78,20 @@ def get_current_user(
         payload = verify_firebase_token(token)
         firebase_uid = payload.get("uid")
         email = payload.get("email")
+        email_norm = str(email or "").strip().lower() or None
         name = payload.get("name") or (email.split("@")[0] if email else "Firebase User")
+        role_claim = str(payload.get("role") or "").strip().lower()
+        approval_claim = str(payload.get("approval_status") or "").strip().lower()
         if not firebase_uid:
             raise credentials_exception
     except Exception as exc:
         raise credentials_exception from exc
 
-    user = db.scalar(select(User).where(User.email == email)) if email else None
+    user = db.scalar(select(User).where(func.lower(User.email) == email_norm)) if email_norm else None
     if not user:
-        if email and email.lower() in settings.admin_email_set:
+        if email_norm and email_norm in settings.admin_email_set:
             user = User(
-                email=email,
+                email=email_norm,
                 full_name=name,
                 password_hash="firebase",
                 role=UserRole.ADMIN,
@@ -108,6 +111,36 @@ def get_current_user(
             else:
                 approval.status = ApprovalStatus.APPROVED
                 approval.rejection_reason = None
+            db.commit()
+            db.refresh(user)
+            return user
+        if role_claim in {r.value for r in UserRole}:
+            role = UserRole(role_claim)
+            if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin role can only be assigned to configured admin accounts",
+                )
+            user = User(
+                email=email_norm or f"{firebase_uid}@firebase.local",
+                full_name=name,
+                password_hash="firebase",
+                role=role,
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+            approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+            if not approval:
+                approval = UserApproval(user_id=user.id)
+                db.add(approval)
+            if role == UserRole.ADMIN:
+                approval.status = ApprovalStatus.APPROVED
+            elif approval_claim in {ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value, ApprovalStatus.PENDING.value}:
+                approval.status = ApprovalStatus(approval_claim)
+            else:
+                approval.status = ApprovalStatus.PENDING
+            approval.rejection_reason = None
             db.commit()
             db.refresh(user)
             return user
