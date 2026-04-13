@@ -9,9 +9,5 @@ passlib[bcrypt]
 python-multipart
 email-validator
 firebase-admin
-numpy
-joblib
-scikit-learn
-opencv-python-headless
 reportlab
 boto3

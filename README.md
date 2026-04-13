@@ -31,6 +31,12 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Optional (local/offline proctoring model feature extraction stack):
+
+```bash
+pip install -r requirements-ml.txt
+```
+
 2. Configure `.env` (copy from `.env.example`).
 
 3. Run API:
