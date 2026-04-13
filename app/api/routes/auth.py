@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
@@ -69,13 +70,39 @@ def me_context(
 ):
     firebase_uid, email, fallback_name = _firebase_identity_or_401(token)
     current_user = db.scalar(select(User).where(User.email == email)) if email else None
+    settings = get_settings()
     if not current_user:
-        return {
-            "setup_required": True,
-            "firebase_uid": firebase_uid,
-            "email": email,
-            "full_name": fallback_name,
-        }
+        if email and email.lower() in settings.admin_email_set:
+            current_user = User(
+                email=email,
+                full_name=fallback_name,
+                password_hash="firebase",
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(current_user)
+            db.flush()
+            approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
+            if not approval:
+                db.add(
+                    UserApproval(
+                        user_id=current_user.id,
+                        status=ApprovalStatus.APPROVED,
+                        rejection_reason=None,
+                    ),
+                )
+            else:
+                approval.status = ApprovalStatus.APPROVED
+                approval.rejection_reason = None
+            db.commit()
+            db.refresh(current_user)
+        else:
+            return {
+                "setup_required": True,
+                "firebase_uid": firebase_uid,
+                "email": email,
+                "full_name": fallback_name,
+            }
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
     approval_status = approval.status if approval else ApprovalStatus.APPROVED
     rejection_reason = approval.rejection_reason if approval else None
@@ -97,6 +124,9 @@ def register_role(
     db: Session = Depends(get_db),
 ):
     firebase_uid, email, fallback_name = _firebase_identity_or_401(token)
+    settings = get_settings()
+    if payload.role == UserRole.ADMIN and (not email or email.lower() not in settings.admin_email_set):
+        raise HTTPException(status_code=403, detail="Admin role can only be assigned to configured admin accounts")
     current_user = db.scalar(select(User).where(User.email == email)) if email else None
     if not current_user:
         current_user = User(

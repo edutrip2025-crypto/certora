@@ -44,6 +44,7 @@ from app.schemas import (
     ProviderProfileOut,
 )
 from app.services.certificates import ensure_certificate_pdf
+from app.services.media_storage import upload_file_to_firebase_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 
@@ -404,8 +405,22 @@ def complete_video_upload(
         db.commit()
         raise HTTPException(status_code=500, detail="Failed to merge uploaded chunks")
 
+    settings = get_settings()
+    if settings.auth_mode.lower() == "firebase":
+        try:
+            upload.file_url = upload_file_to_firebase_storage(
+                final_path,
+                object_path=f"videos/{upload.stored_filename}",
+                content_type=upload.mime_type or "video/mp4",
+            )
+        except Exception as exc:
+            upload.status = VideoUploadStatus.FAILED
+            upload.error_message = f"Cloud upload failed: {exc}"
+            db.commit()
+            raise HTTPException(status_code=500, detail="Failed to upload video to cloud storage")
+    else:
+        upload.file_url = f"/media/videos/{upload.stored_filename}"
     upload.status = VideoUploadStatus.COMPLETED
-    upload.file_url = f"/media/videos/{upload.stored_filename}"
     db.commit()
     return {"session_id": upload.session_id, "file_url": upload.file_url, "status": upload.status}
 

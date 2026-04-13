@@ -1,7 +1,8 @@
 from sqlalchemy import text
 
 from app.db.session import SessionLocal, engine
-from app.models.entities import ApprovalStatus, Base, User, UserApproval, UserRole
+from app.models.entities import Base
+from app.services.account_rules import sync_existing_accounts
 
 
 def _migrate_proctor_training_feedback_nullable_attempt_id(conn) -> None:
@@ -75,41 +76,13 @@ def init_db() -> None:
             except Exception:
                 pass
 
-    # Backfill: ensure non-admin users have approval records and rollback legacy auto-approvals.
+    # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()
     try:
-        users = db.query(User).all()
-        changed = False
-        for u in users:
-            approval = db.query(UserApproval).filter(UserApproval.user_id == u.id).first()
-            if not approval:
-                if u.role != UserRole.ADMIN:
-                    db.add(
-                        UserApproval(
-                            user_id=u.id,
-                            status=ApprovalStatus.PENDING,
-                            rejection_reason=None,
-                            reviewed_by_admin_id=None,
-                            reviewed_at=None,
-                        ),
-                    )
-                    changed = True
-                continue
-            if u.role == UserRole.ADMIN and approval.status != ApprovalStatus.APPROVED:
-                approval.status = ApprovalStatus.APPROVED
-                approval.rejection_reason = None
-                changed = True
-            # Legacy rollback: if student was auto-approved by code and never reviewed, return to pending queue.
-            if (
-                u.role == UserRole.STUDENT
-                and approval.status == ApprovalStatus.APPROVED
-                and approval.reviewed_at is None
-                and approval.reviewed_by_admin_id is None
-            ):
-                approval.status = ApprovalStatus.PENDING
-                approval.rejection_reason = None
-                changed = True
-        if changed:
-            db.commit()
+        sync_existing_accounts(
+            db,
+            apply_legacy_student_approval_rollback=True,
+            sync_firebase_claims=True,
+        )
     finally:
         db.close()

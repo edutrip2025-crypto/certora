@@ -86,6 +86,31 @@ def get_current_user(
 
     user = db.scalar(select(User).where(User.email == email)) if email else None
     if not user:
+        if email and email.lower() in settings.admin_email_set:
+            user = User(
+                email=email,
+                full_name=name,
+                password_hash="firebase",
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+            approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+            if not approval:
+                db.add(
+                    UserApproval(
+                        user_id=user.id,
+                        status=ApprovalStatus.APPROVED,
+                        rejection_reason=None,
+                    ),
+                )
+            else:
+                approval.status = ApprovalStatus.APPROVED
+                approval.rejection_reason = None
+            db.commit()
+            db.refresh(user)
+            return user
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Account role not registered. Complete account setup first.",

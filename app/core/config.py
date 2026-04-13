@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_sender: str = "noreply@certora.in"
+    admin_emails: str = "admin@certora.in,admin@certora.com"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
@@ -55,6 +56,10 @@ class Settings(BaseSettings):
         if path.is_absolute():
             return str(path)
         return "/tmp/certora-media"
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in (self.admin_emails or "").split(",") if e.strip()}
 
 
 @lru_cache

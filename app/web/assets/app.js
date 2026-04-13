@@ -16,6 +16,7 @@ const state = {
   auth: null,
   context: null,
   authLoginInFlight: false,
+  authLoginFallbackTimer: null,
   authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
@@ -4761,6 +4762,10 @@ async function initFirebase() {
   onAuthStateChanged(state.auth, async (user) => {
     state.context = null;
     if (state.authRoleSetupInFlight) return;
+    if (state.authLoginFallbackTimer) {
+      clearTimeout(state.authLoginFallbackTimer);
+      state.authLoginFallbackTimer = null;
+    }
     if (!user) {
       state.authLoginInFlight = false;
       setSessionBadge("Not signed in");
@@ -4845,6 +4850,18 @@ function bindEvents() {
     try {
       state.authLoginInFlight = true;
       await signInWithEmailAndPassword(state.auth, el.loginEmail.value.trim(), el.loginPassword.value);
+      if (state.authLoginFallbackTimer) clearTimeout(state.authLoginFallbackTimer);
+      state.authLoginFallbackTimer = setTimeout(async () => {
+        if (!state.authLoginInFlight || !state.auth?.currentUser) return;
+        try {
+          const context = await loadSessionContext();
+          if (context) toast("Login successful");
+        } catch (err) {
+          toast(formatAuthError(err, "Session load failed"), "error");
+        } finally {
+          state.authLoginInFlight = false;
+        }
+      }, 1200);
     } catch (err) {
       state.authLoginInFlight = false;
       toast(formatAuthError(err, "Login failed"), "error");
@@ -4858,6 +4875,18 @@ function bindEvents() {
       state.authLoginInFlight = true;
       const provider = new GoogleAuthProvider();
       await signInWithPopup(state.auth, provider);
+      if (state.authLoginFallbackTimer) clearTimeout(state.authLoginFallbackTimer);
+      state.authLoginFallbackTimer = setTimeout(async () => {
+        if (!state.authLoginInFlight || !state.auth?.currentUser) return;
+        try {
+          const context = await loadSessionContext();
+          if (context) toast("Login successful");
+        } catch (err) {
+          toast(formatAuthError(err, "Session load failed"), "error");
+        } finally {
+          state.authLoginInFlight = false;
+        }
+      }, 1200);
     } catch (err) {
       state.authLoginInFlight = false;
       toast(formatAuthError(err, "Google login failed"), "error");

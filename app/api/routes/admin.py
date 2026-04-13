@@ -35,6 +35,7 @@ from app.schemas import (
     ReportCreate,
 )
 from app.services.notifications import send_email
+from app.services.account_rules import sync_existing_accounts
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -56,6 +57,28 @@ def _safe_send_email(to_email: str, subject: str, body: str) -> dict:
         return send_email(to_email, subject, body)
     except Exception as exc:
         return {"sent": False, "reason": str(exc)}
+
+
+@router.post("/accounts/sync-rules")
+def sync_account_rules(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    summary = sync_existing_accounts(
+        db,
+        apply_legacy_student_approval_rollback=True,
+        sync_firebase_claims=True,
+    )
+    _audit(
+        db,
+        current_user.id,
+        "sync_account_rules",
+        "user",
+        None,
+        summary,
+    )
+    db.commit()
+    return summary
 
 
 @router.get("/providers/pending")

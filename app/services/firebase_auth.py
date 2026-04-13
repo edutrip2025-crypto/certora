@@ -32,7 +32,10 @@ def init_firebase() -> None:
             "or FIREBASE_SERVICE_ACCOUNT_PATH for local/file-based environments.",
         )
 
-    firebase_admin.initialize_app(cred, {"projectId": settings.firebase_project_id or None})
+    app_options: dict[str, Any] = {"projectId": settings.firebase_project_id or None}
+    if settings.firebase_storage_bucket:
+        app_options["storageBucket"] = settings.firebase_storage_bucket
+    firebase_admin.initialize_app(cred, app_options)
 
 
 def verify_firebase_token(id_token: str) -> dict[str, Any]:
@@ -43,3 +46,14 @@ def verify_firebase_token(id_token: str) -> dict[str, Any]:
 def set_firebase_custom_claims(uid: str, claims: dict[str, Any]) -> None:
     init_firebase()
     auth.set_custom_user_claims(uid, claims)
+
+
+def get_firebase_uid_by_email(email: str | None) -> str | None:
+    if not email:
+        return None
+    init_firebase()
+    try:
+        user = auth.get_user_by_email(email)
+        return user.uid
+    except auth.UserNotFoundError:
+        return None
