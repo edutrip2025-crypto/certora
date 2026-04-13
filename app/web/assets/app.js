@@ -941,6 +941,9 @@ const el = {
   providerView: $("providerView"),
   nonAdminView: $("nonAdminView"),
   nonAdminText: $("nonAdminText"),
+  nonAdminRoleFix: $("nonAdminRoleFix"),
+  nonAdminRoleSelect: $("nonAdminRoleSelect"),
+  nonAdminUpdateRoleBtn: $("nonAdminUpdateRoleBtn"),
   adminView: $("adminView"),
   analyticsGrid: $("analyticsGrid"),
   adminProctorSessionsList: $("adminProctorSessionsList"),
@@ -1106,6 +1109,15 @@ function showAuthMode(mode = "login") {
   const loginMode = mode !== "signup";
   el.loginCard?.classList.toggle("hidden", !loginMode);
   el.signupCard?.classList.toggle("hidden", loginMode);
+}
+
+function renderNonAdminRoleFix(context = null) {
+  const role = String(context?.role || "").toLowerCase();
+  const show = role === "student" || role === "provider";
+  el.nonAdminRoleFix?.classList.toggle("hidden", !show);
+  if (show && el.nonAdminRoleSelect) {
+    el.nonAdminRoleSelect.value = role;
+  }
 }
 
 function setAuthActionState(ready) {
@@ -4667,6 +4679,7 @@ async function loadSessionContext() {
   if (context.role === "provider") {
     if (context.approval_status !== "approved") {
       showView("non-admin");
+      renderNonAdminRoleFix(context);
       const waitingText = context.approval_status === "pending"
         ? "Your provider profile is pending admin approval. You will get access after approval."
         : `Your provider profile is invalid (${context.rejection_reason || "rejected"}). Please contact support/admin.`;
@@ -4684,6 +4697,7 @@ async function loadSessionContext() {
   if (context.role === "student") {
     if (context.approval_status !== "approved") {
       showView("non-admin");
+      renderNonAdminRoleFix(context);
       const waitingText = context.approval_status === "pending"
         ? "Your student profile is pending admin approval. You will get access after approval."
         : `Your student profile is invalid (${context.rejection_reason || "rejected"}). Please contact support/admin.`;
@@ -4697,6 +4711,7 @@ async function loadSessionContext() {
   }
 
   showView("non-admin");
+  renderNonAdminRoleFix(context);
   const statusText = context.approval_status === "approved"
     ? "Approved"
     : context.approval_status === "pending"
@@ -4869,6 +4884,19 @@ function bindEvents() {
     el.logoutBtns.forEach((b) => {
       b.disabled = true;
     });
+  });
+
+  el.nonAdminUpdateRoleBtn?.addEventListener("click", async () => {
+    try {
+      if (!ensureAuthReady()) return;
+      const nextRole = el.nonAdminRoleSelect?.value || "student";
+      const fullName = state.auth?.currentUser?.displayName || state.context?.full_name || "User";
+      await api("POST", "/auth/register-role", { full_name: fullName, role: nextRole });
+      toast("Account type updated");
+      await loadSessionContext();
+    } catch (err) {
+      toast(err?.message || "Failed to update account type", "error");
+    }
   });
 
   el.settingsToggles.forEach((toggle) => {

@@ -598,6 +598,13 @@
     <section id="nonAdminView" class="panel hidden">
       <h2>Account Logged In</h2>
       <p id="nonAdminText">This account view is not configured yet.</p>
+      <div id="nonAdminRoleFix" class="row wrap gap-sm hidden" style="margin-top:12px;">
+        <select id="nonAdminRoleSelect" class="filter">
+          <option value="student">Student</option>
+          <option value="provider">Provider</option>
+        </select>
+        <button id="nonAdminUpdateRoleBtn" class="btn small">Update Account Type</button>
+      </div>
       <div class="row" style="margin-top:10px;">
         <button id="nonAdminBackToLoginBtn" class="btn small">Back to Login</button>
       </div>
