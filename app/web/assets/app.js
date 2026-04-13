@@ -5353,6 +5353,7 @@ function bindEvents() {
   }
   bindEvents();
   showAuthMode("login");
+  showView("auth");
   try {
     await initFirebase();
   } catch (err) {
@@ -5360,6 +5361,5 @@ function bindEvents() {
     toast(formatAuthError(err, "Authentication setup failed"), "error");
     log("firebase_init_error", String(err));
   }
-  showView("auth");
   log("ready", { message: "Admin + provider workspace loaded." });
 })();

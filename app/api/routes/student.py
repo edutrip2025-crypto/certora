@@ -490,10 +490,14 @@ def submit_attempt(
     db.refresh(result)
     certificate = None
     if passed and exam.certificate_enabled:
-        cert = issue_certificate(db, result)
-        db.commit()
-        db.refresh(cert)
-        certificate = certificate_payload(db, cert)
+        try:
+            cert = issue_certificate(db, result)
+            db.commit()
+            db.refresh(cert)
+            certificate = certificate_payload(db, cert)
+        except RuntimeError:
+            # Keep result submission successful even if PDF engine is unavailable.
+            db.rollback()
     return {
         "id": result.id,
         "attempt_id": result.attempt_id,

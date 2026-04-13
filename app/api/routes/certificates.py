@@ -22,7 +22,10 @@ def generate_certificate(
     if not result.passed:
         raise HTTPException(status_code=400, detail="Result is not pass eligible")
 
-    cert = issue_certificate(db, result)
+    try:
+        cert = issue_certificate(db, result)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     db.commit()
     db.refresh(cert)
     return certificate_payload(db, cert)
@@ -33,7 +36,10 @@ def verify_certificate(certificate_id: str, request: Request, db: Session = Depe
     cert = db.scalar(select(Certificate).where(Certificate.certificate_id == certificate_id))
     if not cert or cert.status != CertificateStatus.ACTIVE:
         raise HTTPException(status_code=404, detail="Certificate not found")
-    ensure_certificate_pdf(db, cert)
+    try:
+        ensure_certificate_pdf(db, cert)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     db.add(
         VerificationRecord(

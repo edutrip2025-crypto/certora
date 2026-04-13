@@ -2,10 +2,15 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.units import inch
-from reportlab.pdfgen import canvas
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.pdfgen import canvas
+except ImportError:  # pragma: no cover - runtime dependency safety
+    colors = None
+    A4 = None
+    landscape = None
+    canvas = None
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,6 +30,11 @@ def _certificate_logo_path() -> Path:
 
 def _certificate_pdf_relpath(certificate_id: str) -> str:
     return f"/media/certificates/{certificate_id}.pdf"
+
+
+def _ensure_pdf_engine() -> None:
+    if not all((colors, A4, landscape, canvas)):
+        raise RuntimeError("Certificate PDF engine unavailable. Install reportlab.")
 
 
 def _absolute_url(path_or_url: str | None) -> str | None:
@@ -51,6 +61,7 @@ def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
 
 
 def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
+    _ensure_pdf_engine()
     ctx = _load_certificate_context(db, certificate)
     course: Course = ctx["course"]
     provider: ProviderProfile = ctx["provider"]
