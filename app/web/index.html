@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Certora Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <main>
+    <div id="workspaceBrand" class="workspace-brand hidden">
+      <img src="/assets/certora_logo.png" alt="" class="brand-logo" />
+    </div>
+
+    <section id="authView" class="auth-wrap">
+      <article class="panel auth-card">
+        <h2>Secure Access</h2>
+        <p>Sign in with your account. You will be routed by role after login.</p>
+        <label>Email<input id="loginEmail" type="email" placeholder="admin@certora.in" /></label>
+        <label>Password<input id="loginPassword" type="password" placeholder="Password" /></label>
+        <div class="row">
+          <button id="loginBtn" class="btn primary">Login</button>
+          <button id="googleBtn" class="btn">Google</button>
+        </div>
+      </article>
+
+      <article class="panel auth-card">
+        <h2>Create Account</h2>
+        <p>For student/provider onboarding tests. Admin role should be assigned manually.</p>
+        <label>Full Name<input id="signupName" type="text" /></label>
+        <label>Email<input id="signupEmail" type="email" /></label>
+        <label>Password<input id="signupPassword" type="password" /></label>
+        <label>Role
+          <select id="signupRole">
+            <option value="student">Student</option>
+            <option value="provider">Provider</option>
+          </select>
+        </label>
+        <button id="signupBtn" class="btn">Register</button>
+      </article>
+    </section>
+
+    <section id="providerView" class="admin-layout hidden">
+      <aside class="panel sidebar">
+        <h3>Provider Workspace</h3>
+        <button class="nav-btn active provider-nav-btn" data-provider-view="home">Home</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="courses">Courses</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="assessments">Assessments</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="feedback">Feedback & Complaints</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="live">Live Class</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="certifications">Certifications</button>
+        <div class="sidebar-tools">
+          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">⚙</button>
+          <div class="settings-menu hidden">
+            <span class="badge js-session-badge">Not signed in</span>
+            <button class="btn ghost js-logout-btn" disabled>Logout</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel content" id="provider-view-home">
+        <h2>Home</h2>
+        <h3>Profile Analytics</h3>
+        <div id="providerHomeStats" class="stats"></div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-courses">
+        <h2>Courses</h2>
+        <div class="row between" id="providerCoursesHeader">
+          <h3>Your Courses (Active / Inactive)</h3>
+          <div class="row">
+            <button id="refreshProviderCoursesBtn" class="btn small">Refresh</button>
+            <button id="openDraftsPageBtn" class="btn small">Drafts</button>
+            <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
+          </div>
+        </div>
+        <div id="providerCoursesList" class="list"></div>
+        <section id="providerCourseViewer" class="moderation-toolbar hidden">
+          <div class="row between">
+            <h3 id="pcvTitle" style="margin:0;">Class Viewer</h3>
+            <button id="pcvCloseBtn" class="btn small">Close</button>
+          </div>
+          <div class="class-player-grid">
+            <aside>
+              <h4 style="margin:0 0 8px;">Topics</h4>
+              <div id="pcvTopicList" class="list"></div>
+              <h4 style="margin:12px 0 8px;">Live Classes</h4>
+              <div id="pcvLiveClassList" class="list"></div>
+            </aside>
+            <div>
+              <div id="pcvVideoShell" class="video-shell">
+                <video id="pcvVideo" style="width:100%; border-radius:10px; background:#000;"></video>
+                <button id="pcvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                <div class="video-controls">
+                  <button id="pcvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">▶</button>
+                  <button id="pcvBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">⟲10</button>
+                  <button id="pcvFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10⟳</button>
+                  <div class="seek-wrap">
+                    <div id="pcvScrubber" class="yt-scrubber">
+                      <div id="pcvBuffered" class="yt-buffered"></div>
+                      <div id="pcvProgress" class="yt-progress"></div>
+                      <div id="pcvTimelineMarkers" class="timeline-markers overlay"></div>
+                      <div id="pcvThumb" class="yt-thumb"></div>
+                    </div>
+                    <div id="pcvHoverPreview" class="hover-preview hidden"></div>
+                    <div id="pcvHoverTime" class="hover-time hidden"></div>
+                  </div>
+                  <span id="pcvTimeMeta" class="meta">00:00 / 00:00</span>
+                  <span id="pcvCurrentTopic" class="meta">Topic: -</span>
+                  <label class="meta">Speed
+                    <select id="pcvSpeed" class="filter">
+                      <option value="0.75">0.75x</option>
+                      <option value="1" selected>1x</option>
+                      <option value="1.25">1.25x</option>
+                      <option value="1.5">1.5x</option>
+                      <option value="2">2x</option>
+                    </select>
+                  </label>
+                  <label class="meta">Vol
+                    <input id="pcvVolume" type="range" min="0" max="1" step="0.05" value="1" />
+                  </label>
+                </div>
+              </div>
+              <div id="pcvMarkerTooltip" class="marker-tooltip hidden"></div>
+            </div>
+          </div>
+        </section>
+        <section id="providerDraftsPage" class="moderation-toolbar hidden">
+          <div class="row between">
+            <h3 style="margin:0;">Drafts</h3>
+            <div class="row">
+              <button id="refreshDraftsBtn" class="btn small">Refresh Drafts</button>
+              <button id="closeDraftsPageBtn" class="btn small">Close</button>
+            </div>
+          </div>
+          <div id="providerDraftsList" class="list"></div>
+        </section>
+
+        <div id="courseWizard" class="moderation-toolbar hidden">
+          <div class="row between">
+            <h3 id="courseWizardTitle" style="margin:0;">New Course</h3>
+            <button id="closeCourseWizardBtn" class="btn small">Close</button>
+          </div>
+
+          <section id="cwStepDetails">
+            <h3>Step 1: Course Details</h3>
+            <div class="row wrap gap-sm">
+              <input id="cwCourseTitle" class="search" type="text" placeholder="Course Name" />
+              <select id="cwCourseLevel" class="filter">
+                <option value="Beginner">Beginner</option>
+                <option value="Intermediate">Intermediate</option>
+                <option value="Advanced">Advanced</option>
+              </select>
+              <input id="cwCourseCategory" class="search" type="text" placeholder="Category (Tax, GST, etc.)" />
+              <input id="cwCourseThumbnail" class="search" type="url" placeholder="Thumbnail URL (optional)" />
+            </div>
+            <label>Description
+              <textarea id="cwCourseDescription" rows="3" placeholder="What will students learn?"></textarea>
+            </label>
+            <label class="checkbox-row">
+              <input id="cwIncludesExam" type="checkbox" checked />
+              <span>Include certification exam</span>
+            </label>
+            <div class="row">
+              <button id="cwSaveDraftBtn" class="btn small">Save Draft</button>
+              <button id="cwNextToVideoBtn" class="btn">Next: Choose Video ></button>
+            </div>
+          </section>
+
+          <section id="cwStepVideo" class="hidden">
+            <h3>Step 2: Choose Video</h3>
+            <input id="cwVideoUrl" class="search" type="url" placeholder="Recorded video URL" />
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <input id="cwVideoFile" type="file" accept="video/*" />
+              <button id="cwUploadVideoBtn" class="btn small">Upload Local Video</button>
+            </div>
+            <div id="cwUploadProgress" class="meta" style="margin-top:6px;"></div>
+            <div class="item" style="margin-top:10px;">
+              <div><strong>Thumbnail</strong></div>
+              <div class="meta">Choose from video frame or upload an image. If none selected, first frame is used automatically.</div>
+              <div class="row wrap gap-sm" style="margin-top:8px;">
+                <button id="cwUseCurrentFrameBtn" class="btn small">Use Current Video Frame</button>
+                <input id="cwThumbnailFile" type="file" accept="image/*" />
+              </div>
+              <img id="cwThumbnailPreview" alt="" class="thumb-preview hidden" />
+            </div>
+            <div class="item" style="margin-top:8px;">
+              <div><strong>Recommended Class Video Specs</strong></div>
+              <div class="meta">Aspect Ratio: 16:9 | Quality: 1080p preferred (minimum 720p) | Audio: clear voice</div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="cwBackToDetailsBtn" class="btn small">&lt; Back</button>
+              <button id="cwNextToTopicsBtn" class="btn">Next: Topics ></button>
+            </div>
+          </section>
+
+          <section id="cwStepTopics" class="hidden">
+            <h3>Step 3: Topics & Time Markers</h3>
+            <div class="class-player-grid">
+              <aside>
+                <h4 style="margin:0 0 8px;">Topics</h4>
+                <div id="cwTopicsDraftList" class="list"></div>
+              </aside>
+              <div>
+                <div class="item">
+                  <div class="row between">
+                    <strong>Video Preview</strong>
+                    <button id="cwLoadVideoPreviewBtn" class="btn small">Load/Refresh Video</button>
+                  </div>
+                  <div id="cwVideoShell" class="video-shell" style="margin-top:8px;">
+                    <video id="cwVideoPreview" style="width:100%; border-radius:10px; background:#000;"></video>
+                    <button id="cwFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                    <div class="video-controls">
+                      <button id="cwPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">▶</button>
+                      <button id="cwBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">⟲10</button>
+                      <button id="cwFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10⟳</button>
+                      <div class="seek-wrap">
+                        <div id="cwScrubber" class="yt-scrubber">
+                          <div id="cwBuffered" class="yt-buffered"></div>
+                          <div id="cwProgress" class="yt-progress"></div>
+                          <div id="cwTimelineMarkers" class="timeline-markers overlay"></div>
+                          <div id="cwThumb" class="yt-thumb"></div>
+                        </div>
+                        <div id="cwHoverPreview" class="hover-preview hidden"></div>
+                        <div id="cwHoverTime" class="hover-time hidden"></div>
+                      </div>
+                      <span id="cwVideoTimeMeta" class="meta">00:00 / 00:00</span>
+                      <span id="cwCurrentTopic" class="meta">Topic: -</span>
+                      <label class="meta">Speed
+                        <select id="cwSpeed" class="filter">
+                          <option value="0.75">0.75x</option>
+                          <option value="1" selected>1x</option>
+                          <option value="1.25">1.25x</option>
+                          <option value="1.5">1.5x</option>
+                          <option value="2">2x</option>
+                        </select>
+                      </label>
+                      <label class="meta">Vol
+                        <input id="cwVolume" type="range" min="0" max="1" step="0.05" value="1" />
+                      </label>
+                    </div>
+                  </div>
+                  <div id="cwMarkerTooltip" class="marker-tooltip hidden"></div>
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <input id="cwTopicTitle" class="search" type="text" placeholder="Topic Name (e.g., Deduction Rules)" />
+                  <input id="cwTopicTime" class="filter" type="text" placeholder="Time (mm:ss or hh:mm:ss)" />
+                  <button id="cwUseCurrentTimeBtn" class="btn small">Use Current Time</button>
+                  <button id="cwAddTopicBtn" class="btn small">Add Topic</button>
+                </div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="cwBackToVideoBtn" class="btn small">&lt; Back</button>
+              <button id="cwSaveDraftBtn2" class="btn small">Save Draft</button>
+              <button id="cwCreateCourseBtn" class="btn primary">Create Course</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-assessments">
+        <h2>Assessments</h2>
+        <p class="muted">Build MCQ assessments with pooled questions and random delivery per student attempt.</p>
+        <div class="row between">
+          <h3>Assessment List</h3>
+          <div class="row wrap gap-sm">
+            <button id="openAssessmentBuilderBtn" class="btn">+ New Assessment</button>
+            <button id="refreshProviderAssessmentsBtn" class="btn small">Refresh</button>
+          </div>
+        </div>
+        <div id="providerAssessmentsList" class="list"></div>
+      </section>
+
+      <section id="assessmentBuilderScreen" class="assessment-screen hidden">
+        <div class="assessment-screen-head">
+          <div>
+            <h2>Assessment Builder</h2>
+            <p class="muted">Closing this screen discards unsaved setup.</p>
+          </div>
+          <button id="assessmentBuilderCloseBtn" class="btn small">Close</button>
+        </div>
+
+        <div class="assessment-screen-grid">
+          <section class="item">
+            <h3>1. Course Selection</h3>
+            <div class="row wrap gap-sm">
+              <select id="abCourseFilter" class="filter">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="draft">Drafts</option>
+              </select>
+              <select id="abCourseSelect" class="search">
+                <option value="">Select course or draft video</option>
+              </select>
+            </div>
+            <div id="abCourseMeta" class="meta" style="margin-top:6px;">No course selected.</div>
+          </section>
+
+          <section class="item">
+            <h3>2. Assessment Settings</h3>
+            <div class="row wrap gap-sm">
+              <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
+              <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass %" />
+              <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts" />
+              <input id="abQuestionsPerAttempt" class="filter" type="number" min="1" placeholder="Questions shown to student" />
+            </div>
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
+              <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions</span></label>
+              <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options</span></label>
+              <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled</span></label>
+            </div>
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <select id="abTimingMode" class="filter">
+                <option value="assessment">Time per assessment</option>
+                <option value="question">Time per question</option>
+              </select>
+              <input id="abDurationMinutes" class="filter" type="number" min="1" placeholder="Duration (mins)" />
+              <input id="abTimePerQuestionSeconds" class="filter hidden" type="number" min="5" placeholder="Time/question (sec)" />
+            </div>
+          </section>
+
+          <section class="item">
+            <h3>3. Add MCQ Question</h3>
+            <div class="row wrap gap-sm">
+              <select id="abQuestionType" class="filter">
+                <option value="mcq_single_correct">MCQ - Single Correct</option>
+                <option value="mcq_multiple_correct">MCQ - Multiple Correct</option>
+              </select>
+              <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
+              <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
+            </div>
+            <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
+            <div class="ab-options-grid" style="margin-top:8px;">
+              <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
+              <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
+              <label class="ab-option-row"><input data-ab-correct="2" type="checkbox" /><input id="abOption3" class="search" type="text" placeholder="Option 3" /></label>
+              <label class="ab-option-row"><input data-ab-correct="3" type="checkbox" /><input id="abOption4" class="search" type="text" placeholder="Option 4" /></label>
+            </div>
+            <div class="row" style="margin-top:8px;">
+              <button id="abAddQuestionBtn" class="btn small">Add To Pool</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="item" style="margin-top:12px;">
+          <div class="row between">
+            <h3>Question Pool</h3>
+            <div id="abPoolMeta" class="meta">0 questions in pool.</div>
+          </div>
+          <div id="abQuestionPoolList" class="list"></div>
+        </section>
+
+        <div class="row wrap gap-sm" style="margin-top:12px;">
+          <button id="abSaveDraftBtn" class="btn small">Save Assessment Draft</button>
+          <button id="abPublishBtn" class="btn primary">Publish Assessment</button>
+        </div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-feedback">
+        <h2>Feedback & Complaints</h2>
+        <div class="row between">
+          <h3>Student Comments</h3>
+          <button id="refreshProviderCommentsBtn" class="btn small">Refresh</button>
+        </div>
+        <div id="providerCommentsList" class="list"></div>
+        <h3>Course Feedback Ratings</h3>
+        <div id="providerRatingsList" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-live">
+        <h2>Live Class</h2>
+        <p class="muted">Mark live class complete to unlock assessments for enrolled users.</p>
+        <div class="row wrap gap-sm">
+          <input id="liveCourseId" type="number" class="filter" placeholder="Course ID" />
+          <input id="liveCompletionNote" class="search" type="text" placeholder="Completion note (optional)" />
+          <button id="completeLiveClassBtn" class="btn">Complete Live Class</button>
+        </div>
+        <h3 style="margin-top:14px;">Notifications</h3>
+        <div class="row between">
+          <div class="meta">Unread student comments/questions</div>
+          <button id="refreshProviderNotificationsBtn" class="btn small">Refresh</button>
+        </div>
+        <div id="providerNotificationsList" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-certifications">
+        <h2>Certifications</h2>
+        <p class="muted">Issued certificates with download/share links.</p>
+        <div class="row between">
+          <h3>Issued Certificates</h3>
+          <button id="refreshProviderCertsBtn" class="btn small">Refresh</button>
+        </div>
+        <div id="providerCertsList" class="list"></div>
+      </section>
+    </section>
+
+    <section id="assessmentPreviewScreen" class="assessment-screen assessment-preview hidden">
+      <div class="assessment-screen-head">
+        <div>
+          <h2>Assessment Preview</h2>
+          <p id="apMeta" class="muted">Preview mode</p>
+        </div>
+        <div id="apProctorBadge" class="badge">Warnings: 0/3</div>
+        <button id="assessmentPreviewCloseBtn" class="btn small">Close</button>
+      </div>
+
+      <section id="apPrecheckPanel" class="item">
+        <h3>Pre-test Proctoring Check</h3>
+        <ul class="meta" style="margin:8px 0 0 18px;">
+          <li>No mobile phone or secondary screen usage.</li>
+          <li>Do not read questions aloud; avoid external voices.</li>
+          <li>Keep your face centered and eyes on screen.</li>
+          <li>Tab switching and fullscreen exit are not allowed.</li>
+        </ul>
+        <div id="apPrecheckStatus" class="meta" style="margin-top:6px;">Requesting camera/microphone permission...</div>
+        <div class="row wrap gap-sm" style="margin-top:10px;">
+          <video id="apProctorVideo" autoplay muted playsinline style="width:260px;max-width:100%;border-radius:12px;border:1px solid #dbe4f0;background:#0b1220;"></video>
+          <div id="apProctorHints" class="meta" style="min-width:260px;">Keep face visible, adequate lighting, and quiet environment.</div>
+        </div>
+        <label class="checkbox-row" style="margin-top:12px;">
+          <input id="apEnvironmentAttest" type="checkbox" />
+          <span>I confirm screen sharing, remote desktop, and support tools like AnyDesk or TeamViewer are not running.</span>
+        </label>
+        <div id="apEnvironmentStatus" class="meta" style="margin-top:6px;">Assessment start remains blocked until you confirm the test machine is local-only.</div>
+        <div class="row wrap gap-sm" style="margin-top:12px;">
+          <button id="apRerunChecksBtn" class="btn small">Re-run checks</button>
+          <button id="apStartTestBtn" class="btn primary" disabled>Start Assessment</button>
+        </div>
+      </section>
+
+      <section id="apQuestionPanel" class="item">
+        <div class="row between">
+          <div id="apProgressText" class="meta">Question 1/1</div>
+          <div id="apTimerText" class="meta"></div>
+        </div>
+        <div id="apAttentionChallenge" class="attention-challenge hidden" aria-live="polite">
+          <div id="apAttentionChallengeText" class="attention-challenge-text">Quick focus check</div>
+          <div id="apAttentionChallengeDot" class="attention-challenge-dot"></div>
+        </div>
+        <div id="apQuestionContent">
+          <h3 id="apQuestionText" style="margin-top:8px;">Question</h3>
+          <div id="apOptionsList" class="list" style="margin-top:10px;"></div>
+        </div>
+        <div class="row wrap gap-sm" style="margin-top:12px;">
+          <button id="apPrevBtn" class="btn small">Previous</button>
+          <button id="apNextBtn" class="btn small">Next</button>
+          <button id="apSubmitBtn" class="btn primary hidden">Submit</button>
+        </div>
+      </section>
+
+      <section id="apResultPanel" class="item hidden">
+        <h3>Assessment Result</h3>
+        <p class="muted" style="margin:8px 0 0; font-size:0.95rem; line-height:1.5;">
+          First, read your <strong>score</strong>, <strong>correct/wrong counts</strong>, and <strong>proctor summary</strong> below. That context is what you are judging in the training step.
+        </p>
+        <div id="apResultSummary" class="meta" style="margin-top:10px;"></div>
+        <div id="apWarningsSummary" class="meta" style="margin-top:6px;"></div>
+        <div id="apTrainingFeedbackPanel" class="item ap-training-review-block">
+          <div><strong>Training review</strong> <span class="meta" style="font-weight:600;">(after you have read the results above)</span></div>
+          <div class="meta" style="margin-top:6px;">Say whether the <strong>proctor model's outcome</strong> (warnings, risk, pass/fail) matched what you think was fair, given the same results. Saved for model improvements.</div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <button id="apTrainingPassBtn" class="btn small">Pass (Model Correct)</button>
+            <button id="apTrainingFailBtn" class="btn small danger">Fail (Model Wrong)</button>
+          </div>
+          <label style="margin-top:10px;">
+            Comment
+            <textarea id="apTrainingComment" rows="3" placeholder="Why was the model correct or wrong?"></textarea>
+          </label>
+          <div class="row wrap gap-sm">
+            <button id="apTrainingSaveBtn" class="btn primary">Save Training Review</button>
+            <div id="apTrainingFeedbackStatus" class="meta"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="studentView" class="admin-layout hidden">
+      <aside class="panel sidebar">
+        <h3>Student Workspace</h3>
+        <button class="nav-btn active student-nav-btn" data-student-view="home">Home</button>
+        <button class="nav-btn student-nav-btn" data-student-view="available">Available Courses</button>
+        <button class="nav-btn student-nav-btn" data-student-view="enrolled">My Courses</button>
+        <div class="sidebar-tools">
+          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">&#9881;</button>
+          <div class="settings-menu hidden">
+            <span class="badge js-session-badge">Not signed in</span>
+            <button class="btn ghost js-logout-btn" disabled>Logout</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel content" id="student-view-home">
+        <div class="row between">
+          <h2>Student Home</h2>
+          <button id="refreshStudentDashboardBtn" class="btn small">Refresh</button>
+        </div>
+        <div id="studentStats" class="stats"></div>
+        <section class="moderation-toolbar" style="margin-top:18px;">
+          <div class="row between">
+            <h3 style="margin:0;">My Certificates</h3>
+            <div class="meta">Certificates issued after passing eligible assessments.</div>
+          </div>
+          <div id="studentCertificatesList" class="list" style="margin-top:10px;"></div>
+        </section>
+      </section>
+
+      <section class="panel content hidden" id="student-view-available">
+        <h2>Available Courses</h2>
+        <div id="studentAvailableCourses" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="student-view-enrolled">
+        <h2>My Enrolled Courses</h2>
+        <div id="studentEnrolledCourses" class="list"></div>
+        <section id="studentCourseViewer" class="moderation-toolbar hidden">
+          <div class="row between">
+            <h3 id="scvTitle" style="margin:0;">Course Viewer</h3>
+            <button id="scvCloseBtn" class="btn small">Close</button>
+          </div>
+          <div id="scvMeta" class="meta" style="margin-top:6px;"></div>
+          <div class="item" style="margin:10px 0;">
+            <div class="row between">
+              <strong>Course Progress</strong>
+              <span id="scvProgressText" class="meta">0%</span>
+            </div>
+            <div style="height:10px;border:1px solid #dbe4f0;border-radius:999px;background:#eef2ff;margin-top:8px;overflow:hidden;">
+              <div id="scvProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#2563eb,#0ea5e9);"></div>
+            </div>
+            <div id="scvAssessmentPanel" class="row wrap gap-sm" style="margin-top:10px;">
+              <span id="scvAssessmentStatus" class="meta">Watch the full video to unlock assessment.</span>
+            </div>
+          </div>
+          <div class="class-player-grid">
+            <aside>
+              <h4 style="margin:0 0 8px;">Topics</h4>
+              <div id="scvTopicList" class="list"></div>
+              <h4 style="margin:12px 0 8px;">Live Classes</h4>
+              <div id="scvLiveClassList" class="list"></div>
+              <h4 style="margin:12px 0 8px;">Resources</h4>
+              <div id="scvResourceList" class="list"></div>
+            </aside>
+            <div>
+              <div id="scvVideoShell" class="video-shell">
+                <video id="scvVideo" style="width:100%; border-radius:10px; background:#000;"></video>
+                <button id="scvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
+                <div class="video-controls">
+                  <button id="scvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">&#9654;</button>
+                  <button id="scvBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">&#8630;10</button>
+                  <button id="scvFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10&#8631;</button>
+                  <div class="seek-wrap">
+                    <div id="scvScrubber" class="yt-scrubber">
+                      <div id="scvBuffered" class="yt-buffered"></div>
+                      <div id="scvProgress" class="yt-progress"></div>
+                      <div id="scvTimelineMarkers" class="timeline-markers overlay"></div>
+                      <div id="scvThumb" class="yt-thumb"></div>
+                    </div>
+                    <div id="scvHoverPreview" class="hover-preview hidden"></div>
+                    <div id="scvHoverTime" class="hover-time hidden"></div>
+                  </div>
+                  <span id="scvTimeMeta" class="meta">00:00 / 00:00</span>
+                  <span id="scvCurrentTopic" class="meta">Topic: -</span>
+                  <label class="meta">Speed
+                    <select id="scvSpeed" class="filter">
+                      <option value="0.75">0.75x</option>
+                      <option value="1" selected>1x</option>
+                      <option value="1.25">1.25x</option>
+                      <option value="1.5">1.5x</option>
+                      <option value="2">2x</option>
+                    </select>
+                  </label>
+                  <label class="meta">Vol
+                    <input id="scvVolume" type="range" min="0" max="1" step="0.05" value="1" />
+                  </label>
+                </div>
+              </div>
+              <div id="scvMarkerTooltip" class="marker-tooltip hidden"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <section id="nonAdminView" class="panel hidden">
+      <h2>Account Logged In</h2>
+      <p id="nonAdminText">This account view is not configured yet.</p>
+      <div class="row" style="margin-top:10px;">
+        <button id="nonAdminBackToLoginBtn" class="btn small">Back to Login</button>
+      </div>
+    </section>
+
+    <section id="adminView" class="admin-layout hidden">
+      <aside class="panel sidebar">
+        <h3>Workspace</h3>
+        
+        <button class="nav-btn active" data-view="home">Home</button>
+        <button class="nav-btn" data-view="reports">Reports & Compliants <span id="reportsBadge" class="nav-badge hidden">0</span></button>
+        <button class="nav-btn" data-view="approvals">Approvals <span id="approvalsBadge" class="nav-badge hidden">0</span></button>
+        <button class="nav-btn" data-view="billing">Billing & Payments</button>
+        <div class="sidebar-tools">
+          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">⚙</button>
+          <div class="settings-menu hidden">
+            <span class="badge js-session-badge">Not signed in</span>
+            <button class="btn small js-collapse-workspace-btn">Collapse Workspace</button>
+            <button class="btn ghost js-logout-btn" disabled>Logout</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel content" id="view-home">
+        <div class="row between">
+          <h2>Home</h2>
+          <button id="refreshProctorSessionsBtn" class="btn small">Refresh Proctoring</button>
+        </div>
+        <h3>Analytics</h3>
+        <div id="analyticsGrid" class="stats"></div>
+        <section class="moderation-toolbar" style="margin-top:16px;">
+          <div class="row between">
+            <h3 style="margin:0;">Flagged Proctor Sessions</h3>
+            <div class="meta">Recent flagged/manual-review sessions with triggered rule summary</div>
+          </div>
+          <div id="adminProctorSessionsList" class="list"></div>
+        </section>
+        <section class="moderation-toolbar" style="margin-top:20px;">
+          <div class="row between">
+            <h3 style="margin:0;">Saved training reviews</h3>
+            <button id="refreshTrainingReviewsBtn" class="btn small">Refresh</button>
+          </div>
+          <div class="meta" style="margin-top:4px;">Every Pass/Fail label reviewers saved for proctor model tuning (assessment preview and student attempts), newest first.</div>
+          <div id="adminTrainingReviewsList" class="list" style="margin-top:10px;"></div>
+        </section>
+      </section>
+
+      <section class="panel content hidden" id="view-reports">
+        <h2>Reports & Compliants</h2>
+        <div class="moderation-toolbar">
+          <div class="row wrap gap-sm">
+            <button class="btn small mode-tab active" data-mode="reports">Reports</button>
+            <button class="btn small mode-tab" data-mode="complaints">Compliants</button>
+          </div>
+          <div class="row wrap gap-sm">
+            <input id="moderationSearch" type="text" placeholder="Search details or reporter" class="search" />
+            <select id="moderationStatusFilter" class="filter">
+              <option value="all">All Status</option>
+              <option value="open">Open</option>
+              <option value="in_review">In Review</option>
+              <option value="resolved">Resolved</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
+          </div>
+          <div class="row wrap gap-sm export-actions">
+            <button id="exportReportsBtn" class="btn small">Export Reports CSV</button>
+            <button id="exportComplaintsBtn" class="btn small">Export Compliants CSV</button>
+          </div>
+        </div>
+
+        <div id="moderationSummary" class="stats small"></div>
+        <div id="moderationTypeCounts" class="chips"></div>
+        <div id="moderationList" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="view-approvals">
+        <h2>Approvals</h2>
+        <div class="row wrap gap-sm approvals-toolbar">
+          <button id="exportApprovalsBtn" class="btn small">Export Pending Approvals CSV</button>
+        </div>
+        <div id="approvalSummary" class="stats small"></div>
+        <div class="row wrap gap-sm">
+          <button class="btn small approval-tab active" data-approval-tab="students">Students</button>
+          <button class="btn small approval-tab" data-approval-tab="providers">Providers</button>
+        </div>
+
+        <section id="studentsApprovalPane">
+          <h3>Pending Students</h3>
+          <div id="pendingStudents" class="list"></div>
+        </section>
+
+        <section id="providersApprovalPane" class="hidden">
+          <h3>Pending Providers</h3>
+          <div id="pendingProviders" class="list"></div>
+        </section>
+      </section>
+
+      <section class="panel content hidden" id="view-billing">
+        <h2>Billing & Payments</h2>
+        <div id="billingPanel" class="list"></div>
+      </section>
+    </section>
+
+  </main>
+  <div id="proctorWarningModal" class="proctor-modal hidden" role="dialog" aria-modal="true" aria-labelledby="proctorWarningTitle">
+    <div class="proctor-modal-card">
+      <div id="proctorWarningTitle" class="proctor-modal-title">Proctoring Warning</div>
+      <div id="proctorWarningBody" class="proctor-modal-body">Please read the warning carefully.</div>
+      <div id="proctorWarningCountdown" class="meta" style="margin-top:10px;">You can continue after 5 seconds.</div>
+      <div class="row" style="margin-top:14px;">
+        <button id="proctorWarningAcknowledgeBtn" class="btn primary" disabled>Understood</button>
+      </div>
+    </div>
+  </div>
+  <div id="toastStack" class="toast-stack"></div>
+
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

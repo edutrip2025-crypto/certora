@@ -1,0 +1,10 @@
+.venv/
+.venv-proctoring/
+__pycache__/
+*.pyc
+.env
+certora.db
+logs/
+secrets/
+app/web/media/
+data/
