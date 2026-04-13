@@ -86,37 +86,12 @@ def get_current_user(
 
     user = db.scalar(select(User).where(User.email == email)) if email else None
     if not user:
-        generated_email = email or f"{firebase_uid}@firebase.local"
-        role = UserRole.STUDENT
-        raw_role = payload.get("role")
-        if isinstance(raw_role, str) and raw_role in {r.value for r in UserRole}:
-            role = UserRole(raw_role)
-        if settings.allow_dev_role_override and x_dev_role and x_dev_role in {r.value for r in UserRole}:
-            role = UserRole(x_dev_role)
-        user = User(
-            email=generated_email,
-            full_name=name,
-            password_hash="firebase",
-            role=role,
-            is_active=True,
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Account role not registered. Complete account setup first.",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        if user.role != UserRole.ADMIN:
-            approval = UserApproval(
-                user_id=user.id,
-                status=ApprovalStatus.PENDING,
-                rejection_reason=None,
-            )
-            db.add(approval)
-            db.commit()
-        return user
 
     effective_role = user.role
-    raw_role = payload.get("role")
-    if isinstance(raw_role, str) and raw_role in {r.value for r in UserRole}:
-        effective_role = UserRole(raw_role)
     if settings.allow_dev_role_override and x_dev_role and x_dev_role in {r.value for r in UserRole}:
         effective_role = UserRole(x_dev_role)
     if user.role != effective_role or user.full_name != name:

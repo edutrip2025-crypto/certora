@@ -38,3 +38,8 @@ def init_firebase() -> None:
 def verify_firebase_token(id_token: str) -> dict[str, Any]:
     init_firebase()
     return auth.verify_id_token(id_token)
+
+
+def set_firebase_custom_claims(uid: str, claims: dict[str, Any]) -> None:
+    init_firebase()
+    auth.set_custom_user_claims(uid, claims)

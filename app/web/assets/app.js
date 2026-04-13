@@ -4821,12 +4821,18 @@ function bindEvents() {
     if (!ensureAuthReady()) return;
     try {
       const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(state.auth, provider);
+      await signInWithPopup(state.auth, provider);
       try {
         await api("GET", "/auth/me/context");
-      } catch {
-        const name = cred.user.displayName || "Google User";
-        await api("POST", "/auth/register-role", { full_name: name, role: "student" });
+      } catch (err) {
+        if (String(err?.message || "").includes("Account role not registered")) {
+          showAuthMode("signup");
+          if (el.signupName && state.auth?.currentUser?.displayName) el.signupName.value = state.auth.currentUser.displayName;
+          if (el.signupEmail && state.auth?.currentUser?.email) el.signupEmail.value = state.auth.currentUser.email;
+          toast("Complete account setup by choosing Student or Provider.", "error");
+          return;
+        }
+        throw err;
       }
       toast("Google login successful");
     } catch (err) {
@@ -4846,6 +4852,7 @@ function bindEvents() {
       const cred = await createUserWithEmailAndPassword(state.auth, email, password);
       await updateProfile(cred.user, { displayName: name });
       await api("POST", "/auth/register-role", { full_name: name, role });
+      await cred.user.getIdToken(true).catch(() => {});
       state.authRoleSetupInFlight = false;
       await loadSessionContext();
       toast("Account created");
@@ -4892,6 +4899,7 @@ function bindEvents() {
       const nextRole = el.nonAdminRoleSelect?.value || "student";
       const fullName = state.auth?.currentUser?.displayName || state.context?.full_name || "User";
       await api("POST", "/auth/register-role", { full_name: fullName, role: nextRole });
+      await state.auth?.currentUser?.getIdToken(true).catch(() => {});
       toast("Account type updated");
       await loadSessionContext();
     } catch (err) {
