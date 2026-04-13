@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     allow_dev_role_override: bool = True
     firebase_project_id: str = ""
     firebase_service_account_path: str = ""
+    firebase_service_account_json: str = ""
     firebase_web_api_key: str = ""
     firebase_auth_domain: str = ""
     firebase_storage_bucket: str = ""
