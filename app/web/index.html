@@ -16,20 +16,28 @@
     </div>
 
     <section id="authView" class="auth-wrap">
-      <article class="panel auth-card">
-        <h2>Secure Access</h2>
-        <p>Sign in with your account. You will be routed by role after login.</p>
+      <article class="panel auth-hero">
+        <img src="/assets/certora_logo.png" alt="Certora" class="auth-hero-logo" />
+        <div class="auth-hero-kicker">Certora</div>
+        <h1>Secure Learning. Verified Outcomes.</h1>
+        <p>Courses, assessments, proctoring, and certificates on one controlled platform.</p>
+      </article>
+
+      <article id="loginCard" class="panel auth-card">
+        <h2>Login</h2>
+        <p>Sign in with your account to continue.</p>
         <label>Email<input id="loginEmail" type="email" placeholder="admin@certora.in" /></label>
         <label>Password<input id="loginPassword" type="password" placeholder="Password" /></label>
-        <div class="row">
+        <div class="row wrap">
           <button id="loginBtn" class="btn primary">Login</button>
           <button id="googleBtn" class="btn">Google</button>
         </div>
+        <div class="auth-switch">New user? <button id="showSignupBtn" type="button" class="auth-switch-btn">Create an account</button></div>
       </article>
 
-      <article class="panel auth-card">
+      <article id="signupCard" class="panel auth-card hidden">
         <h2>Create Account</h2>
-        <p>For student/provider onboarding tests. Admin role should be assigned manually.</p>
+        <p>Create your student or provider account.</p>
         <label>Full Name<input id="signupName" type="text" /></label>
         <label>Email<input id="signupEmail" type="email" /></label>
         <label>Password<input id="signupPassword" type="password" /></label>
@@ -39,7 +47,8 @@
             <option value="provider">Provider</option>
           </select>
         </label>
-        <button id="signupBtn" class="btn">Register</button>
+        <button id="signupBtn" class="btn primary">Create Account</button>
+        <div class="auth-switch">Already have an account? <button id="showLoginBtn" type="button" class="auth-switch-btn">Back to login</button></div>
       </article>
     </section>
 

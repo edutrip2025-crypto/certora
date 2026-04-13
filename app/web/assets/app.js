@@ -921,10 +921,14 @@ function maybeRunAttentionChallenge() {
 const el = {
   loginEmail: $("loginEmail"),
   loginPassword: $("loginPassword"),
+  loginCard: $("loginCard"),
   signupName: $("signupName"),
   signupEmail: $("signupEmail"),
   signupPassword: $("signupPassword"),
   signupRole: $("signupRole"),
+  signupCard: $("signupCard"),
+  showSignupBtn: $("showSignupBtn"),
+  showLoginBtn: $("showLoginBtn"),
   workspaceBrand: $("workspaceBrand"),
   settingsToggles: Array.from(document.querySelectorAll(".js-settings-toggle")),
   settingsMenus: Array.from(document.querySelectorAll(".settings-menu")),
@@ -955,6 +959,9 @@ const el = {
   providersApprovalPane: $("providersApprovalPane"),
   billingPanel: $("billingPanel"),
   refreshProctorSessionsBtn: $("refreshProctorSessionsBtn"),
+  loginBtn: $("loginBtn"),
+  googleBtn: $("googleBtn"),
+  signupBtn: $("signupBtn"),
   providerHomeStats: $("providerHomeStats"),
   studentStats: $("studentStats"),
   studentCertificatesList: $("studentCertificatesList"),
@@ -1092,6 +1099,24 @@ function showView(mode) {
   if (mode === "non-admin") el.nonAdminView?.classList.remove("hidden");
   el.workspaceBrand?.classList.toggle("hidden", mode === "auth");
   if (mode === "auth") el.settingsMenus.forEach((m) => m.classList.add("hidden"));
+}
+
+function showAuthMode(mode = "login") {
+  const loginMode = mode !== "signup";
+  el.loginCard?.classList.toggle("hidden", !loginMode);
+  el.signupCard?.classList.toggle("hidden", loginMode);
+}
+
+function setAuthActionState(ready) {
+  [el.loginBtn, el.googleBtn, el.signupBtn].forEach((btn) => {
+    if (btn) btn.disabled = !ready;
+  });
+}
+
+function ensureAuthReady() {
+  if (state.auth) return true;
+  toast("Authentication is still loading. Wait a moment and try again.", "error");
+  return false;
 }
 
 function setSessionBadge(text) {
@@ -4680,6 +4705,7 @@ async function loadSessionContext() {
 }
 
 async function initFirebase() {
+  setAuthActionState(false);
   const cfg = await api("GET", "/config/firebase", null, false);
   const app = initializeApp({
     apiKey: cfg.apiKey,
@@ -4692,6 +4718,7 @@ async function initFirebase() {
   });
   state.auth = getAuth(app);
   await setPersistence(state.auth, browserLocalPersistence);
+  setAuthActionState(true);
   onAuthStateChanged(state.auth, async (user) => {
     state.context = null;
     if (!user) {
@@ -4700,6 +4727,7 @@ async function initFirebase() {
         b.disabled = true;
       });
       showView("auth");
+      showAuthMode("login");
       return;
     }
     try {
@@ -4708,6 +4736,7 @@ async function initFirebase() {
       log("session_error", String(err));
       toast(formatAuthError(err, "Session load failed"), "error");
       showView("auth");
+      showAuthMode("login");
     }
   });
 }
@@ -4757,7 +4786,11 @@ function handleKeyboardShortcuts(event) {
 }
 
 function bindEvents() {
+  el.showSignupBtn?.addEventListener("click", () => showAuthMode("signup"));
+  el.showLoginBtn?.addEventListener("click", () => showAuthMode("login"));
+
   $("loginBtn")?.addEventListener("click", async () => {
+    if (!ensureAuthReady()) return;
     try {
       await signInWithEmailAndPassword(state.auth, el.loginEmail.value.trim(), el.loginPassword.value);
       toast("Login successful");
@@ -4768,6 +4801,7 @@ function bindEvents() {
   });
 
   $("googleBtn")?.addEventListener("click", async () => {
+    if (!ensureAuthReady()) return;
     try {
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(state.auth, provider);
@@ -4785,6 +4819,7 @@ function bindEvents() {
   });
 
   $("signupBtn")?.addEventListener("click", async () => {
+    if (!ensureAuthReady()) return;
     try {
       const name = el.signupName.value.trim();
       const email = el.signupEmail.value.trim();
@@ -4806,6 +4841,7 @@ function bindEvents() {
         stopAdminPolling();
         await signOut(state.auth);
         showView("auth");
+        showAuthMode("login");
         setSessionBadge("Not signed in");
         el.logoutBtns.forEach((b) => {
           b.disabled = true;
@@ -4822,6 +4858,7 @@ function bindEvents() {
       if (state.auth?.currentUser) await signOut(state.auth);
     } catch {}
     showView("auth");
+    showAuthMode("login");
     setSessionBadge("Not signed in");
     el.logoutBtns.forEach((b) => {
       b.disabled = true;
@@ -5249,7 +5286,14 @@ function bindEvents() {
     applyWorkspaceCollapse(false);
   }
   bindEvents();
-  await initFirebase();
+  showAuthMode("login");
+  try {
+    await initFirebase();
+  } catch (err) {
+    setAuthActionState(false);
+    toast(formatAuthError(err, "Authentication setup failed"), "error");
+    log("firebase_init_error", String(err));
+  }
   showView("auth");
   log("ready", { message: "Admin + provider workspace loaded." });
 })();

@@ -62,10 +62,64 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
   min-width: 220px;
 }
 
-.auth-wrap { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
-.auth-card { padding: 8px 0; }
+.auth-wrap { display: grid; grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 0.9fr); gap: 40px; align-items: center; min-height: calc(100vh - 100px); }
+.auth-hero {
+  padding: 24px 8px 24px 0;
+  max-width: 620px;
+}
+.auth-hero-logo {
+  width: 132px;
+  height: auto;
+  display: block;
+  margin-bottom: 18px;
+}
+.auth-hero-kicker {
+  color: var(--brand);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: .9rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.auth-hero h1 {
+  margin: 0 0 12px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1.02;
+}
+.auth-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+  max-width: 520px;
+}
+.auth-card {
+  padding: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.06);
+  max-width: 440px;
+  width: 100%;
+  justify-self: end;
+}
 .auth-card h2 { margin: 0 0 8px; font-family: "Space Grotesk", sans-serif; }
 .auth-card p { margin: 0 0 10px; color: var(--muted); }
+.auth-switch {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: .92rem;
+}
+.auth-switch-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
 
 label { display: grid; gap: 8px; margin-bottom: 14px; font-size: .88rem; font-weight: 700; }
 input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; font-family: inherit; font-size: .94rem; background: #fff; }
@@ -755,7 +809,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 
 @media (max-width: 1040px) {
-  .auth-wrap { grid-template-columns: 1fr; }
+  .auth-wrap { grid-template-columns: 1fr; min-height: auto; gap: 18px; }
+  .auth-hero { padding: 8px 0; max-width: none; }
+  .auth-card { justify-self: stretch; max-width: none; }
   .admin-layout { grid-template-columns: 1fr; }
   .sidebar { position: static; border-right: none; border-bottom: 1px solid #eef2f7; padding: 86px 0 10px; }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
