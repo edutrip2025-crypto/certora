@@ -49,7 +49,7 @@ router = APIRouter(prefix="/provider", tags=["provider"])
 
 
 def _media_paths() -> tuple[Path, Path]:
-    media_root = Path(get_settings().media_dir)
+    media_root = Path(get_settings().resolved_media_dir)
     videos_dir = media_root / "videos"
     uploads_dir = media_root / "uploads"
     videos_dir.mkdir(parents=True, exist_ok=True)

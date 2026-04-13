@@ -1,4 +1,6 @@
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,6 +32,29 @@ class Settings(BaseSettings):
     smtp_sender: str = "noreply@certora.in"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+
+    @property
+    def is_vercel(self) -> bool:
+        return bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+
+    @property
+    def resolved_database_url(self) -> str:
+        raw = (self.database_url or "").strip()
+        if not self.is_vercel:
+            return raw
+        if raw.startswith("sqlite:///./") or raw == "sqlite:///./certora.db":
+            return "sqlite:////tmp/certora.db"
+        return raw
+
+    @property
+    def resolved_media_dir(self) -> str:
+        raw = (self.media_dir or "").strip() or "app/web/media"
+        if not self.is_vercel:
+            return raw
+        path = Path(raw)
+        if path.is_absolute():
+            return str(path)
+        return "/tmp/certora-media"
 
 
 @lru_cache

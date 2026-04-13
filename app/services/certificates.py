@@ -14,7 +14,7 @@ from app.models.entities import Certificate, CertificateStatus, Course, Exam, Pr
 
 
 def _certificate_media_dir() -> Path:
-    root = Path(get_settings().media_dir) / "certificates"
+    root = Path(get_settings().resolved_media_dir) / "certificates"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -175,7 +175,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
 
 def ensure_certificate_pdf(db: Session, certificate: Certificate) -> Certificate:
     if certificate.pdf_url:
-        existing_path = Path(get_settings().media_dir) / certificate.pdf_url.replace("/media/", "", 1)
+        existing_path = Path(get_settings().resolved_media_dir) / certificate.pdf_url.replace("/media/", "", 1)
         if existing_path.exists():
             return certificate
     certificate.pdf_url = render_certificate_pdf(db, certificate)

@@ -93,7 +93,7 @@ def _active_session_for_user(db: Session, user_id: int) -> ProctorSession | None
 
 
 def _media_root() -> Path:
-    root = Path(get_settings().media_dir) / "proctoring"
+    root = Path(get_settings().resolved_media_dir) / "proctoring"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -358,7 +358,7 @@ async def upload_evidence(
     filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid4().hex}{safe_ext}"
     out_path = root / filename
     out_path.write_bytes(raw)
-    rel = out_path.relative_to(Path(get_settings().media_dir)).as_posix()
+    rel = out_path.relative_to(Path(get_settings().resolved_media_dir)).as_posix()
     url = f"/media/{rel}"
 
     ev = ProctorEvidence(

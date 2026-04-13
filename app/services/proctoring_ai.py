@@ -145,7 +145,7 @@ def _session_feature_vector(db: Session, sess: ProctorSession) -> np.ndarray | N
     if cv2 is None or np is None:
         return None
     settings = get_settings()
-    media_root = Path(settings.media_dir).resolve()
+    media_root = Path(settings.resolved_media_dir).resolve()
     evidence_rows = list(
         db.scalars(
             select(ProctorEvidence)

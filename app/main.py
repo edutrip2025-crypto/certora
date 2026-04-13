@@ -12,7 +12,7 @@ settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0")
 WEB_DIR = Path(__file__).resolve().parent / "web"
 ASSETS_DIR = WEB_DIR / "assets"
-MEDIA_DIR = Path(settings.media_dir)
+MEDIA_DIR = Path(settings.resolved_media_dir)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 
