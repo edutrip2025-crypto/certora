@@ -15,6 +15,7 @@ import {
 const state = {
   auth: null,
   context: null,
+  authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
   reports: [],
@@ -4721,6 +4722,7 @@ async function initFirebase() {
   setAuthActionState(true);
   onAuthStateChanged(state.auth, async (user) => {
     state.context = null;
+    if (state.authRoleSetupInFlight) return;
     if (!user) {
       setSessionBadge("Not signed in");
       el.logoutBtns.forEach((b) => {
@@ -4825,11 +4827,15 @@ function bindEvents() {
       const email = el.signupEmail.value.trim();
       const password = el.signupPassword.value;
       const role = el.signupRole.value;
+      state.authRoleSetupInFlight = true;
       const cred = await createUserWithEmailAndPassword(state.auth, email, password);
       await updateProfile(cred.user, { displayName: name });
       await api("POST", "/auth/register-role", { full_name: name, role });
+      state.authRoleSetupInFlight = false;
+      await loadSessionContext();
       toast("Account created");
     } catch (err) {
+      state.authRoleSetupInFlight = false;
       toast(formatAuthError(err, "Signup failed"), "error");
       log("signup_error", String(err));
     }
