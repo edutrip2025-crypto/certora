@@ -48,6 +48,7 @@ from app.schemas import (
 from app.services.scoring import score_attempt
 from app.services.proctoring_ai import evaluate_proctor_session
 from app.services.certificates import certificate_payload, ensure_certificate_pdf, issue_certificate
+from app.services.media_storage import resolve_media_url
 
 router = APIRouter(prefix="/student", tags=["student"])
 
@@ -151,7 +152,7 @@ def course_detail(
                     "id": lesson.id,
                     "title": lesson.title,
                     "lesson_type": lesson.lesson_type,
-                    "recorded_video_url": lesson.recorded_video_url,
+                    "recorded_video_url": resolve_media_url(lesson.recorded_video_url),
                     "live_class_url": lesson.live_class_url,
                     "topics": [
                         {

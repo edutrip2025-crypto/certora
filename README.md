@@ -190,3 +190,24 @@ Current UX focus:
 - Set `ENABLE_AI_REVIEW=true` later to enable AI review checks.
 - Replace `app/services/ai_review.py` with async worker + OpenAI calls in Phase 2.
 - Certificate PDF generation is placeholder-ready (`pdf_url` field exists).
+
+## Migrate Local Data To Cloud DB
+
+If your local `certora.db` has test data and production is empty, run this one-time migration:
+
+```bash
+python scripts/migrate_sqlite_to_database.py --target-url "<POSTGRES_DATABASE_URL>" --replace --sync-rules
+```
+
+What it does:
+
+- copies all SQL tables from local SQLite into target DB
+- preserves IDs and relationships
+- optionally replaces target data first (`--replace`)
+- applies account rule sync and Firebase custom claim sync (`--sync-rules`)
+
+Environment required for Firebase claim sync:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`

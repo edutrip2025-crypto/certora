@@ -44,7 +44,7 @@ from app.schemas import (
     ProviderProfileOut,
 )
 from app.services.certificates import ensure_certificate_pdf
-from app.services.media_storage import upload_file_to_firebase_storage
+from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 
@@ -259,7 +259,7 @@ def provider_content_courses(
                         "id": lesson.id,
                         "title": lesson.title,
                         "lesson_type": lesson.lesson_type,
-                        "recorded_video_url": lesson.recorded_video_url,
+                        "recorded_video_url": resolve_media_url(lesson.recorded_video_url),
                         "live_class_url": lesson.live_class_url,
                         "topics": [{"id": t.id, "title": t.title, "time_seconds": t.time_seconds, "thumbnail_data_url": t.thumbnail_data_url} for t in topics],
                         "resources": [{"id": r.id, "title": r.title, "url": r.url, "resource_type": r.resource_type} for r in resources],
@@ -361,7 +361,8 @@ def upload_video_status(
         "status": upload.status,
         "received_chunks": upload.received_chunks,
         "total_chunks": upload.total_chunks,
-        "file_url": upload.file_url,
+        "file_url": resolve_media_url(upload.file_url),
+        "storage_ref": upload.file_url,
     }
 
 
@@ -405,24 +406,29 @@ def complete_video_upload(
         db.commit()
         raise HTTPException(status_code=500, detail="Failed to merge uploaded chunks")
 
-    settings = get_settings()
-    if settings.auth_mode.lower() == "firebase":
-        try:
-            upload.file_url = upload_file_to_firebase_storage(
-                final_path,
-                object_path=f"videos/{upload.stored_filename}",
-                content_type=upload.mime_type or "video/mp4",
-            )
-        except Exception as exc:
+    try:
+        upload.file_url = upload_file_to_cloud_storage(
+            final_path,
+            object_path=f"videos/{upload.stored_filename}",
+            content_type=upload.mime_type or "video/mp4",
+        )
+    except Exception as exc:
+        settings = get_settings()
+        if settings.resolved_object_storage_backend == "local":
+            upload.file_url = f"/media/videos/{upload.stored_filename}"
+        else:
             upload.status = VideoUploadStatus.FAILED
             upload.error_message = f"Cloud upload failed: {exc}"
             db.commit()
             raise HTTPException(status_code=500, detail="Failed to upload video to cloud storage")
-    else:
-        upload.file_url = f"/media/videos/{upload.stored_filename}"
     upload.status = VideoUploadStatus.COMPLETED
     db.commit()
-    return {"session_id": upload.session_id, "file_url": upload.file_url, "status": upload.status}
+    return {
+        "session_id": upload.session_id,
+        "file_url": resolve_media_url(upload.file_url),
+        "storage_ref": upload.file_url,
+        "status": upload.status,
+    }
 
 
 @router.post("/workspace/courses/drafts")
@@ -506,6 +512,7 @@ def get_course_draft(
         "thumbnail_url": draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
         "video_url": draft.video_url,
+        "video_play_url": resolve_media_url(draft.video_url),
         "topics": draft.topics_json or [],
         "updated_at": draft.updated_at,
     }
@@ -725,8 +732,8 @@ def provider_certifications(
             "student_name": student.full_name,
             "issued_at": cert.issued_at,
             "download_url": (
-                f"{settings.app_base_url.rstrip('/')}{cert.pdf_url}"
-                if cert.pdf_url
+                resolve_media_url(cert.pdf_url)
+                if resolve_media_url(cert.pdf_url)
                 else f"{settings.app_base_url}/certificates/verify/{cert.certificate_id}"
             ),
             "verification_url": f"{settings.app_base_url}/certificates/verify/{cert.certificate_id}",

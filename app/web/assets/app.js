@@ -1901,7 +1901,12 @@ async function refreshProviderDrafts() {
         refreshThumbnailPreview();
         $("cwIncludesExam").checked = Boolean(draft.includes_exam);
         $("cwVideoUrl").value = draft.video_url || "";
-        ensureCourseVideoPreview();
+        if (draft.video_play_url && $("cwVideoPreview")) {
+          $("cwVideoPreview").setAttribute("src", draft.video_play_url);
+          $("cwVideoPreview").load();
+        } else {
+          ensureCourseVideoPreview();
+        }
         state.draftTopics = draft.topics || [];
         renderDraftTopics();
         setCourseWizardStep("details");
@@ -1942,9 +1947,13 @@ async function uploadLocalVideoInChunks(file) {
     if (progress) progress.textContent = `Uploading... ${i + 1}/${totalChunks} chunks`;
   }
   const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
-  $("cwVideoUrl").value = done.file_url;
-  if (progress) progress.textContent = `Upload complete: ${done.file_url}`;
-  return done.file_url;
+  $("cwVideoUrl").value = done.storage_ref || done.file_url;
+  if (done.file_url && $("cwVideoPreview")) {
+    $("cwVideoPreview").setAttribute("src", done.file_url);
+    $("cwVideoPreview").load();
+  }
+  if (progress) progress.textContent = `Upload complete`;
+  return done.storage_ref || done.file_url;
 }
 
 async function refreshAnalytics() {

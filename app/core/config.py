@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     firebase_messaging_sender_id: str = ""
     firebase_app_id: str = ""
     firebase_measurement_id: str = ""
+    object_storage_backend: str = "auto"  # auto | s3 | firebase | local
+    aws_region: str = ""
+    aws_s3_bucket_name: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
     media_dir: str = "app/web/media"
     smtp_host: str = ""
     smtp_port: int = 587
@@ -60,6 +65,19 @@ class Settings(BaseSettings):
     @property
     def admin_email_set(self) -> set[str]:
         return {e.strip().lower() for e in (self.admin_emails or "").split(",") if e.strip()}
+
+    @property
+    def resolved_object_storage_backend(self) -> str:
+        raw = (self.object_storage_backend or "auto").strip().lower()
+        if raw in {"s3", "firebase", "local"}:
+            return raw
+        has_s3 = bool(self.aws_region and self.aws_s3_bucket_name and self.aws_access_key_id and self.aws_secret_access_key)
+        if has_s3:
+            return "s3"
+        has_firebase_storage = bool(self.firebase_storage_bucket or self.firebase_project_id)
+        if has_firebase_storage:
+            return "firebase"
+        return "local"
 
 
 @lru_cache

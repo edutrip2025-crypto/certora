@@ -31,6 +31,21 @@ def favicon():
     return Response(status_code=204)
 
 
+@app.get("/manifest.json")
+def manifest_json():
+    return Response(status_code=204)
+
+
+@app.get("/site.webmanifest")
+def site_webmanifest():
+    return Response(status_code=204)
+
+
+@app.get("/apple-touch-icon.png")
+def apple_touch_icon():
+    return Response(status_code=204)
+
+
 @app.get("/config/firebase")
 def firebase_config():
     return {

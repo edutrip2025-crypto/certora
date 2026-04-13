@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.entities import Certificate, CertificateStatus, Course, Exam, ProviderProfile, Result, User
-from app.services.media_storage import upload_file_to_firebase_storage
+from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 
 def _certificate_media_dir() -> Path:
@@ -183,8 +183,8 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.showPage()
     c.save()
     settings = get_settings()
-    if settings.auth_mode.lower() == "firebase":
-        return upload_file_to_firebase_storage(
+    if settings.resolved_object_storage_backend != "local":
+        return upload_file_to_cloud_storage(
             out_path,
             object_path=f"certificates/{certificate.certificate_id}.pdf",
             content_type="application/pdf",
@@ -244,7 +244,7 @@ def certificate_payload(db: Session, certificate: Certificate) -> dict:
     provider = db.get(ProviderProfile, certificate.provider_id)
     student = db.get(User, certificate.student_id)
     result = db.get(Result, certificate.result_id)
-    pdf_url = _absolute_url(certificate.pdf_url)
+    pdf_url = resolve_media_url(certificate.pdf_url) or _absolute_url(certificate.pdf_url)
     verification_link = f"{settings.app_base_url.rstrip('/')}/certificates/verify/{certificate.certificate_id}"
     return {
         "certificate_id": certificate.certificate_id,

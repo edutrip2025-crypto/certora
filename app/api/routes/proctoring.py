@@ -28,6 +28,7 @@ from app.schemas import (
     ProctorTrainingFeedbackCreate,
 )
 from app.services.proctoring_ai import evaluate_proctor_session, get_proctor_model_status
+from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/proctoring", tags=["proctoring"])
 
@@ -358,8 +359,19 @@ async def upload_evidence(
     filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid4().hex}{safe_ext}"
     out_path = root / filename
     out_path.write_bytes(raw)
-    rel = out_path.relative_to(Path(get_settings().resolved_media_dir)).as_posix()
-    url = f"/media/{rel}"
+    settings = get_settings()
+    if settings.resolved_object_storage_backend == "local":
+        rel = out_path.relative_to(Path(settings.resolved_media_dir)).as_posix()
+        url = f"/media/{rel}"
+    else:
+        try:
+            url = upload_file_to_cloud_storage(
+                out_path,
+                object_path=f"proctoring/{item.session_code}/{filename}",
+                content_type=file.content_type or "application/octet-stream",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to upload proctor evidence: {exc}") from exc
 
     ev = ProctorEvidence(
         session_id=item.id,
@@ -372,7 +384,7 @@ async def upload_evidence(
     db.add(ev)
     db.commit()
     db.refresh(ev)
-    return {"evidence_id": ev.id, "file_url": ev.file_url, "size_bytes": ev.size_bytes}
+    return {"evidence_id": ev.id, "file_url": resolve_media_url(ev.file_url), "storage_ref": ev.file_url, "size_bytes": ev.size_bytes}
 
 
 @router.post("/sessions/{session_id}/finalize")
@@ -513,7 +525,8 @@ def session_detail(
                 "id": ev.id,
                 "event_id": ev.event_id,
                 "evidence_type": ev.evidence_type,
-                "file_url": ev.file_url,
+                "file_url": resolve_media_url(ev.file_url),
+                "storage_ref": ev.file_url,
                 "mime_type": ev.mime_type,
                 "size_bytes": ev.size_bytes,
                 "created_at": ev.created_at,
