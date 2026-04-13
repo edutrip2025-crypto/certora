@@ -51,12 +51,19 @@ uvicorn app.main:app --reload
 
 Required env variables:
 
-- `FIREBASE_SERVICE_ACCOUNT_PATH`
+- `FIREBASE_SERVICE_ACCOUNT_PATH` for local file-based runs
+- `FIREBASE_SERVICE_ACCOUNT_JSON` for Vercel/serverless deployments
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_WEB_API_KEY`
 - `FIREBASE_AUTH_DOMAIN`
 - `FIREBASE_APP_ID`
 - `FIREBASE_STORAGE_BUCKET`
+
+For Vercel:
+
+- add `FIREBASE_WEB_API_KEY` from Firebase Project Settings -> Web App config
+- add `FIREBASE_SERVICE_ACCOUNT_JSON` as the full JSON string of the Firebase service account
+- do not commit real Firebase secrets into the repository
 
 Frontend login options:
 
