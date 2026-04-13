@@ -73,6 +73,17 @@ function formatAuthError(err, fallback) {
   return fallback;
 }
 
+function isRoleRegistrationRequiredError(err) {
+  return String(err?.message || "").includes("Account role not registered");
+}
+
+function openAccountSetupForCurrentUser() {
+  showView("auth");
+  showAuthMode("signup");
+  if (el.signupName && state.auth?.currentUser?.displayName) el.signupName.value = state.auth.currentUser.displayName;
+  if (el.signupEmail && state.auth?.currentUser?.email) el.signupEmail.value = state.auth.currentUser.email;
+}
+
 const $ = (id) => document.getElementById(id);
 let faceLandmarkerCachePromise = null;
 let phoneDetectorCachePromise = null;
@@ -4751,6 +4762,11 @@ async function initFirebase() {
       await loadSessionContext();
     } catch (err) {
       log("session_error", String(err));
+      if (isRoleRegistrationRequiredError(err)) {
+        openAccountSetupForCurrentUser();
+        toast("Complete account setup by choosing Student or Provider.", "error");
+        return;
+      }
       toast(formatAuthError(err, "Session load failed"), "error");
       showView("auth");
       showAuthMode("login");
@@ -4825,10 +4841,8 @@ function bindEvents() {
       try {
         await api("GET", "/auth/me/context");
       } catch (err) {
-        if (String(err?.message || "").includes("Account role not registered")) {
-          showAuthMode("signup");
-          if (el.signupName && state.auth?.currentUser?.displayName) el.signupName.value = state.auth.currentUser.displayName;
-          if (el.signupEmail && state.auth?.currentUser?.email) el.signupEmail.value = state.auth.currentUser.email;
+        if (isRoleRegistrationRequiredError(err)) {
+          openAccountSetupForCurrentUser();
           toast("Complete account setup by choosing Student or Provider.", "error");
           return;
         }
