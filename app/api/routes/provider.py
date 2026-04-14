@@ -25,6 +25,7 @@ from app.models.entities import (
     ProviderDocument,
     ProviderCourseDraft,
     ProviderProfile,
+    ProviderType,
     Question,
     Resource,
     Result,
@@ -152,7 +153,19 @@ def review_provider_status(
 def _provider_or_404(db: Session, user_id: int) -> ProviderProfile:
     profile = db.scalar(select(ProviderProfile).where(ProviderProfile.user_id == user_id))
     if not profile:
-        raise HTTPException(status_code=404, detail="Provider profile not found")
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Provider profile not found")
+        profile = ProviderProfile(
+            user_id=user_id,
+            provider_type=ProviderType.INDIVIDUAL,
+            display_name=user.full_name or user.email.split("@")[0],
+            description="",
+            approval_status=ApprovalStatus.PENDING,
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
     return profile
 
 
