@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -26,6 +27,25 @@ def _rows_for_table(source_engine: Engine, table) -> list[dict]:
 def _sanitize_row_for_table(table, row: dict) -> dict:
     out = dict(row)
     for col in table.columns:
+        val = out.get(col.name)
+        try:
+            py_type = col.type.python_type
+        except Exception:
+            py_type = None
+
+        # Normalize bools from SQLite ints.
+        if py_type is bool and isinstance(val, int):
+            out[col.name] = bool(val)
+            val = out[col.name]
+
+        # Normalize JSON text payloads from SQLite.
+        if py_type in (dict, list) and isinstance(val, str):
+            try:
+                out[col.name] = json.loads(val)
+                val = out[col.name]
+            except Exception:
+                pass
+
         val = out.get(col.name)
         max_len = getattr(col.type, "length", None)
         if isinstance(val, str) and isinstance(max_len, int) and max_len > 0 and len(val) > max_len:
@@ -85,9 +105,10 @@ def migrate(source_url: str, target_url: str, replace: bool, sync_rules: bool) -
         if not rows:
             return 0
         rows = [_sanitize_row_for_table(table, r) for r in rows]
-        chunk_size = 25
+        chunk_size = 100
         inserted = 0
-        for i in range(0, len(rows), chunk_size):
+        total = len(rows)
+        for i in range(0, total, chunk_size):
             chunk = rows[i:i + chunk_size]
             try:
                 with conn.begin_nested():
@@ -102,15 +123,18 @@ def migrate(source_url: str, target_url: str, replace: bool, sync_rules: bool) -
                         inserted += 1
                     except Exception:
                         continue
+            if (i // chunk_size) % 10 == 0 or inserted == total:
+                print(f"  {table.name}: {min(i + chunk_size, total)}/{total}")
         return inserted
 
-    with target_engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            rows = _rows_for_table(source_engine, table)
-            if not rows:
-                inserted[table.name] = 0
-                continue
+    for table in Base.metadata.sorted_tables:
+        rows = _rows_for_table(source_engine, table)
+        if not rows:
+            inserted[table.name] = 0
+            continue
+        with target_engine.begin() as conn:
             inserted[table.name] = _insert_rows_safely(conn, table, rows)
+        print(f"migrated {table.name}: {inserted[table.name]}")
 
     _reset_postgres_sequences(target_engine)
 
