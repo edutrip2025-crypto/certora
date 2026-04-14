@@ -4947,7 +4947,16 @@ function bindEvents() {
       } catch (firebaseErr) {
         if (String(firebaseErr?.code || "").includes("auth/email-already-in-use")) {
           // Existing Firebase auth user: continue setup if password is valid.
-          cred = await signInWithEmailAndPassword(state.auth, email, password);
+          try {
+            cred = await signInWithEmailAndPassword(state.auth, email, password);
+          } catch (signInErr) {
+            if (String(signInErr?.code || "").includes("auth/invalid-credential")) {
+              throw new Error(
+                "This email is already registered with a different password. Use Login (or reset password) instead of Signup.",
+              );
+            }
+            throw signInErr;
+          }
         } else {
           throw firebaseErr;
         }
