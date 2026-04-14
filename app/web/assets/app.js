@@ -2336,6 +2336,7 @@ async function refreshProviderContent() {
             <div class="actions">
               ${firstLesson?.recorded_video_url ? `<button class="btn small" data-view-course="${c.id}">View Class</button>` : ""}
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
+              ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
               ${canDeleteCourseFromUi() ? `<button class="btn small danger" data-delete-course="${c.id}">Delete Course</button>` : ""}
             </div>
           </div>
@@ -2361,6 +2362,19 @@ async function refreshProviderContent() {
       const lesson = findLiveLessons(course)[0];
       if (!lesson?.live_class_url) return toast("No live class link available", "error");
       window.open(lesson.live_class_url, "_blank", "noopener,noreferrer");
+    });
+  });
+  document.querySelectorAll("[data-activate-course]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const courseId = Number(btn.dataset.activateCourse || 0);
+      if (!courseId) return;
+      try {
+        await api("POST", `/courses/${courseId}/publish`);
+        toast("Course activated");
+        await refreshProviderContent();
+      } catch (err) {
+        toast(err?.message || "Failed to activate course", "error");
+      }
     });
   });
   document.querySelectorAll("[data-delete-course]").forEach((btn) => {
@@ -2726,7 +2740,8 @@ function updateAssessmentStartEligibility() {
   const precheckReady = Boolean(p.precheckReady);
   const attested = Boolean(p.environmentAttested);
   if (el.apStartTestBtn) {
-    el.apStartTestBtn.disabled = !(precheckReady && attested);
+    // Keep start clickable after precheck so users get an explicit toast if attestation is missing.
+    el.apStartTestBtn.disabled = !precheckReady;
   }
   if (el.apEnvironmentStatus) {
     el.apEnvironmentStatus.textContent = attested

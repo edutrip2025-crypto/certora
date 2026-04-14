@@ -40,6 +40,7 @@ def create_course(
         category=payload.category,
         thumbnail_url=payload.thumbnail_url,
         includes_certification_exam=payload.includes_certification_exam,
+        is_published=True,
     )
     db.add(course)
     db.commit()
