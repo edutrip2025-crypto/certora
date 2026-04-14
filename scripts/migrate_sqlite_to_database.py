@@ -101,12 +101,15 @@ def migrate(source_url: str, target_url: str, replace: bool, sync_rules: bool) -
         _truncate_target(target_engine)
 
     inserted = {}
-    def _insert_rows_safely(conn, table, rows: list[dict]) -> int:
+    failures = {}
+    def _insert_rows_safely(conn, table, rows: list[dict]) -> tuple[int, int]:
         if not rows:
-            return 0
+            return 0, 0
         rows = [_sanitize_row_for_table(table, r) for r in rows]
         chunk_size = 100
         inserted = 0
+        failed = 0
+        first_error = None
         total = len(rows)
         for i in range(0, total, chunk_size):
             chunk = rows[i:i + chunk_size]
@@ -121,19 +124,27 @@ def migrate(source_url: str, target_url: str, replace: bool, sync_rules: bool) -
                         with conn.begin_nested():
                             conn.execute(table.insert(), row)
                         inserted += 1
-                    except Exception:
+                    except Exception as ex:
+                        if first_error is None:
+                            first_error = ex
+                        failed += 1
                         continue
             if (i // chunk_size) % 10 == 0 or inserted == total:
                 print(f"  {table.name}: {min(i + chunk_size, total)}/{total}")
-        return inserted
+        if first_error is not None:
+            print(f"  {table.name}: first error -> {first_error}")
+        return inserted, failed
 
     for table in Base.metadata.sorted_tables:
         rows = _rows_for_table(source_engine, table)
         if not rows:
             inserted[table.name] = 0
+            failures[table.name] = 0
             continue
         with target_engine.begin() as conn:
-            inserted[table.name] = _insert_rows_safely(conn, table, rows)
+            ok, bad = _insert_rows_safely(conn, table, rows)
+            inserted[table.name] = ok
+            failures[table.name] = bad
         print(f"migrated {table.name}: {inserted[table.name]}")
 
     _reset_postgres_sequences(target_engine)
@@ -152,7 +163,7 @@ def migrate(source_url: str, target_url: str, replace: bool, sync_rules: bool) -
             db.close()
 
     total_rows = sum(inserted.values())
-    return {"tables": inserted, "total_rows": total_rows, "sync_summary": sync_summary}
+    return {"tables": inserted, "failures": failures, "total_rows": total_rows, "sync_summary": sync_summary}
 
 
 def main() -> None:
@@ -188,7 +199,8 @@ def main() -> None:
     print("Migration complete")
     print(f"Total rows migrated: {summary['total_rows']}")
     for table_name, count in summary["tables"].items():
-        print(f"  {table_name}: {count}")
+        failed = int(summary.get("failures", {}).get(table_name, 0))
+        print(f"  {table_name}: {count} (failed: {failed})")
     if summary["sync_summary"] is not None:
         print("Account sync summary:")
         for key, value in summary["sync_summary"].items():

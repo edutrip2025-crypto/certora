@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def resolved_database_url(self) -> str:
         raw = (self.database_url or "").strip()
+        if raw.startswith("postgres://"):
+            raw = "postgresql+psycopg://" + raw[len("postgres://"):]
+        elif raw.startswith("postgresql://"):
+            raw = "postgresql+psycopg://" + raw[len("postgresql://"):]
         if not self.is_vercel:
             return raw
         if raw.startswith("sqlite:///./") or raw == "sqlite:///./certora.db":
