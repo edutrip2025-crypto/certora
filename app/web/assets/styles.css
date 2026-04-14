@@ -266,6 +266,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: #0b1220;
   padding: 8px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  container-type: inline-size;
 }
 .video-shell video {
   display: block;
@@ -288,12 +289,25 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   transition: opacity .18s ease;
 }
 .video-controls {
+  --control-btn-w: 44px;
+  --control-btn-h: 34px;
+  --control-gap: 8px;
+  --control-pad-y: 8px;
+  --control-pad-x: 8px;
   margin-top: 10px;
   display: grid;
-  grid-template-columns: 44px 44px 44px minmax(240px, 1fr) 110px minmax(120px, 170px) minmax(120px, 150px) minmax(110px, 130px);
-  gap: 8px;
+  grid-template-columns:
+    var(--control-btn-w)
+    var(--control-btn-w)
+    var(--control-btn-w)
+    minmax(200px, 1fr)
+    auto
+    minmax(106px, 156px)
+    minmax(108px, 150px)
+    minmax(98px, 128px);
+  gap: var(--control-gap);
   align-items: center;
-  padding: 8px;
+  padding: var(--control-pad-y) var(--control-pad-x);
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -304,11 +318,11 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-color: rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.35);
   color: #ffffff;
-  min-height: 34px;
+  min-height: var(--control-btn-h);
 }
 .icon-btn {
-  width: 44px;
-  height: 34px;
+  width: var(--control-btn-w);
+  height: var(--control-btn-h);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.35);
@@ -320,16 +334,17 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .video-controls .meta {
   color: #ffffff;
   font-weight: 600;
-  font-size: .8rem;
+  font-size: clamp(.72rem, 0.2rem + 1vw, .8rem);
   white-space: nowrap;
 }
 .video-controls .filter {
-  min-width: 86px;
-  padding: 8px 10px;
+  min-width: 76px;
+  padding: 7px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.25);
   color: #ffffff;
+  font-size: clamp(.7rem, 0.2rem + 1vw, .82rem);
 }
 .video-controls input[type="range"] {
   accent-color: #ffffff;
@@ -429,6 +444,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+#scvCurrentTopic {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .video-shell.controls-hidden .video-controls {
   opacity: 0;
   pointer-events: none;
@@ -471,6 +492,68 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .video-shell:-webkit-full-screen .icon-corner-btn {
   top: 16px;
   right: 16px;
+}
+
+@container (max-width: 1040px) {
+  .video-controls {
+    --control-btn-w: 40px;
+    --control-btn-h: 32px;
+    --control-gap: 6px;
+    --control-pad-y: 7px;
+    --control-pad-x: 7px;
+    grid-template-columns:
+      var(--control-btn-w)
+      var(--control-btn-w)
+      var(--control-btn-w)
+      minmax(120px, 1fr)
+      auto
+      minmax(90px, 132px)
+      minmax(90px, 132px);
+  }
+  .video-controls > label.meta:last-child {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+  #cwCurrentTopic, #pcvCurrentTopic, #scvCurrentTopic {
+    max-width: 120px;
+  }
+}
+
+@container (max-width: 820px) {
+  .video-controls {
+    --control-btn-w: 36px;
+    --control-btn-h: 30px;
+    --control-gap: 5px;
+    --control-pad-y: 6px;
+    --control-pad-x: 6px;
+    grid-template-columns:
+      var(--control-btn-w)
+      var(--control-btn-w)
+      var(--control-btn-w)
+      minmax(100px, 1fr)
+      auto
+      auto;
+  }
+  .video-controls > span.meta:nth-of-type(2) {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+  .video-controls > label.meta {
+    justify-self: end;
+  }
+}
+
+@container (max-width: 640px) {
+  .video-controls {
+    grid-template-columns: repeat(3, var(--control-btn-w)) minmax(90px, 1fr);
+  }
+  .video-controls > span.meta,
+  .video-controls > label.meta {
+    grid-column: 1 / -1;
+  }
+  .video-controls > label.meta {
+    justify-self: start;
+  }
 }
 .workspace-collapsed .admin-layout {
   grid-template-columns: 1fr !important;

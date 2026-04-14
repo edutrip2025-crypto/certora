@@ -75,6 +75,15 @@ function formatAuthError(err, fallback) {
   return fallback;
 }
 
+function isPlayableVideoElement(video) {
+  return Boolean(
+    video
+    && Number(video.videoWidth) > 0
+    && Number(video.videoHeight) > 0
+    && video.readyState >= 2,
+  );
+}
+
 function isRoleRegistrationRequiredError(err) {
   return String(err?.message || "").includes("Account role not registered");
 }
@@ -1097,11 +1106,16 @@ async function api(method, path, body, authRequired = true) {
     // Retry once with forced token refresh to handle transient auth races.
     res = await request(true);
   }
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    data = { text: await res.text() };
+  const raw = await res.text();
+  let data = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { text: raw };
+    }
+  } else {
+    data = {};
   }
   if (!res.ok) throw new Error(JSON.stringify({ status: res.status, data }, null, 2));
   return data;
@@ -3326,7 +3340,7 @@ function analyzeFaceFrame() {
 
 async function runFaceCalibration() {
   const p = state.assessmentPreview.proctor;
-  if (!p.faceModel || !el.apProctorVideo) return false;
+  if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) return false;
   const samples = [];
   const started = Date.now();
   while (Date.now() - started < 2200) {
@@ -3378,7 +3392,7 @@ async function collectLivePrecheckQualitySamples(durationMs = 1800) {
     if (brightness > 0) samples.brightness.push(brightness);
     const rms = detectAudioRms();
     if (Number.isFinite(rms)) samples.audio.push(rms);
-    if (p.faceModel && el.apProctorVideo) {
+    if (p.faceModel && isPlayableVideoElement(el.apProctorVideo)) {
       try {
         const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
         const faces = out?.faceLandmarks || [];
@@ -3659,6 +3673,7 @@ async function initializeProctoringForAssessmentStart() {
   let faceOk = true;
   if (p.faceModel) {
     try {
+      if (!isPlayableVideoElement(el.apProctorVideo)) throw new Error("Video stream not ready");
       const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
       const faceCount = out?.faceLandmarks?.length || 0;
       faceOk = faceCount === 1;
@@ -4926,7 +4941,17 @@ function bindEvents() {
       const password = el.signupPassword.value;
       const role = el.signupRole.value;
       state.authRoleSetupInFlight = true;
-      const cred = await createUserWithEmailAndPassword(state.auth, email, password);
+      let cred = null;
+      try {
+        cred = await createUserWithEmailAndPassword(state.auth, email, password);
+      } catch (firebaseErr) {
+        if (String(firebaseErr?.code || "").includes("auth/email-already-in-use")) {
+          // Existing Firebase auth user: continue setup if password is valid.
+          cred = await signInWithEmailAndPassword(state.auth, email, password);
+        } else {
+          throw firebaseErr;
+        }
+      }
       await updateProfile(cred.user, { displayName: name });
       await api("POST", "/auth/register-role", { full_name: name, role });
       await cred.user.getIdToken(true).catch(() => {});

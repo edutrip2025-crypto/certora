@@ -187,7 +187,12 @@ def register_role(
     else:
         approval.status = ApprovalStatus.PENDING
         approval.rejection_reason = None
-    set_firebase_custom_claims(firebase_uid, {"role": payload.role.value})
+    try:
+        set_firebase_custom_claims(firebase_uid, {"role": payload.role.value})
+    except Exception:
+        # Do not block account setup if Firebase custom-claims write fails.
+        # Session context still reads role from database and remains functional.
+        pass
     db.commit()
     db.refresh(current_user)
     return current_user
