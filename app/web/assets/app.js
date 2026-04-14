@@ -4932,9 +4932,25 @@ function bindEvents() {
 
   $("loginBtn")?.addEventListener("click", async () => {
     if (!ensureAuthReady()) return;
+    const email = el.loginEmail.value.trim().toLowerCase();
+    const rawPassword = el.loginPassword.value;
+    const trimmedPassword = rawPassword.trim();
     try {
       state.authLoginInFlight = true;
-      await signInWithEmailAndPassword(state.auth, el.loginEmail.value.trim(), el.loginPassword.value);
+      try {
+        await signInWithEmailAndPassword(state.auth, email, rawPassword);
+      } catch (primaryErr) {
+        // Common operator mistake: copied password with leading/trailing spaces.
+        if (
+          String(primaryErr?.code || "").includes("auth/invalid-credential")
+          && rawPassword !== trimmedPassword
+        ) {
+          await signInWithEmailAndPassword(state.auth, email, trimmedPassword);
+          toast("Removed leading/trailing spaces from password input.");
+        } else {
+          throw primaryErr;
+        }
+      }
       if (state.authLoginFallbackTimer) clearTimeout(state.authLoginFallbackTimer);
       state.authLoginFallbackTimer = setTimeout(async () => {
         if (!state.authLoginInFlight || !state.auth?.currentUser) return;
@@ -4983,9 +4999,10 @@ function bindEvents() {
     if (!ensureAuthReady()) return;
     try {
       const name = el.signupName.value.trim();
-      const email = el.signupEmail.value.trim();
-      const password = el.signupPassword.value;
+      const email = el.signupEmail.value.trim().toLowerCase();
+      const password = el.signupPassword.value.trim();
       const role = el.signupRole.value;
+      if (!name || !email || !password) throw new Error("Name, email, and password are required.");
       state.authRoleSetupInFlight = true;
       let cred = null;
       try {
@@ -5028,7 +5045,9 @@ function bindEvents() {
       toast("Account created");
     } catch (err) {
       state.authRoleSetupInFlight = false;
-      if (state.auth?.currentUser) {
+      const requestedEmail = String(el.signupEmail?.value || "").trim().toLowerCase();
+      const currentEmail = String(state.auth?.currentUser?.email || "").trim().toLowerCase();
+      if (requestedEmail && currentEmail && currentEmail === requestedEmail) {
         try {
           await loadSessionContext();
           toast("Account created");
