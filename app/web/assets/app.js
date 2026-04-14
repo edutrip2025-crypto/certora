@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   browserLocalPersistence,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   onAuthStateChanged,
@@ -82,7 +83,7 @@ function formatAuthError(err, fallback) {
     } catch {}
   }
   if (code === "auth/invalid-credential") {
-    return "Invalid email/password. If account exists, use correct password or reset password.";
+    return "Invalid email/password. Use Forgot Password to reset this account.";
   }
   if (code === "auth/email-already-in-use") {
     return "Email already exists. Use Login, or continue Signup with the same existing password.";
@@ -1009,6 +1010,7 @@ const el = {
   refreshProctorSessionsBtn: $("refreshProctorSessionsBtn"),
   loginBtn: $("loginBtn"),
   googleBtn: $("googleBtn"),
+  forgotPasswordBtn: $("forgotPasswordBtn"),
   signupBtn: $("signupBtn"),
   providerHomeStats: $("providerHomeStats"),
   studentStats: $("studentStats"),
@@ -4962,7 +4964,7 @@ function bindEvents() {
         } finally {
           state.authLoginInFlight = false;
         }
-      }, 1200);
+      }, 250);
     } catch (err) {
       state.authLoginInFlight = false;
       toast(formatAuthError(err, "Login failed"), "error");
@@ -4987,7 +4989,7 @@ function bindEvents() {
         } finally {
           state.authLoginInFlight = false;
         }
-      }, 1200);
+      }, 250);
     } catch (err) {
       state.authLoginInFlight = false;
       toast(formatAuthError(err, "Google login failed"), "error");
@@ -5056,6 +5058,22 @@ function bindEvents() {
       }
       toast(formatAuthError(err, "Signup failed"), "error");
       log("signup_error", String(err));
+    }
+  });
+
+  el.forgotPasswordBtn?.addEventListener("click", async () => {
+    if (!ensureAuthReady()) return;
+    const email = String(el.loginEmail?.value || "").trim().toLowerCase();
+    if (!email) {
+      toast("Enter your email first, then click Forgot Password.", "error");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(state.auth, email);
+      toast("Password reset email sent. Check inbox/spam.");
+    } catch (err) {
+      toast(formatAuthError(err, "Password reset failed"), "error");
+      log("password_reset_error", String(err));
     }
   });
 
