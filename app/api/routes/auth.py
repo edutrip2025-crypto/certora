@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,21 @@ def _safe_sync_claims(firebase_uid: str, user: User, approval_status: ApprovalSt
     except Exception:
         # Keep auth flow resilient even when Firebase admin claim writes fail.
         pass
+
+
+def _normalized_user_query(email_norm: str | None):
+    if not email_norm:
+        return None
+    return select(User).where(func.lower(func.trim(User.email)) == email_norm)
+
+
+def _safe_int(value) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except Exception:
+        return None
 
 
 def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str, dict]:
@@ -92,7 +108,7 @@ def me_context(
 ):
     firebase_uid, email, fallback_name, token_payload = _firebase_identity_or_401(token)
     email_norm = str(email or "").strip().lower() or None
-    current_user = db.scalar(select(User).where(func.lower(User.email) == email_norm)) if email_norm else None
+    current_user = db.scalar(_normalized_user_query(email_norm)) if email_norm else None
     settings = get_settings()
     if not current_user:
         role_claim = str(token_payload.get("role") or "").strip().lower()
@@ -211,15 +227,21 @@ def register_role(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    firebase_uid, email, fallback_name, _ = _firebase_identity_or_401(token)
+    firebase_uid, email, fallback_name, token_payload = _firebase_identity_or_401(token)
     email_norm = str(email or "").strip().lower() or None
     settings = get_settings()
     if payload.role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
         raise HTTPException(status_code=403, detail="Admin role can only be assigned to configured admin accounts")
-    current_user = db.scalar(select(User).where(func.lower(User.email) == email_norm)) if email_norm else None
+    claim_user_id = _safe_int((token_payload or {}).get("app_user_id"))
+    current_user = db.get(User, claim_user_id) if claim_user_id else None
+    if not current_user and email_norm:
+        current_user = db.scalar(_normalized_user_query(email_norm))
+
+    target_email = email_norm or (current_user.email if current_user else f"{firebase_uid}@firebase.local")
+
     if not current_user:
         current_user = User(
-            email=email_norm or f"{firebase_uid}@firebase.local",
+            email=target_email,
             full_name=payload.full_name or fallback_name,
             password_hash="firebase",
             role=payload.role,
@@ -228,6 +250,7 @@ def register_role(
         db.add(current_user)
         db.flush()
     else:
+        current_user.email = target_email
         current_user.full_name = payload.full_name or fallback_name
         current_user.role = payload.role
 
@@ -244,7 +267,40 @@ def register_role(
     else:
         approval.status = ApprovalStatus.PENDING
         approval.rejection_reason = None
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Handle duplicate/race conditions gracefully (common right after Firebase signup).
+        recovered = db.scalar(_normalized_user_query(email_norm)) if email_norm else None
+        if not recovered:
+            raise HTTPException(
+                status_code=409,
+                detail="Account profile setup conflict. Please login again and complete role setup.",
+            )
+        recovered.full_name = payload.full_name or fallback_name
+        recovered.role = payload.role
+        recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
+        if not recovered_approval:
+            recovered_approval = UserApproval(user_id=recovered.id)
+            db.add(recovered_approval)
+        if payload.role in {UserRole.ADMIN, UserRole.STUDENT}:
+            recovered_approval.status = ApprovalStatus.APPROVED
+            recovered_approval.rejection_reason = None
+        else:
+            recovered_approval.status = ApprovalStatus.PENDING
+            recovered_approval.rejection_reason = None
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Account profile setup conflict. Please login and retry once.",
+            )
+        current_user = recovered
+        approval = recovered_approval
+
     db.refresh(current_user)
     _safe_sync_claims(firebase_uid, current_user, approval.status)
     return current_user

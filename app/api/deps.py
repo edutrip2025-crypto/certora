@@ -87,7 +87,7 @@ def get_current_user(
     except Exception as exc:
         raise credentials_exception from exc
 
-    user = db.scalar(select(User).where(func.lower(User.email) == email_norm)) if email_norm else None
+    user = db.scalar(select(User).where(func.lower(func.trim(User.email)) == email_norm)) if email_norm else None
     if not user:
         if email_norm and email_norm in settings.admin_email_set:
             user = User(

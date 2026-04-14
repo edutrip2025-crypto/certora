@@ -70,6 +70,17 @@ window.__certoraDebug = {
 function formatAuthError(err, fallback) {
   const code = String(err?.code || "").trim();
   const message = String(err?.message || "").trim();
+  if (!code && message) {
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed?.status === 500) {
+        return "Account was created in Firebase but profile setup failed on server. Retry once or login and complete role setup.";
+      }
+      if (parsed?.status === 409) {
+        return String(parsed?.data?.detail || "Account setup conflict. Please login and retry.");
+      }
+    } catch {}
+  }
   if (code === "auth/invalid-credential") {
     return "Invalid email/password. If account exists, use correct password or reset password.";
   }
@@ -4997,13 +5008,33 @@ function bindEvents() {
         }
       }
       await updateProfile(cred.user, { displayName: name });
-      await api("POST", "/auth/register-role", { full_name: name, role });
+      let roleSetupDone = false;
+      let lastRoleErr = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await api("POST", "/auth/register-role", { full_name: name, role });
+          roleSetupDone = true;
+          break;
+        } catch (roleErr) {
+          lastRoleErr = roleErr;
+          await cred.user.getIdToken(true).catch(() => {});
+          await new Promise((r) => setTimeout(r, 350));
+        }
+      }
+      if (!roleSetupDone && lastRoleErr) throw lastRoleErr;
       await cred.user.getIdToken(true).catch(() => {});
       state.authRoleSetupInFlight = false;
       await loadSessionContext();
       toast("Account created");
     } catch (err) {
       state.authRoleSetupInFlight = false;
+      if (state.auth?.currentUser) {
+        try {
+          await loadSessionContext();
+          toast("Account created");
+          return;
+        } catch {}
+      }
       toast(formatAuthError(err, "Signup failed"), "error");
       log("signup_error", String(err));
     }
