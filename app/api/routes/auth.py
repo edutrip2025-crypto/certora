@@ -15,6 +15,28 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
 
 
+def _public_uid(user_id: int | None) -> str:
+    if not user_id:
+        return "CR-000000"
+    return f"CR-{int(user_id):06d}"
+
+
+def _safe_sync_claims(firebase_uid: str, user: User, approval_status: ApprovalStatus) -> None:
+    try:
+        set_firebase_custom_claims(
+            firebase_uid,
+            {
+                "role": user.role.value,
+                "approval_status": approval_status.value,
+                "app_user_id": user.id,
+                "is_active": bool(user.is_active),
+            },
+        )
+    except Exception:
+        # Keep auth flow resilient even when Firebase admin claim writes fail.
+        pass
+
+
 def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str, dict]:
     if not token:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
@@ -99,6 +121,7 @@ def me_context(
                 approval.rejection_reason = None
             db.commit()
             db.refresh(current_user)
+            _safe_sync_claims(firebase_uid, current_user, ApprovalStatus.APPROVED)
         elif role_claim in {r.value for r in UserRole}:
             role = UserRole(role_claim)
             if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
@@ -123,6 +146,8 @@ def me_context(
                 db.add(approval)
             if role == UserRole.ADMIN:
                 approval.status = ApprovalStatus.APPROVED
+            elif role == UserRole.STUDENT:
+                approval.status = ApprovalStatus.APPROVED
             elif approval_claim in {ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value, ApprovalStatus.PENDING.value}:
                 approval.status = ApprovalStatus(approval_claim)
             else:
@@ -130,6 +155,7 @@ def me_context(
             approval.rejection_reason = None
             db.commit()
             db.refresh(current_user)
+            _safe_sync_claims(firebase_uid, current_user, approval.status)
         else:
             return {
                 "setup_required": True,
@@ -137,12 +163,40 @@ def me_context(
                 "email": email_norm,
                 "full_name": fallback_name,
             }
+    else:
+        changed = False
+        if email_norm and email_norm in settings.admin_email_set and current_user.role != UserRole.ADMIN:
+            current_user.role = UserRole.ADMIN
+            changed = True
+        if current_user.full_name != fallback_name:
+            current_user.full_name = fallback_name
+            changed = True
+        if changed:
+            db.commit()
+            db.refresh(current_user)
+
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
-    approval_status = approval.status if approval else ApprovalStatus.APPROVED
-    rejection_reason = approval.rejection_reason if approval else None
+    if not approval:
+        default_status = ApprovalStatus.APPROVED if current_user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING
+        approval = UserApproval(
+            user_id=current_user.id,
+            status=default_status,
+            rejection_reason=None,
+        )
+        db.add(approval)
+        db.commit()
+        db.refresh(current_user)
+    elif current_user.role in {UserRole.ADMIN, UserRole.STUDENT} and approval.status != ApprovalStatus.APPROVED:
+        approval.status = ApprovalStatus.APPROVED
+        approval.rejection_reason = None
+        db.commit()
+    approval_status = approval.status
+    rejection_reason = approval.rejection_reason
+    _safe_sync_claims(firebase_uid, current_user, approval_status)
     return {
         "setup_required": False,
         "id": current_user.id,
+        "public_uid": _public_uid(current_user.id),
         "email": current_user.email,
         "full_name": current_user.full_name,
         "role": current_user.role,
@@ -184,15 +238,13 @@ def register_role(
     if payload.role == UserRole.ADMIN:
         approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
+    elif payload.role == UserRole.STUDENT:
+        approval.status = ApprovalStatus.APPROVED
+        approval.rejection_reason = None
     else:
         approval.status = ApprovalStatus.PENDING
         approval.rejection_reason = None
-    try:
-        set_firebase_custom_claims(firebase_uid, {"role": payload.role.value})
-    except Exception:
-        # Do not block account setup if Firebase custom-claims write fails.
-        # Session context still reads role from database and remains functional.
-        pass
     db.commit()
     db.refresh(current_user)
+    _safe_sync_claims(firebase_uid, current_user, approval.status)
     return current_user

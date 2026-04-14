@@ -11,7 +11,7 @@ from app.services.firebase_auth import get_firebase_uid_by_email, set_firebase_c
 def sync_existing_accounts(
     db: Session,
     *,
-    apply_legacy_student_approval_rollback: bool = True,
+    apply_legacy_student_approval_rollback: bool = False,
     sync_firebase_claims: bool = True,
 ) -> dict:
     settings = get_settings()
@@ -39,7 +39,7 @@ def sync_existing_accounts(
         if not approval:
             approval = UserApproval(
                 user_id=user.id,
-                status=ApprovalStatus.APPROVED if user.role == UserRole.ADMIN else ApprovalStatus.PENDING,
+                status=ApprovalStatus.APPROVED if user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING,
                 rejection_reason=None,
                 reviewed_by_admin_id=None,
                 reviewed_at=None,
@@ -47,7 +47,7 @@ def sync_existing_accounts(
             db.add(approval)
             approvals_created += 1
             user_changed = True
-        elif user.role == UserRole.ADMIN and (
+        elif user.role in {UserRole.ADMIN, UserRole.STUDENT} and (
             approval.status != ApprovalStatus.APPROVED or approval.rejection_reason
         ):
             approval.status = ApprovalStatus.APPROVED
@@ -100,4 +100,3 @@ def sync_existing_accounts(
         "firebase_users_missing": firebase_users_missing,
         "firebase_sync_errors": firebase_sync_errors,
     }
-

@@ -38,6 +38,20 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
   left: clamp(8px, 2vw, 18px);
   z-index: 1100;
 }
+.workspace-expand-fab {
+  position: fixed;
+  right: clamp(10px, 2vw, 18px);
+  top: 10px;
+  z-index: 1200;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.16);
+}
 .settings-toggle {
   width: 46px;
   height: 46px;

@@ -66,7 +66,7 @@ def sync_account_rules(
 ):
     summary = sync_existing_accounts(
         db,
-        apply_legacy_student_approval_rollback=True,
+        apply_legacy_student_approval_rollback=False,
         sync_firebase_claims=True,
     )
     _audit(

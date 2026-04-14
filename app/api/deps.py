@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
-from app.services.firebase_auth import verify_firebase_token
+from app.services.firebase_auth import set_firebase_custom_claims, verify_firebase_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
 
@@ -136,6 +136,8 @@ def get_current_user(
                 db.add(approval)
             if role == UserRole.ADMIN:
                 approval.status = ApprovalStatus.APPROVED
+            elif role == UserRole.STUDENT:
+                approval.status = ApprovalStatus.APPROVED
             elif approval_claim in {ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value, ApprovalStatus.PENDING.value}:
                 approval.status = ApprovalStatus(approval_claim)
             else:
@@ -149,28 +151,51 @@ def get_current_user(
             detail="Account role not registered. Complete account setup first.",
         )
 
+    changed = False
+    if email_norm and email_norm in settings.admin_email_set and user.role != UserRole.ADMIN:
+        user.role = UserRole.ADMIN
+        changed = True
     effective_role = user.role
     if settings.allow_dev_role_override and x_dev_role and x_dev_role in {r.value for r in UserRole}:
         effective_role = UserRole(x_dev_role)
     if user.role != effective_role or user.full_name != name:
         user.role = effective_role
         user.full_name = name
+        changed = True
+    if changed:
         db.commit()
         db.refresh(user)
+
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
-    if user.role != UserRole.ADMIN and not approval:
+    if not approval:
+        default_status = ApprovalStatus.APPROVED if user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING
         db.add(
             UserApproval(
                 user_id=user.id,
-                status=ApprovalStatus.PENDING,
+                status=default_status,
                 rejection_reason=None,
             ),
         )
         db.commit()
-    elif user.role == UserRole.ADMIN and approval and approval.status != ApprovalStatus.APPROVED:
+        approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+    elif user.role in {UserRole.ADMIN, UserRole.STUDENT} and approval and approval.status != ApprovalStatus.APPROVED:
         approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
         db.commit()
+
+    if approval:
+        try:
+            set_firebase_custom_claims(
+                str(firebase_uid),
+                {
+                    "role": user.role.value,
+                    "approval_status": approval.status.value,
+                    "app_user_id": user.id,
+                    "is_active": bool(user.is_active),
+                },
+            )
+        except Exception:
+            pass
     return user
 
 
@@ -179,7 +204,7 @@ def is_user_approved(db: Session, user: User) -> tuple[bool, str | None]:
         return True, None
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
     if not approval:
-        return True, None
+        return (True, None) if user.role == UserRole.STUDENT else (False, "Profile is pending approval.")
     if approval.status == ApprovalStatus.APPROVED:
         return True, None
     if approval.status == ApprovalStatus.REJECTED:

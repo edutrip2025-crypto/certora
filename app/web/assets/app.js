@@ -70,6 +70,15 @@ window.__certoraDebug = {
 function formatAuthError(err, fallback) {
   const code = String(err?.code || "").trim();
   const message = String(err?.message || "").trim();
+  if (code === "auth/invalid-credential") {
+    return "Invalid email/password. If account exists, use correct password or reset password.";
+  }
+  if (code === "auth/email-already-in-use") {
+    return "Email already exists. Use Login, or continue Signup with the same existing password.";
+  }
+  if (code === "auth/invalid-api-key") {
+    return "Authentication config error (invalid Firebase API key).";
+  }
   if (code) return `${fallback}: ${code}`;
   if (message) return `${fallback}: ${message}`;
   return fallback;
@@ -953,10 +962,12 @@ const el = {
   showSignupBtn: $("showSignupBtn"),
   showLoginBtn: $("showLoginBtn"),
   workspaceBrand: $("workspaceBrand"),
+  workspaceExpandFab: $("workspaceExpandFab"),
   settingsToggles: Array.from(document.querySelectorAll(".js-settings-toggle")),
   settingsMenus: Array.from(document.querySelectorAll(".settings-menu")),
   collapseWorkspaceBtns: Array.from(document.querySelectorAll(".js-collapse-workspace-btn")),
   sessionBadges: Array.from(document.querySelectorAll(".js-session-badge")),
+  userUidBadges: Array.from(document.querySelectorAll(".js-user-uid-badge")),
   logoutBtns: Array.from(document.querySelectorAll(".js-logout-btn")),
   authView: $("authView"),
   studentView: $("studentView"),
@@ -1129,6 +1140,12 @@ function showView(mode) {
   if (mode === "student") el.studentView?.classList.remove("hidden");
   if (mode === "non-admin") el.nonAdminView?.classList.remove("hidden");
   el.workspaceBrand?.classList.toggle("hidden", mode === "auth");
+  if (mode === "auth") {
+    el.workspaceExpandFab?.classList.add("hidden");
+  } else {
+    const collapsed = document.body.classList.contains("workspace-collapsed");
+    el.workspaceExpandFab?.classList.toggle("hidden", !collapsed);
+  }
   if (mode === "auth") el.settingsMenus.forEach((m) => m.classList.add("hidden"));
 }
 
@@ -1165,11 +1182,26 @@ function setSessionBadge(text) {
   });
 }
 
+function setUserUidBadge(publicUid) {
+  const uid = String(publicUid || "").trim();
+  el.userUidBadges.forEach((b) => {
+    if (!uid) {
+      b.classList.add("hidden");
+      b.textContent = "UID: -";
+      return;
+    }
+    b.classList.remove("hidden");
+    b.textContent = `UID: ${uid}`;
+  });
+}
+
 function applyWorkspaceCollapse(collapsed) {
   document.body.classList.toggle("workspace-collapsed", collapsed);
   el.collapseWorkspaceBtns.forEach((btn) => {
     btn.textContent = collapsed ? "Expand Workspace" : "Collapse Workspace";
   });
+  const onAuth = !el.authView || !el.authView.classList.contains("hidden");
+  el.workspaceExpandFab?.classList.toggle("hidden", !collapsed || onAuth);
 }
 
 function toggleWorkspaceCollapse() {
@@ -4697,6 +4729,7 @@ async function loadSessionContext() {
   if (context?.setup_required) {
     state.context = null;
     setSessionBadge("Account setup required");
+    setUserUidBadge("");
     el.logoutBtns.forEach((b) => {
       b.disabled = false;
     });
@@ -4707,6 +4740,7 @@ async function loadSessionContext() {
   }
   state.context = context;
   setSessionBadge(`${context.full_name} (${context.role})`);
+  setUserUidBadge(context.public_uid || "");
   el.logoutBtns.forEach((b) => {
     b.disabled = false;
   });
@@ -4808,6 +4842,7 @@ async function initFirebase() {
     if (!user) {
       state.authLoginInFlight = false;
       setSessionBadge("Not signed in");
+      setUserUidBadge("");
       el.logoutBtns.forEach((b) => {
         b.disabled = true;
       });
@@ -4982,6 +5017,7 @@ function bindEvents() {
         showView("auth");
         showAuthMode("login");
         setSessionBadge("Not signed in");
+        setUserUidBadge("");
         el.logoutBtns.forEach((b) => {
           b.disabled = true;
         });
@@ -4999,6 +5035,7 @@ function bindEvents() {
     showView("auth");
     showAuthMode("login");
     setSessionBadge("Not signed in");
+    setUserUidBadge("");
     el.logoutBtns.forEach((b) => {
       b.disabled = true;
     });
@@ -5029,6 +5066,13 @@ function bindEvents() {
   });
   el.collapseWorkspaceBtns.forEach((btn) => {
     btn.addEventListener("click", () => toggleWorkspaceCollapse());
+  });
+  el.workspaceExpandFab?.addEventListener("click", () => {
+    if (!document.body.classList.contains("workspace-collapsed")) return;
+    applyWorkspaceCollapse(false);
+    try {
+      localStorage.setItem("certora_workspace_collapsed", "0");
+    } catch {}
   });
 
   document.addEventListener("click", (event) => {
