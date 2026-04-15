@@ -80,6 +80,9 @@ function formatAuthError(err, fallback) {
       if (parsed?.status === 409) {
         return String(parsed?.data?.detail || "Account setup conflict. Please login and retry.");
       }
+      if (parsed?.status === 403 || parsed?.status === 503) {
+        return String(parsed?.data?.detail || `${fallback}.`);
+      }
     } catch {}
   }
   if (code === "auth/invalid-credential") {
@@ -978,6 +981,7 @@ const el = {
   settingsToggles: Array.from(document.querySelectorAll(".js-settings-toggle")),
   settingsMenus: Array.from(document.querySelectorAll(".settings-menu")),
   collapseWorkspaceBtns: Array.from(document.querySelectorAll(".js-collapse-workspace-btn")),
+  adminRecoveryBtns: Array.from(document.querySelectorAll(".js-admin-recovery-btn")),
   sessionBadges: Array.from(document.querySelectorAll(".js-session-badge")),
   userUidBadges: Array.from(document.querySelectorAll(".js-user-uid-badge")),
   logoutBtns: Array.from(document.querySelectorAll(".js-logout-btn")),
@@ -1229,6 +1233,25 @@ function stopAdminPolling() {
   if (state.adminPollingId) {
     clearInterval(state.adminPollingId);
     state.adminPollingId = null;
+  }
+}
+
+async function runAdminRecoveryFlow() {
+  if (!ensureAuthReady()) return;
+  if (!state.auth?.currentUser) {
+    toast("Login first, then run admin recovery.", "error");
+    return;
+  }
+  const key = window.prompt("Enter Admin Recovery Key");
+  if (!key) return;
+  try {
+    await api("POST", "/auth/admin/recover-self", { recovery_key: key });
+    await state.auth.currentUser.getIdToken(true).catch(() => {});
+    await loadSessionContext();
+    toast("Admin access granted to this account.");
+  } catch (err) {
+    toast(formatAuthError(err, "Admin recovery failed"), "error");
+    log("admin_recovery_error", String(err));
   }
 }
 
@@ -5137,6 +5160,11 @@ function bindEvents() {
   });
   el.collapseWorkspaceBtns.forEach((btn) => {
     btn.addEventListener("click", () => toggleWorkspaceCollapse());
+  });
+  el.adminRecoveryBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      runAdminRecoveryFlow().catch(() => {});
+    });
   });
   el.workspaceExpandFab?.addEventListener("click", () => {
     if (!document.body.classList.contains("workspace-collapsed")) return;

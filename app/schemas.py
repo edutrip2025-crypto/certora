@@ -46,6 +46,10 @@ class RegisterRoleRequest(BaseModel):
     role: UserRole
 
 
+class AdminRecoveryRequest(BaseModel):
+    recovery_key: str = Field(min_length=8, max_length=256)
+
+
 class ProviderProfileCreate(BaseModel):
     provider_type: ProviderType
     display_name: str

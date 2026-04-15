@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 120
     auth_mode: str = "firebase"
     enable_ai_review: bool = False
-    allow_dev_role_override: bool = True
+    allow_dev_role_override: bool = False
+    admin_recovery_key: str = ""
     firebase_project_id: str = ""
     firebase_service_account_path: str = ""
     firebase_service_account_json: str = ""

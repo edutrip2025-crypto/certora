@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +11,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
-from app.schemas import LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
+from app.schemas import AdminRecoveryRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
 from app.services.firebase_auth import set_firebase_custom_claims, verify_firebase_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -51,6 +53,15 @@ def _safe_int(value) -> int | None:
         return int(value)
     except Exception:
         return None
+
+
+def _assert_recovery_key_or_403(submitted_key: str, configured_key: str) -> None:
+    given = (submitted_key or "").strip()
+    expected = (configured_key or "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Admin recovery is not configured.")
+    if not hmac.compare_digest(given, expected):
+        raise HTTPException(status_code=403, detail="Invalid admin recovery key.")
 
 
 def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str, dict]:
@@ -280,3 +291,50 @@ def register_role(
     db.refresh(current_user)
     _safe_sync_claims(firebase_uid, current_user, approval.status)
     return current_user
+
+
+@router.post("/admin/recover-self")
+def recover_self_as_admin(
+    payload: AdminRecoveryRequest,
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    settings = get_settings()
+    _assert_recovery_key_or_403(payload.recovery_key, settings.admin_recovery_key)
+    firebase_uid, email, fallback_name, _ = _firebase_identity_or_401(token)
+    email_norm = str(email or "").strip().lower()
+    if not email_norm:
+        raise HTTPException(status_code=400, detail="Authenticated Firebase account has no email.")
+
+    user = db.scalar(_normalized_user_query(email_norm))
+    if not user:
+        user = User(
+            email=email_norm,
+            full_name=fallback_name,
+            password_hash="firebase",
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.role = UserRole.ADMIN
+        user.full_name = fallback_name
+        user.is_active = True
+
+    approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+    if not approval:
+        approval = UserApproval(user_id=user.id)
+        db.add(approval)
+    approval.status = ApprovalStatus.APPROVED
+    approval.rejection_reason = None
+    db.commit()
+    db.refresh(user)
+    _safe_sync_claims(firebase_uid, user, ApprovalStatus.APPROVED)
+    return {
+        "ok": True,
+        "email": user.email,
+        "public_uid": _public_uid(user.id),
+        "role": user.role.value,
+        "approval_status": ApprovalStatus.APPROVED.value,
+    }
