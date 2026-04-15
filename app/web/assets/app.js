@@ -5040,6 +5040,10 @@ function bindEvents() {
       const password = el.signupPassword.value.trim();
       const role = el.signupRole.value;
       if (!name || !email || !password) throw new Error("Name, email, and password are required.");
+      const activeEmail = String(state.auth?.currentUser?.email || "").trim().toLowerCase();
+      if (activeEmail && activeEmail !== email) {
+        await signOut(state.auth);
+      }
       try {
         localStorage.setItem("certora_signup_role_intent", role);
       } catch {}

@@ -55,6 +55,25 @@ def _safe_int(value) -> int | None:
         return None
 
 
+def _find_user_for_identity(
+    db: Session,
+    *,
+    claim_user_id: int | None,
+    email_norm: str | None,
+    firebase_uid: str,
+) -> User | None:
+    if claim_user_id:
+        by_id = db.get(User, claim_user_id)
+        if by_id:
+            return by_id
+    if email_norm:
+        by_email = db.scalar(_normalized_user_query(email_norm))
+        if by_email:
+            return by_email
+    local_email = f"{firebase_uid}@firebase.local".strip().lower()
+    return db.scalar(_normalized_user_query(local_email))
+
+
 def _assert_recovery_key_or_403(submitted_key: str, configured_key: str) -> None:
     given = (submitted_key or "").strip()
     expected = (configured_key or "").strip()
@@ -227,9 +246,12 @@ def register_role(
     if payload.role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
         raise HTTPException(status_code=403, detail="Admin role can only be assigned to configured admin accounts")
     claim_user_id = _safe_int((token_payload or {}).get("app_user_id"))
-    current_user = db.get(User, claim_user_id) if claim_user_id else None
-    if not current_user and email_norm:
-        current_user = db.scalar(_normalized_user_query(email_norm))
+    current_user = _find_user_for_identity(
+        db,
+        claim_user_id=claim_user_id,
+        email_norm=email_norm,
+        firebase_uid=firebase_uid,
+    )
 
     target_email = email_norm or (current_user.email if current_user else f"{firebase_uid}@firebase.local")
 
@@ -263,12 +285,23 @@ def register_role(
     except IntegrityError:
         db.rollback()
         # Handle duplicate/race conditions gracefully (common right after Firebase signup).
-        recovered = db.scalar(_normalized_user_query(email_norm)) if email_norm else None
+        recovered = _find_user_for_identity(
+            db,
+            claim_user_id=claim_user_id,
+            email_norm=email_norm,
+            firebase_uid=firebase_uid,
+        )
         if not recovered:
-            raise HTTPException(
-                status_code=409,
-                detail="Account profile setup conflict. Please login again and complete role setup.",
+            # Last resort: create a deterministic local-email user for this Firebase UID.
+            recovered = User(
+                email=f"{firebase_uid}@firebase.local".strip().lower(),
+                full_name=payload.full_name or fallback_name,
+                password_hash="firebase",
+                role=payload.role,
+                is_active=True,
             )
+            db.add(recovered)
+            db.flush()
         recovered.full_name = payload.full_name or fallback_name
         recovered.role = payload.role
         recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
@@ -281,10 +314,26 @@ def register_role(
             db.commit()
         except IntegrityError:
             db.rollback()
-            raise HTTPException(
-                status_code=409,
-                detail="Account profile setup conflict. Please login and retry once.",
+            recovered = _find_user_for_identity(
+                db,
+                claim_user_id=claim_user_id,
+                email_norm=email_norm,
+                firebase_uid=firebase_uid,
             )
+            if not recovered:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Account profile setup failed. Please retry login once.",
+                )
+            recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
+            if not recovered_approval:
+                recovered_approval = UserApproval(user_id=recovered.id)
+                db.add(recovered_approval)
+            recovered.full_name = payload.full_name or fallback_name
+            recovered.role = payload.role
+            recovered_approval.status = ApprovalStatus.APPROVED
+            recovered_approval.rejection_reason = None
+            db.commit()
         current_user = recovered
         approval = recovered_approval
 
