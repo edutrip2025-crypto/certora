@@ -117,39 +117,27 @@ def get_current_user(
         if role_claim in {r.value for r in UserRole}:
             role = UserRole(role_claim)
             if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin role can only be assigned to configured admin accounts",
-                )
-            user = User(
-                email=email_norm or f"{firebase_uid}@firebase.local",
-                full_name=name,
-                password_hash="firebase",
-                role=role,
-                is_active=True,
-            )
-            db.add(user)
-            db.flush()
-            approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
-            if not approval:
-                approval = UserApproval(user_id=user.id)
-                db.add(approval)
-            if role == UserRole.ADMIN:
-                approval.status = ApprovalStatus.APPROVED
-            elif role == UserRole.STUDENT:
-                approval.status = ApprovalStatus.APPROVED
-            elif approval_claim in {ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value, ApprovalStatus.PENDING.value}:
-                approval.status = ApprovalStatus(approval_claim)
-            else:
-                approval.status = ApprovalStatus.PENDING
-            approval.rejection_reason = None
-            db.commit()
-            db.refresh(user)
-            return user
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Account role not registered. Complete account setup first.",
+                role = UserRole.STUDENT
+        else:
+            role = UserRole.STUDENT
+        user = User(
+            email=email_norm or f"{firebase_uid}@firebase.local",
+            full_name=name,
+            password_hash="firebase",
+            role=role,
+            is_active=True,
         )
+        db.add(user)
+        db.flush()
+        approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+        if not approval:
+            approval = UserApproval(user_id=user.id)
+            db.add(approval)
+        approval.status = ApprovalStatus.APPROVED
+        approval.rejection_reason = None
+        db.commit()
+        db.refresh(user)
+        return user
 
     changed = False
     if email_norm and email_norm in settings.admin_email_set and user.role != UserRole.ADMIN:
@@ -168,7 +156,7 @@ def get_current_user(
 
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
     if not approval:
-        default_status = ApprovalStatus.APPROVED if user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING
+        default_status = ApprovalStatus.APPROVED
         db.add(
             UserApproval(
                 user_id=user.id,
@@ -178,7 +166,7 @@ def get_current_user(
         )
         db.commit()
         approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
-    elif user.role in {UserRole.ADMIN, UserRole.STUDENT} and approval and approval.status != ApprovalStatus.APPROVED:
+    elif approval and approval.status != ApprovalStatus.APPROVED:
         approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
         db.commit()
@@ -204,7 +192,7 @@ def is_user_approved(db: Session, user: User) -> tuple[bool, str | None]:
         return True, None
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
     if not approval:
-        return (True, None) if user.role == UserRole.STUDENT else (False, "Profile is pending approval.")
+        return True, None
     if approval.status == ApprovalStatus.APPROVED:
         return True, None
     if approval.status == ApprovalStatus.REJECTED:

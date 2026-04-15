@@ -112,7 +112,9 @@ def me_context(
     settings = get_settings()
     if not current_user:
         role_claim = str(token_payload.get("role") or "").strip().lower()
-        approval_claim = str(token_payload.get("approval_status") or "").strip().lower()
+        role_from_claim: UserRole | None = None
+        if role_claim in {r.value for r in UserRole}:
+            role_from_claim = UserRole(role_claim)
         if email_norm and email_norm in settings.admin_email_set:
             current_user = User(
                 email=email_norm,
@@ -138,15 +140,10 @@ def me_context(
             db.commit()
             db.refresh(current_user)
             _safe_sync_claims(firebase_uid, current_user, ApprovalStatus.APPROVED)
-        elif role_claim in {r.value for r in UserRole}:
-            role = UserRole(role_claim)
+        else:
+            role = role_from_claim or UserRole.STUDENT
             if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
-                return {
-                    "setup_required": True,
-                    "firebase_uid": firebase_uid,
-                    "email": email_norm,
-                    "full_name": fallback_name,
-                }
+                role = UserRole.STUDENT
             current_user = User(
                 email=email_norm or f"{firebase_uid}@firebase.local",
                 full_name=fallback_name,
@@ -160,25 +157,11 @@ def me_context(
             if not approval:
                 approval = UserApproval(user_id=current_user.id)
                 db.add(approval)
-            if role == UserRole.ADMIN:
-                approval.status = ApprovalStatus.APPROVED
-            elif role == UserRole.STUDENT:
-                approval.status = ApprovalStatus.APPROVED
-            elif approval_claim in {ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value, ApprovalStatus.PENDING.value}:
-                approval.status = ApprovalStatus(approval_claim)
-            else:
-                approval.status = ApprovalStatus.PENDING
+            approval.status = ApprovalStatus.APPROVED
             approval.rejection_reason = None
             db.commit()
             db.refresh(current_user)
             _safe_sync_claims(firebase_uid, current_user, approval.status)
-        else:
-            return {
-                "setup_required": True,
-                "firebase_uid": firebase_uid,
-                "email": email_norm,
-                "full_name": fallback_name,
-            }
     else:
         changed = False
         if email_norm and email_norm in settings.admin_email_set and current_user.role != UserRole.ADMIN:
@@ -193,7 +176,7 @@ def me_context(
 
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
     if not approval:
-        default_status = ApprovalStatus.APPROVED if current_user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING
+        default_status = ApprovalStatus.APPROVED
         approval = UserApproval(
             user_id=current_user.id,
             status=default_status,
@@ -202,7 +185,7 @@ def me_context(
         db.add(approval)
         db.commit()
         db.refresh(current_user)
-    elif current_user.role in {UserRole.ADMIN, UserRole.STUDENT} and approval.status != ApprovalStatus.APPROVED:
+    elif approval.status != ApprovalStatus.APPROVED:
         approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
         db.commit()
@@ -261,11 +244,8 @@ def register_role(
     if payload.role == UserRole.ADMIN:
         approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
-    elif payload.role == UserRole.STUDENT:
-        approval.status = ApprovalStatus.APPROVED
-        approval.rejection_reason = None
     else:
-        approval.status = ApprovalStatus.PENDING
+        approval.status = ApprovalStatus.APPROVED
         approval.rejection_reason = None
     try:
         db.commit()
@@ -284,12 +264,8 @@ def register_role(
         if not recovered_approval:
             recovered_approval = UserApproval(user_id=recovered.id)
             db.add(recovered_approval)
-        if payload.role in {UserRole.ADMIN, UserRole.STUDENT}:
-            recovered_approval.status = ApprovalStatus.APPROVED
-            recovered_approval.rejection_reason = None
-        else:
-            recovered_approval.status = ApprovalStatus.PENDING
-            recovered_approval.rejection_reason = None
+        recovered_approval.status = ApprovalStatus.APPROVED
+        recovered_approval.rejection_reason = None
         try:
             db.commit()
         except IntegrityError:

@@ -39,7 +39,7 @@ def sync_existing_accounts(
         if not approval:
             approval = UserApproval(
                 user_id=user.id,
-                status=ApprovalStatus.APPROVED if user.role in {UserRole.ADMIN, UserRole.STUDENT} else ApprovalStatus.PENDING,
+                status=ApprovalStatus.APPROVED,
                 rejection_reason=None,
                 reviewed_by_admin_id=None,
                 reviewed_at=None,
@@ -47,7 +47,7 @@ def sync_existing_accounts(
             db.add(approval)
             approvals_created += 1
             user_changed = True
-        elif user.role in {UserRole.ADMIN, UserRole.STUDENT} and (
+        elif (
             approval.status != ApprovalStatus.APPROVED or approval.rejection_reason
         ):
             approval.status = ApprovalStatus.APPROVED

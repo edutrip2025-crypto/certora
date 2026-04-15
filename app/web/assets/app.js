@@ -4783,41 +4783,23 @@ async function loadSessionContext() {
         log("admin_poll_error", String(err));
       }
     }, 10000);
-    return;
+    return context;
   }
 
   if (context.role === "provider") {
-    if (context.approval_status !== "approved") {
-      showView("non-admin");
-      renderNonAdminRoleFix(context);
-      const waitingText = context.approval_status === "pending"
-        ? "Your provider profile is pending admin approval. You will get access after approval."
-        : `Your provider profile is invalid (${context.rejection_reason || "rejected"}). Please contact support/admin.`;
-      if (el.nonAdminText) el.nonAdminText.textContent = waitingText;
-      return;
-    }
     showView("provider");
     activateProviderSubView("home");
     await Promise.all([refreshProviderHome(), refreshProviderAssessments(), refreshProviderFeedback(), refreshProviderNotifications(), refreshProviderCertifications()]);
     await refreshProviderContent();
     await refreshProviderDrafts();
-    return;
+    return context;
   }
 
   if (context.role === "student") {
-    if (context.approval_status !== "approved") {
-      showView("non-admin");
-      renderNonAdminRoleFix(context);
-      const waitingText = context.approval_status === "pending"
-        ? "Your student profile is pending admin approval. You will get access after approval."
-        : `Your student profile is invalid (${context.rejection_reason || "rejected"}). Please contact support/admin.`;
-      if (el.nonAdminText) el.nonAdminText.textContent = waitingText;
-      return;
-    }
     showView("student");
     activateStudentSubView("home");
     await refreshStudentDashboard();
-    return;
+    return context;
   }
 
   showView("non-admin");
@@ -4828,6 +4810,7 @@ async function loadSessionContext() {
       ? "Pending approval"
       : `Invalid profile (${context.rejection_reason || "rejected"})`;
   if (el.nonAdminText) el.nonAdminText.textContent = `Logged in as ${context.role}. Status: ${statusText}.`;
+  return context;
 }
 
 async function initFirebase() {
@@ -5005,6 +4988,9 @@ function bindEvents() {
       const password = el.signupPassword.value.trim();
       const role = el.signupRole.value;
       if (!name || !email || !password) throw new Error("Name, email, and password are required.");
+      try {
+        localStorage.setItem("certora_signup_role_intent", role);
+      } catch {}
       state.authRoleSetupInFlight = true;
       let cred = null;
       try {
@@ -5043,7 +5029,15 @@ function bindEvents() {
       if (!roleSetupDone && lastRoleErr) throw lastRoleErr;
       await cred.user.getIdToken(true).catch(() => {});
       state.authRoleSetupInFlight = false;
-      await loadSessionContext();
+      let context = await loadSessionContext();
+      if (context?.role && context.role !== role) {
+        await api("POST", "/auth/register-role", { full_name: name, role });
+        await cred.user.getIdToken(true).catch(() => {});
+        context = await loadSessionContext();
+      }
+      try {
+        localStorage.removeItem("certora_signup_role_intent");
+      } catch {}
       toast("Account created");
     } catch (err) {
       state.authRoleSetupInFlight = false;
@@ -5051,7 +5045,16 @@ function bindEvents() {
       const currentEmail = String(state.auth?.currentUser?.email || "").trim().toLowerCase();
       if (requestedEmail && currentEmail && currentEmail === requestedEmail) {
         try {
-          await loadSessionContext();
+          const fallbackRole = String(localStorage.getItem("certora_signup_role_intent") || "").trim().toLowerCase();
+          let context = await loadSessionContext();
+          if (["student", "provider"].includes(fallbackRole) && context?.role && context.role !== fallbackRole) {
+            await api("POST", "/auth/register-role", { full_name: el.signupName?.value?.trim() || "User", role: fallbackRole });
+            await state.auth.currentUser.getIdToken(true).catch(() => {});
+            context = await loadSessionContext();
+          }
+          try {
+            localStorage.removeItem("certora_signup_role_intent");
+          } catch {}
           toast("Account created");
           return;
         } catch {}
