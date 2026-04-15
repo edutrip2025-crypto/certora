@@ -57,3 +57,15 @@ def get_firebase_uid_by_email(email: str | None) -> str | None:
         return user.uid
     except auth.UserNotFoundError:
         return None
+
+
+def set_firebase_password_by_email(email: str | None, new_password: str) -> str | None:
+    if not email:
+        return None
+    init_firebase()
+    try:
+        user = auth.get_user_by_email(email)
+    except auth.UserNotFoundError:
+        return None
+    auth.update_user(user.uid, password=new_password)
+    return user.uid

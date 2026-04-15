@@ -6,13 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
-from app.schemas import AdminRecoveryRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
-from app.services.firebase_auth import set_firebase_custom_claims, verify_firebase_token
+from app.schemas import AdminRecoveryRequest, AdminSetUserPasswordRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
+from app.services.firebase_auth import set_firebase_custom_claims, set_firebase_password_by_email, verify_firebase_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
@@ -337,4 +337,28 @@ def recover_self_as_admin(
         "public_uid": _public_uid(user.id),
         "role": user.role.value,
         "approval_status": ApprovalStatus.APPROVED.value,
+    }
+
+
+@router.post("/admin/set-user-password")
+def admin_set_user_password(
+    payload: AdminSetUserPasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    settings = get_settings()
+    _assert_recovery_key_or_403(payload.recovery_key, settings.admin_recovery_key)
+    email_norm = str(payload.email or "").strip().lower()
+    uid = set_firebase_password_by_email(email_norm, payload.new_password)
+    if not uid:
+        raise HTTPException(status_code=404, detail="Firebase user not found for this email.")
+    local_user = db.scalar(_normalized_user_query(email_norm))
+    if local_user and not local_user.is_active:
+        local_user.is_active = True
+        db.commit()
+    return {
+        "ok": True,
+        "email": email_norm,
+        "firebase_uid": uid,
+        "updated_by": current_user.email,
     }

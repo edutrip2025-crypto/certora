@@ -982,6 +982,7 @@ const el = {
   settingsMenus: Array.from(document.querySelectorAll(".settings-menu")),
   collapseWorkspaceBtns: Array.from(document.querySelectorAll(".js-collapse-workspace-btn")),
   adminRecoveryBtns: Array.from(document.querySelectorAll(".js-admin-recovery-btn")),
+  adminPasswordBtns: Array.from(document.querySelectorAll(".js-admin-password-btn")),
   sessionBadges: Array.from(document.querySelectorAll(".js-session-badge")),
   userUidBadges: Array.from(document.querySelectorAll(".js-user-uid-badge")),
   logoutBtns: Array.from(document.querySelectorAll(".js-logout-btn")),
@@ -1252,6 +1253,34 @@ async function runAdminRecoveryFlow() {
   } catch (err) {
     toast(formatAuthError(err, "Admin recovery failed"), "error");
     log("admin_recovery_error", String(err));
+  }
+}
+
+async function runAdminSetUserPasswordFlow() {
+  if (!ensureAuthReady()) return;
+  if (!state.auth?.currentUser) {
+    toast("Login first, then set user password.", "error");
+    return;
+  }
+  const email = window.prompt("User email to reset");
+  if (!email) return;
+  const newPassword = window.prompt("New password (min 8 chars)");
+  if (!newPassword || newPassword.length < 8) {
+    toast("Password must be at least 8 characters.", "error");
+    return;
+  }
+  const key = window.prompt("Enter Admin Recovery Key");
+  if (!key) return;
+  try {
+    await api("POST", "/auth/admin/set-user-password", {
+      email: String(email).trim().toLowerCase(),
+      new_password: String(newPassword).trim(),
+      recovery_key: key,
+    });
+    toast("Password updated for user.");
+  } catch (err) {
+    toast(formatAuthError(err, "Set user password failed"), "error");
+    log("admin_set_password_error", String(err));
   }
 }
 
@@ -5164,6 +5193,11 @@ function bindEvents() {
   el.adminRecoveryBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       runAdminRecoveryFlow().catch(() => {});
+    });
+  });
+  el.adminPasswordBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      runAdminSetUserPasswordFlow().catch(() => {});
     });
   });
   el.workspaceExpandFab?.addEventListener("click", () => {
