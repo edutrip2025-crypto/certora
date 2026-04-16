@@ -167,16 +167,20 @@ def _provider_or_404(db: Session, user_id: int) -> ProviderProfile:
         user = db.get(User, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="Provider profile not found")
-        profile = ProviderProfile(
-            user_id=user_id,
-            provider_type=ProviderType.INDIVIDUAL,
-            display_name=user.full_name or user.email.split("@")[0],
-            description="",
-            approval_status=ApprovalStatus.PENDING,
-        )
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
+        try:
+            profile = ProviderProfile(
+                user_id=user_id,
+                provider_type=ProviderType.INDIVIDUAL,
+                display_name=user.full_name or user.email.split("@")[0],
+                description="",
+                approval_status=ApprovalStatus.PENDING,
+            )
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Provider profile bootstrap failed: {exc}")
     return profile
 
 
@@ -742,9 +746,9 @@ def provider_live_classes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
-    _ensure_live_schema_runtime(db)
-    provider = _provider_or_404(db, current_user.id)
     try:
+        _ensure_live_schema_runtime(db)
+        provider = _provider_or_404(db, current_user.id)
         q = select(LiveClassSession).where(LiveClassSession.provider_id == provider.id)
         if course_id:
             q = q.where(LiveClassSession.course_id == course_id)
