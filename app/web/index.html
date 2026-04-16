@@ -671,6 +671,25 @@
             <input id="liveClassEndAt" class="filter" type="datetime-local" />
           </div>
           <div class="row wrap gap-sm" style="margin-top:8px;">
+            <select id="liveClassRecurrencePattern" class="filter">
+              <option value="none">No repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="weekends">Weekends</option>
+              <option value="custom">Custom weekdays</option>
+            </select>
+            <input id="liveClassRecurrenceCount" class="filter" type="number" min="1" max="60" value="1" placeholder="Repeat count" />
+          </div>
+          <div id="liveClassCustomDaysRow" class="row wrap gap-sm hidden" style="margin-top:8px;">
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="0" /><span>Mon</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="1" /><span>Tue</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="2" /><span>Wed</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="3" /><span>Thu</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="4" /><span>Fri</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="5" /><span>Sat</span></label>
+            <label class="checkbox-row"><input type="checkbox" data-live-custom-day="6" /><span>Sun</span></label>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
             <select id="liveClassMode" class="filter">
               <option value="in_app">In-App Classroom</option>
               <option value="external">External Link</option>
@@ -767,6 +786,10 @@
         </section>
         <section class="item">
           <h3>Live Stage</h3>
+          <div class="row wrap gap-sm" style="margin-bottom:8px;">
+            <a id="liveRoomOpenVideoBtn" class="btn small hidden" href="#" target="_blank" rel="noreferrer">Open Video Room</a>
+          </div>
+          <iframe id="liveRoomVideoFrame" class="hidden" style="width:100%;min-height:320px;border:1px solid #dbe4f0;border-radius:10px;background:#0b1220;" allow="camera; microphone; fullscreen; display-capture"></iframe>
           <div id="liveRoomStage" class="item" style="min-height:280px;background:linear-gradient(180deg,#f8fafc,#eef2ff);">
             <div class="meta">Your in-app classroom is live. Use announcements, chat, whiteboard notes, poll, and hand raise for interactive teaching.</div>
             <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>

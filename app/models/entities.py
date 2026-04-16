@@ -551,6 +551,9 @@ class LiveClassSession(Base):
     active_poll_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     active_poll_options_json: Mapped[list] = mapped_column(JSON, default=list)
     active_poll_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence_pattern: Mapped[str] = mapped_column(String(20), default="none")  # none|daily|weekly|weekends|custom
+    recurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    recurrence_custom_days_json: Mapped[list] = mapped_column(JSON, default=list)  # 0=Mon..6=Sun
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

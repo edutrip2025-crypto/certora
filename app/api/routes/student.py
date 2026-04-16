@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -877,10 +877,14 @@ def _student_live_room_state(db: Session, sess: LiveClassSession, student_id: in
             "ended_at": sess.ended_at,
             "meeting_mode": sess.meeting_mode,
             "external_meeting_url": sess.external_meeting_url,
+            "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
             "allow_chat": bool(sess.allow_chat),
             "allow_raise_hand": bool(sess.allow_raise_hand),
             "allow_reactions": bool(sess.allow_reactions),
             "board_text": sess.board_text or "",
+            "recurrence_pattern": sess.recurrence_pattern or "none",
+            "recurrence_count": int(sess.recurrence_count or 1),
+            "recurrence_custom_days": list(sess.recurrence_custom_days_json or []),
             "active_poll": {
                 "key": sess.active_poll_key,
                 "question": sess.active_poll_question,
@@ -937,8 +941,12 @@ def student_live_classes(
         ).all()
     }
     items = []
+    now = datetime.now(timezone.utc)
     for sess in rows:
         course = courses.get(sess.course_id)
+        start_at = sess.scheduled_start_at
+        reminder_at = start_at - timedelta(minutes=30) if start_at else None
+        reminder_due = bool(reminder_at and reminder_at <= now <= start_at)
         participant_count = int(
             db.scalar(
                 select(func.count(LiveClassParticipant.id)).where(
@@ -960,6 +968,12 @@ def student_live_classes(
                 "scheduled_end_at": sess.scheduled_end_at,
                 "meeting_mode": sess.meeting_mode,
                 "external_meeting_url": sess.external_meeting_url,
+                "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
+                "recurrence_pattern": sess.recurrence_pattern or "none",
+                "recurrence_count": int(sess.recurrence_count or 1),
+                "recurrence_custom_days": list(sess.recurrence_custom_days_json or []),
+                "reminder_at": reminder_at,
+                "reminder_due": reminder_due,
                 "participant_count": participant_count,
                 "joined": bool(mine and mine.is_present),
             },

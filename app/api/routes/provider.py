@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 from uuid import uuid4
@@ -219,6 +219,45 @@ def _provider_live_session_or_404(db: Session, provider_id: int, session_id: int
     return sess
 
 
+def _normalize_recurrence(pattern_raw: str | None, count_raw: int | None, custom_days_raw: list[int] | None) -> tuple[str, int, list[int]]:
+    pattern = str(pattern_raw or "none").strip().lower()
+    if pattern not in {"none", "daily", "weekly", "weekends", "custom"}:
+        pattern = "none"
+    count = int(count_raw or 1)
+    count = max(1, min(count, 60))
+    custom_days = sorted({int(x) for x in (custom_days_raw or []) if 0 <= int(x) <= 6})
+    if pattern == "custom" and not custom_days:
+        pattern = "none"
+    if pattern == "none":
+        count = 1
+        custom_days = []
+    return pattern, count, custom_days
+
+
+def _build_recurrence_start_times(start_at: datetime, pattern: str, count: int, custom_days: list[int]) -> list[datetime]:
+    starts = [start_at]
+    if count <= 1 or pattern == "none":
+        return starts
+    cur = start_at
+    while len(starts) < count:
+        if pattern == "daily":
+            cur = cur + timedelta(days=1)
+            starts.append(cur)
+            continue
+        if pattern == "weekly":
+            cur = cur + timedelta(days=7)
+            starts.append(cur)
+            continue
+        # weekends/custom search day-by-day for next valid slot
+        target_days = {5, 6} if pattern == "weekends" else set(custom_days)
+        probe = cur + timedelta(days=1)
+        while probe.weekday() not in target_days:
+            probe = probe + timedelta(days=1)
+        cur = probe
+        starts.append(cur)
+    return starts
+
+
 def _ensure_live_schema_runtime(db: Session, force: bool = False) -> None:
     global _LIVE_SCHEMA_GUARD_DONE
     if _LIVE_SCHEMA_GUARD_DONE and not force:
@@ -245,6 +284,9 @@ def _ensure_live_schema_runtime(db: Session, force: bool = False) -> None:
                 "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_question TEXT",
                 "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_options_json JSON DEFAULT '[]'::json",
                 "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_open BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_pattern VARCHAR(20) DEFAULT 'none'",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_count INTEGER DEFAULT 1",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_custom_days_json JSON DEFAULT '[]'::json",
                 "ALTER TABLE live_class_messages ADD COLUMN IF NOT EXISTS payload_json JSON DEFAULT '{}'::json",
             ]
             for stmt in statements:
@@ -297,10 +339,14 @@ def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
             "ended_at": sess.ended_at,
             "meeting_mode": sess.meeting_mode,
             "external_meeting_url": sess.external_meeting_url,
+            "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
             "allow_chat": bool(sess.allow_chat),
             "allow_raise_hand": bool(sess.allow_raise_hand),
             "allow_reactions": bool(sess.allow_reactions),
             "board_text": sess.board_text or "",
+            "recurrence_pattern": sess.recurrence_pattern or "none",
+            "recurrence_count": int(sess.recurrence_count or 1),
+            "recurrence_custom_days": list(sess.recurrence_custom_days_json or []),
             "active_poll": {
                 "key": sess.active_poll_key,
                 "question": sess.active_poll_question,
@@ -781,10 +827,14 @@ def provider_live_classes(
                     "ended_at": sess.ended_at,
                     "meeting_mode": sess.meeting_mode,
                     "external_meeting_url": sess.external_meeting_url,
+                    "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
                     "participant_count": participant_count,
                     "allow_chat": bool(sess.allow_chat),
                     "allow_raise_hand": bool(sess.allow_raise_hand),
                     "allow_reactions": bool(sess.allow_reactions),
+                    "recurrence_pattern": sess.recurrence_pattern or "none",
+                    "recurrence_count": int(sess.recurrence_count or 1),
+                    "recurrence_custom_days": list(sess.recurrence_custom_days_json or []),
                 },
             )
         return {"items": items}
@@ -833,45 +883,83 @@ def create_live_class_schedule(
         raise HTTPException(status_code=400, detail="meeting_mode must be in_app or external")
     if meeting_mode == "external" and not str(payload.external_meeting_url or "").strip():
         raise HTTPException(status_code=400, detail="external_meeting_url is required for external mode")
+    recurrence_pattern, recurrence_count, recurrence_custom_days = _normalize_recurrence(
+        payload.recurrence_pattern,
+        payload.recurrence_count,
+        payload.recurrence_custom_days,
+    )
+    scheduled_starts = _build_recurrence_start_times(
+        payload.scheduled_start_at,
+        recurrence_pattern,
+        recurrence_count,
+        recurrence_custom_days,
+    )
+    duration = None
+    if payload.scheduled_end_at:
+        duration = payload.scheduled_end_at - payload.scheduled_start_at
     try:
-        sess = LiveClassSession(
-            course_id=course.id,
-            provider_id=provider.id,
-            room_code=uuid4().hex[:10].upper(),
-            title=schedule_title,
-            description=(payload.description or "").strip() or None,
-            timezone=(payload.timezone or "UTC").strip() or "UTC",
-            meeting_mode=meeting_mode,
-            external_meeting_url=(payload.external_meeting_url or "").strip() or None,
-            status="scheduled",
-            scheduled_start_at=payload.scheduled_start_at,
-            scheduled_end_at=payload.scheduled_end_at,
-            max_participants=int(payload.max_participants),
-            allow_chat=bool(payload.allow_chat),
-            allow_raise_hand=bool(payload.allow_raise_hand),
-            allow_reactions=bool(payload.allow_reactions),
-        )
-        db.add(sess)
+        created_ids: list[int] = []
+        first_room_code = ""
+        for idx, start_at in enumerate(scheduled_starts):
+            end_at = (start_at + duration) if duration is not None else None
+            sess = LiveClassSession(
+                course_id=course.id,
+                provider_id=provider.id,
+                room_code=uuid4().hex[:10].upper(),
+                title=schedule_title,
+                description=(payload.description or "").strip() or None,
+                timezone=(payload.timezone or "UTC").strip() or "UTC",
+                meeting_mode=meeting_mode,
+                external_meeting_url=(payload.external_meeting_url or "").strip() or None,
+                status="scheduled",
+                scheduled_start_at=start_at,
+                scheduled_end_at=end_at,
+                max_participants=int(payload.max_participants),
+                allow_chat=bool(payload.allow_chat),
+                allow_raise_hand=bool(payload.allow_raise_hand),
+                allow_reactions=bool(payload.allow_reactions),
+                recurrence_pattern=recurrence_pattern,
+                recurrence_count=recurrence_count,
+                recurrence_custom_days_json=recurrence_custom_days,
+            )
+            db.add(sess)
+            db.flush()
+            created_ids.append(int(sess.id))
+            if idx == 0:
+                first_room_code = str(sess.room_code)
+            db.add(
+                LiveClassMessage(
+                    session_id=sess.id,
+                    user_id=current_user.id,
+                    actor_name=current_user.full_name,
+                    actor_role="provider",
+                    message_type="system",
+                    content=f"Live class '{sess.title}' scheduled.",
+                    payload_json={},
+                ),
+            )
         db.flush()
         db.add(
-            LiveClassMessage(
-                session_id=sess.id,
-                user_id=current_user.id,
-                actor_name=current_user.full_name,
-                actor_role="provider",
-                message_type="system",
-                content=f"Live class '{sess.title}' scheduled.",
-                payload_json={},
+            ProviderNotification(
+                provider_id=provider.id,
+                event_type="live_class_schedule",
+                message=f"{len(created_ids)} live session(s) scheduled for '{schedule_title}'.",
+                ref_type="live_class",
+                ref_id=created_ids[0] if created_ids else None,
+                is_read=False,
             ),
         )
         db.commit()
         return {
             "created": True,
-            "session_id": sess.id,
-            "room_code": sess.room_code,
+            "session_id": created_ids[0] if created_ids else None,
+            "session_ids": created_ids,
+            "room_code": first_room_code,
             "course_id": course.id,
             "course_title": course.title,
             "course_auto_created": bool(payload.course_id is None),
+            "recurrence_pattern": recurrence_pattern,
+            "recurrence_count": recurrence_count,
         }
     except SQLAlchemyError as exc:
         db.rollback()
@@ -896,6 +984,17 @@ def update_live_class_schedule(
         data["meeting_mode"] = mode
     if data.get("meeting_mode") == "external" and not str(data.get("external_meeting_url") or sess.external_meeting_url or "").strip():
         raise HTTPException(status_code=400, detail="external_meeting_url is required for external mode")
+    if "recurrence_custom_days" in data:
+        data["recurrence_custom_days_json"] = data.pop("recurrence_custom_days") or []
+    if any(k in data for k in ("recurrence_pattern", "recurrence_count", "recurrence_custom_days_json")):
+        pattern, count, custom_days = _normalize_recurrence(
+            data.get("recurrence_pattern", sess.recurrence_pattern),
+            data.get("recurrence_count", sess.recurrence_count),
+            data.get("recurrence_custom_days_json", sess.recurrence_custom_days_json),
+        )
+        data["recurrence_pattern"] = pattern
+        data["recurrence_count"] = count
+        data["recurrence_custom_days_json"] = custom_days
     next_start = data.get("scheduled_start_at", sess.scheduled_start_at)
     next_end = data.get("scheduled_end_at", sess.scheduled_end_at)
     if next_end and next_end <= next_start:

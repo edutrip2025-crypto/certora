@@ -410,6 +410,9 @@ class LiveClassScheduleCreate(BaseModel):
     allow_chat: bool = True
     allow_raise_hand: bool = True
     allow_reactions: bool = True
+    recurrence_pattern: str = "none"  # none | daily | weekly | weekends | custom
+    recurrence_count: int = Field(default=1, ge=1, le=60)
+    recurrence_custom_days: list[int] = []
 
 
 class LiveClassScheduleUpdate(BaseModel):
@@ -424,6 +427,9 @@ class LiveClassScheduleUpdate(BaseModel):
     allow_chat: bool | None = None
     allow_raise_hand: bool | None = None
     allow_reactions: bool | None = None
+    recurrence_pattern: str | None = None
+    recurrence_count: int | None = Field(default=None, ge=1, le=60)
+    recurrence_custom_days: list[int] | None = None
 
 
 class LiveClassMessageCreate(BaseModel):

@@ -39,6 +39,8 @@ const state = {
   providerLiveSessions: [],
   providerLiveEditSessionId: null,
   studentLiveSessions: [],
+  studentLiveReminderTimers: {},
+  studentLiveReminderSent: {},
   viewerTopics: [],
   studentViewerTopics: [],
   studentActiveCourseId: null,
@@ -1150,6 +1152,9 @@ const el = {
   liveClassTimezone: $("liveClassTimezone"),
   liveClassStartAt: $("liveClassStartAt"),
   liveClassEndAt: $("liveClassEndAt"),
+  liveClassRecurrencePattern: $("liveClassRecurrencePattern"),
+  liveClassRecurrenceCount: $("liveClassRecurrenceCount"),
+  liveClassCustomDaysRow: $("liveClassCustomDaysRow"),
   liveClassMode: $("liveClassMode"),
   liveClassExternalUrl: $("liveClassExternalUrl"),
   liveClassMaxParticipants: $("liveClassMaxParticipants"),
@@ -1167,6 +1172,8 @@ const el = {
   liveRoomTitle: $("liveRoomTitle"),
   liveRoomMeta: $("liveRoomMeta"),
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
+  liveRoomOpenVideoBtn: $("liveRoomOpenVideoBtn"),
+  liveRoomVideoFrame: $("liveRoomVideoFrame"),
   leaveLiveRoomBtn: $("leaveLiveRoomBtn"),
   liveRoomBoardText: $("liveRoomBoardText"),
   liveRoomSaveBoardBtn: $("liveRoomSaveBoardBtn"),
@@ -2709,6 +2716,21 @@ function applyProviderLiveModeUi() {
   }
 }
 
+function applyProviderLiveRecurrenceUi() {
+  const pattern = String(el.liveClassRecurrencePattern?.value || "none");
+  const isCustom = pattern === "custom";
+  el.liveClassCustomDaysRow?.classList.toggle("hidden", !isCustom);
+  if (pattern === "none" && el.liveClassRecurrenceCount) {
+    el.liveClassRecurrenceCount.value = "1";
+  }
+}
+
+function getLiveCustomDays() {
+  return Array.from(document.querySelectorAll("[data-live-custom-day]:checked"))
+    .map((node) => Number(node.getAttribute("data-live-custom-day") || -1))
+    .filter((n) => n >= 0 && n <= 6);
+}
+
 function generateLiveClassAiDraft(kind = "agenda") {
   const title = String(el.liveClassTitle?.value || "Live Session").trim() || "Live Session";
   const desc = String(el.liveClassDescription?.value || "").trim();
@@ -2764,6 +2786,9 @@ function resetProviderLiveScheduler() {
   if (el.liveClassTimezone) el.liveClassTimezone.value = "Asia/Kolkata";
   if (el.liveClassStartAt) el.liveClassStartAt.value = "";
   if (el.liveClassEndAt) el.liveClassEndAt.value = "";
+  if (el.liveClassRecurrencePattern) el.liveClassRecurrencePattern.value = "none";
+  if (el.liveClassRecurrenceCount) el.liveClassRecurrenceCount.value = "1";
+  document.querySelectorAll("[data-live-custom-day]").forEach((n) => { n.checked = false; });
   if (el.liveClassMode) el.liveClassMode.value = "in_app";
   if (el.liveClassExternalUrl) el.liveClassExternalUrl.value = "";
   if (el.liveClassMaxParticipants) el.liveClassMaxParticipants.value = "200";
@@ -2773,6 +2798,7 @@ function resetProviderLiveScheduler() {
   if (el.liveClassAiOutput) el.liveClassAiOutput.value = "";
   if (el.createLiveClassBtn) el.createLiveClassBtn.textContent = "Create Live Class";
   applyProviderLiveModeUi();
+  applyProviderLiveRecurrenceUi();
 }
 
 function fillProviderLiveScheduler(session) {
@@ -2783,6 +2809,13 @@ function fillProviderLiveScheduler(session) {
   if (el.liveClassTimezone) el.liveClassTimezone.value = session.timezone || "Asia/Kolkata";
   if (el.liveClassStartAt) el.liveClassStartAt.value = toLocalDatetimeValue(session.scheduled_start_at);
   if (el.liveClassEndAt) el.liveClassEndAt.value = toLocalDatetimeValue(session.scheduled_end_at);
+  if (el.liveClassRecurrencePattern) el.liveClassRecurrencePattern.value = session.recurrence_pattern || "none";
+  if (el.liveClassRecurrenceCount) el.liveClassRecurrenceCount.value = String(session.recurrence_count || 1);
+  const customDays = new Set((session.recurrence_custom_days || []).map((x) => Number(x)));
+  document.querySelectorAll("[data-live-custom-day]").forEach((n) => {
+    const day = Number(n.getAttribute("data-live-custom-day") || -1);
+    n.checked = customDays.has(day);
+  });
   if (el.liveClassMode) el.liveClassMode.value = session.meeting_mode || "in_app";
   if (el.liveClassExternalUrl) el.liveClassExternalUrl.value = session.external_meeting_url || "";
   if (el.liveClassMaxParticipants) el.liveClassMaxParticipants.value = String(session.max_participants || 200);
@@ -2791,6 +2824,7 @@ function fillProviderLiveScheduler(session) {
   if (el.liveClassAllowReactions) el.liveClassAllowReactions.checked = Boolean(session.allow_reactions);
   if (el.createLiveClassBtn) el.createLiveClassBtn.textContent = "Update Live Class";
   applyProviderLiveModeUi();
+  applyProviderLiveRecurrenceUi();
 }
 
 async function refreshProviderLiveClasses() {
@@ -2814,6 +2848,9 @@ async function refreshProviderLiveClasses() {
       const isScheduled = s.status === "scheduled";
       const ratingClass = isLive ? "status-open" : (isClosed ? "status-dismissed" : "status-in_review");
       const modeLabel = s.meeting_mode === "external" ? "External" : "In-app";
+      const recurrenceLabel = s.recurrence_pattern && s.recurrence_pattern !== "none"
+        ? `${s.recurrence_pattern} x${Number(s.recurrence_count || 1)}`
+        : "one-time";
       return `
         <div>
           <div class="row between">
@@ -2821,12 +2858,14 @@ async function refreshProviderLiveClasses() {
             <span class="status-pill ${ratingClass}">${escapeHtmlAttr(s.status || "scheduled")}</span>
           </div>
           <div class="meta">Live Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} (ID #${Number(s.course_id || 0)}) | Participants: ${Number(s.participant_count || 0)} | Mode: ${modeLabel}</div>
+          <div class="meta">Schedule: ${escapeHtmlAttr(recurrenceLabel)}</div>
           <div class="meta">${formatTime(s.scheduled_start_at)}${s.scheduled_end_at ? ` to ${formatTime(s.scheduled_end_at)}` : ""} (${escapeHtmlAttr(s.timezone || "UTC")})</div>
           ${s.description ? `<div style="margin-top:4px;">${escapeHtmlAttr(s.description)}</div>` : ""}
           <div class="actions">
             ${isClosed ? "" : `<button class="btn small" data-provider-live-join="${s.session_id}">Join Room</button>`}
             ${isScheduled ? `<button class="btn small" data-provider-live-start="${s.session_id}">Start Session</button>` : ""}
             ${isLive ? `<button class="btn small danger" data-provider-live-end="${s.session_id}">Complete Session</button>` : ""}
+            ${s.video_room_url ? `<a class="btn small" href="${s.video_room_url}" target="_blank" rel="noreferrer">Open Video</a>` : ""}
             ${s.meeting_mode === "external" && s.external_meeting_url ? `<a class="btn small" href="${s.external_meeting_url}" target="_blank" rel="noreferrer">Open Meeting</a>` : ""}
             ${isScheduled ? `<button class="btn small" data-provider-live-edit="${s.session_id}">Edit</button>` : ""}
           </div>
@@ -2890,6 +2929,9 @@ async function submitProviderLiveSchedule() {
   const title = String(el.liveClassTitle?.value || "").trim();
   const startIso = toIsoFromLocalDatetime(el.liveClassStartAt?.value || "");
   const endIsoRaw = toIsoFromLocalDatetime(el.liveClassEndAt?.value || "");
+  const recurrencePattern = String(el.liveClassRecurrencePattern?.value || "none").trim() || "none";
+  const recurrenceCount = Number(el.liveClassRecurrenceCount?.value || 1);
+  const recurrenceCustomDays = getLiveCustomDays();
   const timezone = String(el.liveClassTimezone?.value || "Asia/Kolkata").trim() || "Asia/Kolkata";
   const meetingMode = String(el.liveClassMode?.value || "in_app").trim() || "in_app";
   const externalUrl = String(el.liveClassExternalUrl?.value || "").trim();
@@ -2906,6 +2948,9 @@ async function submitProviderLiveSchedule() {
     allow_chat: Boolean(el.liveClassAllowChat?.checked),
     allow_raise_hand: Boolean(el.liveClassAllowRaiseHand?.checked),
     allow_reactions: Boolean(el.liveClassAllowReactions?.checked),
+    recurrence_pattern: recurrencePattern,
+    recurrence_count: Number.isFinite(recurrenceCount) && recurrenceCount > 0 ? recurrenceCount : 1,
+    recurrence_custom_days: recurrenceCustomDays,
   };
   if (!payload.title) throw new Error("Class title is required");
   if (!payload.scheduled_start_at) throw new Error("Scheduled start time is required");
@@ -2925,11 +2970,14 @@ async function submitProviderLiveSchedule() {
       allow_chat: payload.allow_chat,
       allow_raise_hand: payload.allow_raise_hand,
       allow_reactions: payload.allow_reactions,
+      recurrence_pattern: payload.recurrence_pattern,
+      recurrence_count: payload.recurrence_count,
+      recurrence_custom_days: payload.recurrence_custom_days,
     });
     toast("Live class schedule updated");
   } else {
     const created = await api("POST", "/provider/workspace/live-classes", payload);
-    toast(`Live class scheduled. Auto course ID: ${Number(created?.course_id || 0)}`);
+    toast(`Live class scheduled (${Number(created?.recurrence_count || 1)} session(s)). Auto course ID: ${Number(created?.course_id || 0)}`);
   }
   resetProviderLiveScheduler();
   providerLiveSchedulerSetVisible(false);
@@ -2940,12 +2988,50 @@ async function refreshStudentLiveClasses() {
   const out = await api("GET", "/student/live-classes");
   const items = out?.items || [];
   state.studentLiveSessions = items;
+  const nowMs = Date.now();
+  const validReminderKeys = {};
+  items.forEach((s) => {
+    const reminderAt = s.reminder_at ? new Date(s.reminder_at).getTime() : NaN;
+    if (!Number.isFinite(reminderAt)) return;
+    const key = `${s.session_id}:${s.reminder_at}`;
+    validReminderKeys[key] = true;
+    if (state.studentLiveReminderSent[key]) return;
+    const delay = reminderAt - nowMs;
+    const fireReminder = () => {
+      if (state.studentLiveReminderSent[key]) return;
+      state.studentLiveReminderSent[key] = true;
+      const msg = `Reminder: "${s.title}" starts in 30 minutes.`;
+      toast(msg);
+      if ("Notification" in window) {
+        if (Notification.permission === "granted") {
+          try { new Notification("Certora Class Reminder", { body: msg }); } catch {}
+        } else if (Notification.permission === "default") {
+          Notification.requestPermission().catch(() => {});
+        }
+      }
+    };
+    if (delay <= 0 && (s.reminder_due || false)) {
+      fireReminder();
+      return;
+    }
+    if (delay > 0 && !state.studentLiveReminderTimers[key]) {
+      state.studentLiveReminderTimers[key] = setTimeout(fireReminder, delay);
+    }
+  });
+  Object.keys(state.studentLiveReminderTimers).forEach((key) => {
+    if (validReminderKeys[key]) return;
+    clearTimeout(state.studentLiveReminderTimers[key]);
+    delete state.studentLiveReminderTimers[key];
+  });
   renderList(
     el.studentLiveClassesList,
     items,
     (s) => {
       const isClosed = s.status === "ended" || s.status === "cancelled";
       const statusClass = s.status === "live" ? "status-open" : (isClosed ? "status-dismissed" : "status-in_review");
+      const recurrenceLabel = s.recurrence_pattern && s.recurrence_pattern !== "none"
+        ? `${s.recurrence_pattern} x${Number(s.recurrence_count || 1)}`
+        : "one-time";
       return `
         <div>
           <div class="row between">
@@ -2953,11 +3039,13 @@ async function refreshStudentLiveClasses() {
             <span class="status-pill ${statusClass}">${escapeHtmlAttr(s.status || "scheduled")}</span>
           </div>
           <div class="meta">Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} | Participants: ${Number(s.participant_count || 0)}</div>
+          <div class="meta">Schedule: ${escapeHtmlAttr(recurrenceLabel)} | Reminder: 30 mins before</div>
           <div class="meta">${formatTime(s.scheduled_start_at)}${s.scheduled_end_at ? ` to ${formatTime(s.scheduled_end_at)}` : ""}</div>
           ${s.description ? `<div style="margin-top:4px;">${escapeHtmlAttr(s.description)}</div>` : ""}
           <div class="actions">
             ${isClosed ? "" : `<button class="btn small" data-student-live-join="${s.session_id}">${s.joined ? "Enter Room" : "Join Class"}</button>`}
             ${s.joined ? `<button class="btn small" data-student-live-leave="${s.session_id}">Leave</button>` : ""}
+            ${s.video_room_url ? `<a class="btn small" href="${s.video_room_url}" target="_blank" rel="noreferrer">Open Video</a>` : ""}
             ${s.meeting_mode === "external" && s.external_meeting_url ? `<a class="btn small" href="${s.external_meeting_url}" target="_blank" rel="noreferrer">Open Meeting</a>` : ""}
           </div>
         </div>
@@ -3017,6 +3105,11 @@ function clearLiveRoomState() {
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   if (el.liveRoomParticipantsList) el.liveRoomParticipantsList.innerHTML = "";
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
+  if (el.liveRoomVideoFrame) el.liveRoomVideoFrame.removeAttribute("src");
+  if (el.liveRoomOpenVideoBtn) {
+    el.liveRoomOpenVideoBtn.classList.add("hidden");
+    el.liveRoomOpenVideoBtn.removeAttribute("href");
+  }
   if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
   if (el.liveRoomPollPanel) {
     el.liveRoomPollPanel.classList.add("hidden");
@@ -3130,6 +3223,26 @@ function applyLiveRoomState(room) {
   if (el.liveRoomMeta) {
     const mode = session.meeting_mode === "external" ? "External meeting + in-app tools" : "In-app classroom";
     el.liveRoomMeta.textContent = `${session.course_title || "Course"} | ${mode} | ${session.status || "scheduled"}`;
+  }
+  const videoUrl = session.video_room_url || (session.room_code ? `https://meet.jit.si/certora-${session.id}-${String(session.room_code).toLowerCase()}` : "");
+  if (el.liveRoomOpenVideoBtn) {
+    if (videoUrl) {
+      el.liveRoomOpenVideoBtn.classList.remove("hidden");
+      el.liveRoomOpenVideoBtn.setAttribute("href", videoUrl);
+    } else {
+      el.liveRoomOpenVideoBtn.classList.add("hidden");
+      el.liveRoomOpenVideoBtn.removeAttribute("href");
+    }
+  }
+  if (el.liveRoomVideoFrame) {
+    const showInlineVideo = Boolean(videoUrl) && session.meeting_mode !== "external";
+    el.liveRoomVideoFrame.classList.toggle("hidden", !showInlineVideo);
+    if (showInlineVideo) {
+      const currentSrc = el.liveRoomVideoFrame.getAttribute("src") || "";
+      if (currentSrc !== videoUrl) el.liveRoomVideoFrame.setAttribute("src", videoUrl);
+    } else {
+      el.liveRoomVideoFrame.removeAttribute("src");
+    }
   }
   if (el.liveRoomPresenceBadge) {
     el.liveRoomPresenceBadge.textContent = `Participants: ${Number(room?.participant_count || 0)}`;
@@ -6673,6 +6786,7 @@ function bindEvents() {
     submitProviderLiveSchedule().catch((err) => toast(err?.message || "Failed to save live class schedule", "error"));
   });
   $("liveClassMode")?.addEventListener("change", () => applyProviderLiveModeUi());
+  $("liveClassRecurrencePattern")?.addEventListener("change", () => applyProviderLiveRecurrenceUi());
   $("liveClassGenerateAgendaBtn")?.addEventListener("click", () => {
     if (el.liveClassAiOutput) el.liveClassAiOutput.value = generateLiveClassAiDraft("agenda");
   });

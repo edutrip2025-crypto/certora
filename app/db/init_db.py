@@ -75,6 +75,9 @@ def _migrate_live_class_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_question", "TEXT")
     _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_options_json", "JSON DEFAULT '[]'")
     _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_open", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "recurrence_pattern", "TEXT DEFAULT 'none'")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "recurrence_count", "INTEGER DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "recurrence_custom_days_json", "JSON DEFAULT '[]'")
     _sqlite_add_column_if_missing(conn, "live_class_sessions", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
     _sqlite_add_column_if_missing(conn, "live_class_sessions", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
 
@@ -111,6 +114,9 @@ def _migrate_live_class_schema_postgres(conn) -> None:
         "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_question TEXT",
         "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_options_json JSON DEFAULT '[]'::json",
         "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_open BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_pattern VARCHAR(20) DEFAULT 'none'",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_count INTEGER DEFAULT 1",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS recurrence_custom_days_json JSON DEFAULT '[]'::json",
         "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS actor_role VARCHAR(20) DEFAULT 'student'",
