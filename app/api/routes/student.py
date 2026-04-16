@@ -217,9 +217,16 @@ def student_certificates(
             .order_by(Certificate.issued_at.desc(), Certificate.id.desc()),
         ).all(),
     )
+    dirty = False
     for cert in items:
-        ensure_certificate_pdf(db, cert)
-    db.commit()
+        try:
+            ensure_certificate_pdf(db, cert)
+            dirty = True
+        except RuntimeError:
+            # Return certificate rows even when PDF generation is temporarily unavailable.
+            continue
+    if dirty:
+        db.commit()
     return [certificate_payload(db, cert) for cert in items]
 
 
@@ -496,8 +503,8 @@ def submit_attempt(
             db.commit()
             db.refresh(cert)
             certificate = certificate_payload(db, cert)
-        except RuntimeError:
-            # Keep result submission successful even if PDF engine is unavailable.
+        except Exception:
+            # Keep result submission successful even if certificate generation/storage is unavailable.
             db.rollback()
     return {
         "id": result.id,

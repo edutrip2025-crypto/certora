@@ -207,7 +207,11 @@ def ensure_certificate_pdf(db: Session, certificate: Certificate) -> Certificate
 def issue_certificate(db: Session, result: Result) -> Certificate:
     existing = db.scalar(select(Certificate).where(Certificate.result_id == result.id))
     if existing:
-        return ensure_certificate_pdf(db, existing)
+        try:
+            return ensure_certificate_pdf(db, existing)
+        except RuntimeError:
+            # Keep existing certificate row usable even if PDF engine/storage is temporarily unavailable.
+            return existing
 
     exam = db.get(Exam, result.exam_id)
     if not exam:
@@ -235,7 +239,11 @@ def issue_certificate(db: Session, result: Result) -> Certificate:
     )
     db.add(cert)
     db.flush()
-    return ensure_certificate_pdf(db, cert)
+    try:
+        return ensure_certificate_pdf(db, cert)
+    except RuntimeError:
+        # Preserve issued certificate row; PDF can be generated lazily later.
+        return cert
 
 
 def certificate_payload(db: Session, certificate: Certificate) -> dict:
@@ -260,6 +268,6 @@ def certificate_payload(db: Session, certificate: Certificate) -> dict:
         "status": certificate.status,
         "issued_at": certificate.issued_at,
         "pdf_url": pdf_url,
-        "download_url": pdf_url,
+        "download_url": pdf_url or verification_link,
         "verification_link": verification_link,
     }

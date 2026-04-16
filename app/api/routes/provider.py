@@ -735,9 +735,16 @@ def provider_certifications(
         .where(Certificate.provider_id == provider.id)
         .order_by(Certificate.issued_at.desc()),
     ).all()
+    dirty = False
     for cert, _, _ in rows:
-        ensure_certificate_pdf(db, cert)
-    db.commit()
+        try:
+            ensure_certificate_pdf(db, cert)
+            dirty = True
+        except RuntimeError:
+            # Keep provider certificate list available even if PDF generation/storage is temporarily unavailable.
+            continue
+    if dirty:
+        db.commit()
     return [
         {
             "certificate_id": cert.certificate_id,
