@@ -367,6 +367,27 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .live-video-muted {
   outline: 2px solid #f59e0b;
 }
+.list .item.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+.live-waiting-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+.live-waiting-card {
+  width: min(480px, 92vw);
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
 .course-card {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);

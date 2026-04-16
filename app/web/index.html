@@ -776,6 +776,16 @@
           </div>
           <div id="liveRoomHandsList" class="list" style="margin-top:10px;"></div>
           <div class="item" style="margin-top:10px;">
+            <div class="row between">
+              <strong>Host Controls</strong>
+              <label class="row" style="gap:6px;">
+                <input id="liveRoomWaitingToggle" type="checkbox" checked />
+                <span class="meta">Waiting room</span>
+              </label>
+            </div>
+            <div id="liveRoomWaitingList" class="list" style="margin-top:8px;"></div>
+          </div>
+          <div class="item" style="margin-top:10px;">
             <div><strong>Quick Poll</strong></div>
             <input id="liveRoomPollQuestion" class="search" type="text" placeholder="Poll question" style="margin-top:8px;" />
             <input id="liveRoomPollOptions" class="search" type="text" placeholder="Options (comma separated)" style="margin-top:8px;" />
@@ -793,6 +803,9 @@
             <button id="liveRoomToggleMicBtn" class="btn small">Mute Mic</button>
             <button id="liveRoomShareScreenBtn" class="btn small">Share Screen</button>
             <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
+            <button id="liveRoomStartRecordingBtn" class="btn small">Start Recording</button>
+            <button id="liveRoomStopRecordingBtn" class="btn small">Stop Recording</button>
+            <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
           </div>
           <video id="liveRoomLocalVideo" autoplay muted playsinline class="live-local-video live-video-el"></video>
           <div id="liveRoomRemoteVideoGrid" class="live-video-grid" style="margin-top:8px;"></div>
@@ -817,7 +830,22 @@
           </div>
           <h4 style="margin:12px 0 6px;">Participants</h4>
           <div id="liveRoomParticipantsList" class="list" style="max-height:180px;overflow:auto;"></div>
+          <div class="item" style="margin-top:10px;">
+            <div><strong>Breakout Rooms</strong></div>
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <input id="liveRoomBreakoutName" class="search" type="text" placeholder="Room name (e.g., Group A)" />
+              <button id="liveRoomAssignBreakoutBtn" class="btn small">Assign Selected</button>
+              <button id="liveRoomClearBreakoutsBtn" class="btn small">Close Breakouts</button>
+            </div>
+            <div class="meta">Select a participant below, then assign breakout room.</div>
+          </div>
         </section>
+      </div>
+      <div id="liveRoomWaitingOverlay" class="live-waiting-overlay hidden">
+        <div class="live-waiting-card">
+          <h3>Waiting Room</h3>
+          <p id="liveRoomWaitingText">You are waiting for host approval to enter the class.</p>
+        </div>
       </div>
     </section>
 

@@ -51,6 +51,7 @@ from app.schemas import (
     ProctorTrainingFeedbackCreate,
     ResultOut,
 )
+from app.live_ws import signal_manager
 from app.services.scoring import score_attempt
 from app.services.proctoring_ai import evaluate_proctor_session
 from app.services.certificates import certificate_payload, ensure_certificate_pdf, issue_certificate
@@ -822,6 +823,18 @@ def _student_live_session_or_403(db: Session, session_id: int, student_id: int) 
     return sess, enr
 
 
+def _ensure_student_live_access(sess: LiveClassSession, student: User) -> str:
+    status = signal_manager.get_access_status(
+        int(sess.id),
+        int(student.id),
+        student.role.value,
+        student.full_name or student.email,
+    )
+    if status == "blocked":
+        raise HTTPException(status_code=403, detail="Access blocked by host")
+    return status
+
+
 def _live_poll_tally(db: Session, sess: LiveClassSession) -> dict:
     if not sess.active_poll_key:
         return {"total_votes": 0, "votes": []}
@@ -860,6 +873,22 @@ def _student_live_room_state(db: Session, sess: LiveClassSession, student_id: in
             ),
         )
         my_vote = int(vote.option_index) if vote else None
+    access_status = signal_manager.get_access_status(
+        int(sess.id),
+        int(student_id),
+        UserRole.STUDENT.value,
+        (my_participant.display_name if my_participant else f"User {student_id}"),
+    )
+    if my_participant and access_status == "admitted" and not my_participant.is_present:
+        my_participant.is_present = True
+        my_participant.left_at = None
+        my_participant.last_seen_at = datetime.now(timezone.utc)
+        db.commit()
+    if my_participant and access_status != "admitted" and my_participant.is_present:
+        my_participant.is_present = False
+        my_participant.last_seen_at = datetime.now(timezone.utc)
+        db.commit()
+    flags = signal_manager.user_flags(int(sess.id), int(student_id))
     return {
         "session": {
             "id": sess.id,
@@ -898,6 +927,10 @@ def _student_live_room_state(db: Session, sess: LiveClassSession, student_id: in
         "me": {
             "present": bool(my_participant.is_present) if my_participant else False,
             "raised_hand": bool(my_participant.raised_hand) if my_participant else False,
+            "access_status": access_status,
+            "muted": bool(flags.get("muted")),
+            "removed": bool(flags.get("removed")),
+            "breakout_room": flags.get("breakout_room"),
         },
         "participants": [
             {
@@ -956,6 +989,12 @@ def student_live_classes(
             or 0
         )
         mine = my_participation.get(int(sess.id))
+        access_status = signal_manager.get_access_status(
+            int(sess.id),
+            int(current_user.id),
+            current_user.role.value,
+            current_user.full_name or current_user.email,
+        )
         items.append(
             {
                 "session_id": sess.id,
@@ -976,6 +1015,7 @@ def student_live_classes(
                 "reminder_due": reminder_due,
                 "participant_count": participant_count,
                 "joined": bool(mine and mine.is_present),
+                "access_status": access_status,
             },
         )
     return {"items": items}
@@ -990,6 +1030,7 @@ def join_live_class_session(
     sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
     if sess.status in {"ended", "cancelled"}:
         raise HTTPException(status_code=400, detail="This live class is no longer active")
+    access_status = _ensure_student_live_access(sess, current_user)
     participant = db.scalar(
         select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
     )
@@ -1000,7 +1041,7 @@ def join_live_class_session(
             user_id=current_user.id,
             actor_role="student",
             display_name=current_user.full_name or current_user.email,
-            is_present=True,
+            is_present=(access_status == "admitted"),
             raised_hand=False,
             joined_at=now,
             last_seen_at=now,
@@ -1008,9 +1049,11 @@ def join_live_class_session(
         )
         db.add(participant)
     else:
-        participant.is_present = True
+        participant.is_present = access_status == "admitted"
         participant.left_at = None
         participant.last_seen_at = now
+        if access_status != "admitted":
+            participant.raised_hand = False
     db.add(
         LiveClassMessage(
             session_id=sess.id,
@@ -1018,12 +1061,20 @@ def join_live_class_session(
             actor_name=current_user.full_name,
             actor_role="student",
             message_type="system",
-            content=f"{current_user.full_name} joined the class.",
-            payload_json={},
+            content=(
+                f"{current_user.full_name} joined the class."
+                if access_status == "admitted"
+                else f"{current_user.full_name} is waiting for host approval."
+            ),
+            payload_json={"access_status": access_status},
         ),
     )
     db.commit()
-    return {"joined": True, "room_state": _student_live_room_state(db, sess, current_user.id)}
+    return {
+        "joined": access_status == "admitted",
+        "access_status": access_status,
+        "room_state": _student_live_room_state(db, sess, current_user.id),
+    }
 
 
 @router.post("/live-classes/{session_id}/leave")
@@ -1106,6 +1157,9 @@ def student_send_live_message(
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
     sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    access_status = _ensure_student_live_access(sess, current_user)
+    if access_status != "admitted":
+        raise HTTPException(status_code=403, detail="Waiting for host approval")
     if sess.status in {"ended", "cancelled"}:
         raise HTTPException(status_code=400, detail="This live class has already ended")
     mtype = str(payload.message_type or "chat").strip().lower()
@@ -1141,6 +1195,9 @@ def student_raise_hand(
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
     sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    access_status = _ensure_student_live_access(sess, current_user)
+    if access_status != "admitted":
+        raise HTTPException(status_code=403, detail="Waiting for host approval")
     if not sess.allow_raise_hand:
         raise HTTPException(status_code=400, detail="Raise hand is disabled for this class")
     participant = db.scalar(
@@ -1183,6 +1240,9 @@ def student_poll_vote(
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
     sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    access_status = _ensure_student_live_access(sess, current_user)
+    if access_status != "admitted":
+        raise HTTPException(status_code=403, detail="Waiting for host approval")
     if not sess.active_poll_open or not sess.active_poll_key:
         raise HTTPException(status_code=400, detail="No active poll")
     options = list(sess.active_poll_options_json or [])

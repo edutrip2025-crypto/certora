@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import and_, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -44,6 +44,7 @@ from app.schemas import (
     LessonTopicCreate,
     LessonTopicOut,
     LiveClassBoardUpdate,
+    LiveClassHostAction,
     LiveClassMessageCreate,
     LiveClassPollCreate,
     LiveClassScheduleCreate,
@@ -54,6 +55,7 @@ from app.schemas import (
     ProviderProfileCreate,
     ProviderProfileOut,
 )
+from app.live_ws import signal_manager
 from app.services.certificates import ensure_certificate_pdf
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
@@ -68,6 +70,18 @@ def _media_paths() -> tuple[Path, Path]:
     videos_dir.mkdir(parents=True, exist_ok=True)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     return videos_dir, uploads_dir
+
+
+def _live_recording_paths(session_id: int, upload_id: str | None = None) -> tuple[Path, Path]:
+    media_root = Path(get_settings().resolved_media_dir)
+    root = media_root / "live-recordings" / str(int(session_id))
+    root.mkdir(parents=True, exist_ok=True)
+    if upload_id:
+        upload_root = root / upload_id
+        upload_root.mkdir(parents=True, exist_ok=True)
+    else:
+        upload_root = root
+    return root, upload_root
 
 
 def _safe_filename(name: str) -> str:
@@ -323,6 +337,7 @@ def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
         .order_by(LiveClassParticipant.joined_at.asc()),
     ).all()
     poll_tally = _live_poll_tally(db, sess)
+    moderation = signal_manager.moderation_snapshot(int(sess.id))
     return {
         "session": {
             "id": sess.id,
@@ -356,6 +371,12 @@ def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
                 "votes": poll_tally["votes"],
             },
         },
+        "me": {
+            "access_status": "admitted",
+            "muted": False,
+            "removed": False,
+            "breakout_room": None,
+        },
         "participants": [
             {
                 "user_id": p.user_id,
@@ -367,6 +388,7 @@ def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
             for p in participant_rows
         ],
         "participant_count": len(participant_rows),
+        "moderation": moderation,
     }
 
 
@@ -1076,6 +1098,12 @@ def provider_join_live_class(
 ):
     provider = _provider_or_404(db, current_user.id)
     sess = _provider_live_session_or_404(db, provider.id, session_id)
+    signal_manager.register_join_intent(
+        int(sess.id),
+        int(current_user.id),
+        current_user.role.value,
+        current_user.full_name or current_user.email,
+    )
     participant = db.scalar(
         select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
     )
@@ -1129,6 +1157,110 @@ def provider_live_room_state(
     provider = _provider_or_404(db, current_user.id)
     sess = _provider_live_session_or_404(db, provider.id, session_id)
     return _provider_live_room_state(db, sess)
+
+
+@router.get("/workspace/live-classes/{session_id}/moderation-state")
+def provider_live_moderation_state(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    participants = db.scalars(
+        select(LiveClassParticipant)
+        .where(LiveClassParticipant.session_id == sess.id)
+        .order_by(LiveClassParticipant.joined_at.desc()),
+    ).all()
+    snapshot = signal_manager.moderation_snapshot(sess.id)
+    p_map = {int(p.user_id): p for p in participants}
+    return {
+        "session_id": sess.id,
+        "waiting_room_enabled": bool(snapshot.get("waiting_room_enabled", True)),
+        "waiting_users": snapshot.get("waiting_users", []),
+        "muted_user_ids": snapshot.get("muted_user_ids", []),
+        "removed_user_ids": snapshot.get("removed_user_ids", []),
+        "breakouts": snapshot.get("breakouts", {}),
+        "participants": [
+            {
+                "user_id": int(p.user_id),
+                "display_name": p.display_name,
+                "actor_role": p.actor_role,
+                "is_present": bool(p.is_present),
+                "raised_hand": bool(p.raised_hand),
+                "joined_at": p.joined_at,
+                "flags": signal_manager.user_flags(sess.id, int(p.user_id)),
+            }
+            for p in participants
+        ],
+        "admitted_users": [
+            {
+                "user_id": int(uid),
+                "display_name": (p_map.get(int(uid)).display_name if p_map.get(int(uid)) else f"User {uid}"),
+                "flags": signal_manager.user_flags(sess.id, int(uid)),
+            }
+            for uid in snapshot.get("admitted_user_ids", [])
+        ],
+    }
+
+
+@router.post("/workspace/live-classes/{session_id}/host-action")
+async def provider_live_host_action(
+    session_id: int,
+    payload: LiveClassHostAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    action = str(payload.action or "").strip().lower()
+    uid = int(payload.target_user_id) if payload.target_user_id is not None else None
+    if action == "toggle_waiting_room":
+        enabled = bool(payload.enabled if payload.enabled is not None else True)
+        signal_manager.set_waiting_room_enabled(sess.id, enabled)
+    elif action == "admit" and uid:
+        signal_manager.admit_user(sess.id, uid)
+    elif action in {"reject", "remove"} and uid:
+        signal_manager.remove_user(sess.id, uid)
+    elif action in {"mute", "unmute"} and uid:
+        signal_manager.mute_user(sess.id, uid, action == "mute")
+    elif action == "assign_breakout" and uid:
+        signal_manager.assign_breakout(sess.id, uid, payload.room)
+    elif action == "clear_breakouts":
+        signal_manager.clear_breakouts(sess.id)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid host action")
+    snapshot = signal_manager.moderation_snapshot(sess.id)
+    await signal_manager.emit(
+        sess.id,
+        {
+            "type": "moderation",
+            "state": snapshot,
+            "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+        },
+    )
+    if uid:
+        await signal_manager.emit(
+            sess.id,
+            {
+                "type": "room_flags",
+                "flags": signal_manager.user_flags(sess.id, uid),
+                "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+            },
+            to_user_id=uid,
+        )
+        if action == "admit":
+            await signal_manager.emit(
+                sess.id,
+                {
+                    "type": "room_access",
+                    "status": "admitted",
+                    "flags": signal_manager.user_flags(sess.id, uid),
+                    "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+                },
+                to_user_id=uid,
+            )
+    return {"ok": True, "state": snapshot}
 
 
 @router.get("/workspace/live-classes/{session_id}/messages")
@@ -1277,6 +1409,113 @@ def provider_close_live_poll(
     )
     db.commit()
     return {"closed": True, "tally": tally}
+
+
+@router.post("/workspace/live-classes/{session_id}/recordings/init")
+def provider_init_live_recording_upload(
+    session_id: int,
+    filename: str = Form(...),
+    mime_type: str = Form("video/webm"),
+    total_chunks: int = Form(0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    _provider_live_session_or_404(db, provider.id, session_id)
+    upload_id = f"{int(current_user.id)}_{int(datetime.now(timezone.utc).timestamp())}_{uuid4().hex[:12]}"
+    _, upload_root = _live_recording_paths(session_id, upload_id)
+    (upload_root / "chunks").mkdir(parents=True, exist_ok=True)
+    meta = upload_root / "meta.json"
+    meta.write_text(
+        (
+            "{"
+            f"\"filename\":\"{_safe_filename(filename)}\","
+            f"\"mime_type\":\"{mime_type}\","
+            f"\"total_chunks\":{max(0, int(total_chunks or 0))},"
+            f"\"uploaded\":[]"
+            "}"
+        ),
+        encoding="utf-8",
+    )
+    return {"upload_id": upload_id}
+
+
+@router.post("/workspace/live-classes/{session_id}/recordings/chunk")
+def provider_upload_live_recording_chunk(
+    session_id: int,
+    upload_id: str = Form(...),
+    index: int = Form(...),
+    total_chunks: int = Form(0),
+    is_last: bool = Form(False),
+    chunk: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    _provider_live_session_or_404(db, provider.id, session_id)
+    _, upload_root = _live_recording_paths(session_id, upload_id)
+    chunks_dir = upload_root / "chunks"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+    if index < 0:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    part_path = chunks_dir / f"{int(index):06d}.part"
+    with part_path.open("wb") as out:
+        out.write(chunk.file.read())
+    return {"received": True, "index": int(index), "total_chunks": int(total_chunks or 0), "is_last": bool(is_last)}
+
+
+@router.post("/workspace/live-classes/{session_id}/recordings/complete")
+def provider_complete_live_recording_upload(
+    session_id: int,
+    upload_id: str = Form(...),
+    filename: str = Form("session_recording.webm"),
+    mime_type: str = Form("video/webm"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    root, upload_root = _live_recording_paths(session_id, upload_id)
+    chunks_dir = upload_root / "chunks"
+    if not chunks_dir.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    parts = sorted(chunks_dir.glob("*.part"))
+    if not parts:
+        raise HTTPException(status_code=400, detail="No chunks uploaded")
+    safe_name = _safe_filename(filename or "session_recording.webm")
+    final_path = root / f"{upload_id}_{safe_name}"
+    with final_path.open("wb") as out:
+        for p in parts:
+            out.write(p.read_bytes())
+    settings = get_settings()
+    if settings.resolved_object_storage_backend == "local":
+        rel = final_path.relative_to(Path(settings.resolved_media_dir)).as_posix()
+        file_url = f"/media/{rel}"
+    else:
+        file_url = upload_file_to_cloud_storage(
+            final_path,
+            object_path=f"live-recordings/{int(session_id)}/{final_path.name}",
+            content_type=mime_type or "video/webm",
+        )
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="system",
+            content="Live class recording uploaded.",
+            payload_json={"recording_url": file_url, "upload_id": upload_id},
+        ),
+    )
+    db.commit()
+    try:
+        for p in parts:
+            p.unlink(missing_ok=True)
+        chunks_dir.rmdir()
+    except Exception:
+        pass
+    return {"uploaded": True, "file_url": resolve_media_url(file_url) or file_url, "storage_ref": file_url}
 
 
 @router.post("/workspace/live-class/{course_id}/complete")

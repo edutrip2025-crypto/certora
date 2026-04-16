@@ -76,6 +76,17 @@ const state = {
     wsPingId: null,
     wsReconnectId: null,
     participantMap: {},
+    moderation: null,
+    selectedParticipantId: 0,
+    accessStatus: "admitted",
+    hostMuted: false,
+    recording: {
+      mediaRecorder: null,
+      chunks: [],
+      mimeType: "video/webm",
+      active: false,
+      uploadInFlight: false,
+    },
     rtc: {
       peers: {},
       remoteStreams: {},
@@ -1189,11 +1200,16 @@ const el = {
   liveRoomMeta: $("liveRoomMeta"),
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
   liveRoomSignalStatus: $("liveRoomSignalStatus"),
+  liveRoomWaitingOverlay: $("liveRoomWaitingOverlay"),
+  liveRoomWaitingText: $("liveRoomWaitingText"),
   liveRoomVideoStartBtn: $("liveRoomVideoStartBtn"),
   liveRoomVideoStopBtn: $("liveRoomVideoStopBtn"),
   liveRoomToggleMicBtn: $("liveRoomToggleMicBtn"),
   liveRoomShareScreenBtn: $("liveRoomShareScreenBtn"),
   liveRoomStopShareBtn: $("liveRoomStopShareBtn"),
+  liveRoomStartRecordingBtn: $("liveRoomStartRecordingBtn"),
+  liveRoomStopRecordingBtn: $("liveRoomStopRecordingBtn"),
+  liveRoomRecordingBadge: $("liveRoomRecordingBadge"),
   liveRoomLocalVideo: $("liveRoomLocalVideo"),
   liveRoomRemoteVideoGrid: $("liveRoomRemoteVideoGrid"),
   leaveLiveRoomBtn: $("leaveLiveRoomBtn"),
@@ -1208,6 +1224,8 @@ const el = {
   liveRoomAiTopicInput: $("liveRoomAiTopicInput"),
   liveRoomAiExplainBtn: $("liveRoomAiExplainBtn"),
   liveRoomHandsList: $("liveRoomHandsList"),
+  liveRoomWaitingToggle: $("liveRoomWaitingToggle"),
+  liveRoomWaitingList: $("liveRoomWaitingList"),
   liveRoomPollQuestion: $("liveRoomPollQuestion"),
   liveRoomPollOptions: $("liveRoomPollOptions"),
   liveRoomStartPollBtn: $("liveRoomStartPollBtn"),
@@ -1217,6 +1235,9 @@ const el = {
   liveRoomChatInput: $("liveRoomChatInput"),
   liveRoomSendChatBtn: $("liveRoomSendChatBtn"),
   liveRoomParticipantsList: $("liveRoomParticipantsList"),
+  liveRoomBreakoutName: $("liveRoomBreakoutName"),
+  liveRoomAssignBreakoutBtn: $("liveRoomAssignBreakoutBtn"),
+  liveRoomClearBreakoutsBtn: $("liveRoomClearBreakoutsBtn"),
   authProgressOverlay: $("authProgressOverlay"),
   authProgressTitle: $("authProgressTitle"),
   authProgressDetail: $("authProgressDetail"),
@@ -3112,6 +3133,181 @@ function setLiveSignalStatus(connected) {
   el.liveRoomSignalStatus.classList.toggle("status-in_review", !connected);
 }
 
+function setLiveWaitingOverlay(status, flags = {}) {
+  state.liveRoom.accessStatus = String(status || "admitted");
+  const waiting = state.liveRoom.accessStatus !== "admitted";
+  if (!el.liveRoomWaitingOverlay) return;
+  el.liveRoomWaitingOverlay.classList.toggle("hidden", !waiting);
+  if (!waiting) return;
+  let text = "You are waiting for host approval to enter the class.";
+  if (state.liveRoom.accessStatus === "blocked" || flags.removed) {
+    text = "Host removed you from this class.";
+  }
+  if (flags.breakout_room) {
+    text = `Assigned breakout room: ${String(flags.breakout_room)}`;
+  }
+  if (el.liveRoomWaitingText) el.liveRoomWaitingText.textContent = text;
+}
+
+function ensureLiveParticipantSelectBinding() {
+  if (!el.liveRoomParticipantsList) return;
+  el.liveRoomParticipantsList.querySelectorAll("[data-live-participant-id]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const pid = Number(node.getAttribute("data-live-participant-id") || 0);
+      state.liveRoom.selectedParticipantId = pid;
+      el.liveRoomParticipantsList.querySelectorAll(".item").forEach((n) => n.classList.remove("selected"));
+      node.classList.add("selected");
+    });
+  });
+}
+
+async function runHostAction(action, extras = {}) {
+  if (state.liveRoom.role !== "provider") return;
+  const sessionId = Number(state.liveRoom.sessionId || 0);
+  if (!sessionId) return;
+  await api("POST", `/provider/workspace/live-classes/${sessionId}/host-action`, {
+    action,
+    ...extras,
+  });
+  await refreshLiveRoomState();
+  await refreshLiveModerationState();
+}
+
+async function refreshLiveModerationState() {
+  if (state.liveRoom.role !== "provider") return;
+  const sessionId = Number(state.liveRoom.sessionId || 0);
+  if (!sessionId) return;
+  const out = await api("GET", `/provider/workspace/live-classes/${sessionId}/moderation-state`);
+  state.liveRoom.moderation = out || null;
+  const waiting = out?.waiting_users || [];
+  if (el.liveRoomWaitingToggle) {
+    el.liveRoomWaitingToggle.checked = Boolean(out?.waiting_room_enabled ?? true);
+  }
+  renderList(
+    el.liveRoomWaitingList,
+    waiting,
+    (w) => `
+      <div class="row between">
+        <span><strong>${escapeHtmlAttr(w.display_name || `User ${w.user_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(w.role || "student")})</span></span>
+        <span class="actions">
+          <button class="btn small" data-live-admit="${w.user_id}">Admit</button>
+          <button class="btn small danger" data-live-reject="${w.user_id}">Reject</button>
+        </span>
+      </div>
+    `,
+    "No users in waiting room.",
+  );
+  document.querySelectorAll("[data-live-admit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.getAttribute("data-live-admit") || 0);
+      if (!uid) return;
+      runHostAction("admit", { target_user_id: uid }).catch((err) => toast(err?.message || "Admit failed", "error"));
+    });
+  });
+  document.querySelectorAll("[data-live-reject]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.getAttribute("data-live-reject") || 0);
+      if (!uid) return;
+      runHostAction("reject", { target_user_id: uid }).catch((err) => toast(err?.message || "Reject failed", "error"));
+    });
+  });
+}
+
+function setLiveRecordingUi(active) {
+  if (el.liveRoomRecordingBadge) el.liveRoomRecordingBadge.classList.toggle("hidden", !active);
+  if (el.liveRoomStartRecordingBtn) el.liveRoomStartRecordingBtn.disabled = Boolean(active);
+  if (el.liveRoomStopRecordingBtn) el.liveRoomStopRecordingBtn.disabled = !active;
+}
+
+async function uploadLiveRecordingChunks(blob, mimeType = "video/webm") {
+  if (state.liveRoom.role !== "provider") return;
+  const sessionId = Number(state.liveRoom.sessionId || 0);
+  if (!sessionId) return;
+  const fileName = `live_${sessionId}_${Date.now()}.webm`;
+  const initForm = new FormData();
+  initForm.append("filename", fileName);
+  initForm.append("mime_type", mimeType);
+  initForm.append("total_chunks", "0");
+  const initRes = await fetch(`/provider/workspace/live-classes/${sessionId}/recordings/init`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await state.auth.currentUser.getIdToken()}` },
+    body: initForm,
+  });
+  if (!initRes.ok) throw new Error("Recording init failed");
+  const initData = await initRes.json();
+  const uploadId = String(initData.upload_id || "");
+  if (!uploadId) throw new Error("Recording upload id missing");
+  const chunkSize = 1024 * 1024 * 2;
+  const totalChunks = Math.max(1, Math.ceil(blob.size / chunkSize));
+  for (let i = 0; i < totalChunks; i += 1) {
+    const part = blob.slice(i * chunkSize, Math.min(blob.size, (i + 1) * chunkSize), mimeType);
+    const fd = new FormData();
+    fd.append("upload_id", uploadId);
+    fd.append("index", String(i));
+    fd.append("total_chunks", String(totalChunks));
+    fd.append("is_last", String(i === totalChunks - 1));
+    fd.append("chunk", new File([part], `${uploadId}_${i}.part`, { type: "application/octet-stream" }));
+    const res = await fetch(`/provider/workspace/live-classes/${sessionId}/recordings/chunk`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await state.auth.currentUser.getIdToken()}` },
+      body: fd,
+    });
+    if (!res.ok) throw new Error(`Recording chunk ${i + 1}/${totalChunks} failed`);
+  }
+  const completeFd = new FormData();
+  completeFd.append("upload_id", uploadId);
+  completeFd.append("filename", fileName);
+  completeFd.append("mime_type", mimeType);
+  const finalRes = await fetch(`/provider/workspace/live-classes/${sessionId}/recordings/complete`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await state.auth.currentUser.getIdToken()}` },
+    body: completeFd,
+  });
+  if (!finalRes.ok) throw new Error("Recording finalize failed");
+  return finalRes.json();
+}
+
+async function startLiveRecording() {
+  if (state.liveRoom.role !== "provider") throw new Error("Only provider can record");
+  const stream = el.liveRoomLocalVideo?.srcObject;
+  if (!stream) throw new Error("Start camera before recording");
+  const rec = state.liveRoom.recording;
+  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+    ? "video/webm;codecs=vp9,opus"
+    : "video/webm";
+  rec.chunks = [];
+  rec.mimeType = mimeType;
+  rec.mediaRecorder = new MediaRecorder(stream, { mimeType });
+  rec.mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) rec.chunks.push(e.data);
+  };
+  rec.mediaRecorder.start(1000);
+  rec.active = true;
+  setLiveRecordingUi(true);
+}
+
+async function stopLiveRecording() {
+  const rec = state.liveRoom.recording;
+  if (!rec.mediaRecorder || !rec.active) return;
+  if (rec.uploadInFlight) return;
+  rec.uploadInFlight = true;
+  await new Promise((resolve) => {
+    rec.mediaRecorder.onstop = resolve;
+    rec.mediaRecorder.stop();
+  });
+  const blob = new Blob(rec.chunks, { type: rec.mimeType || "video/webm" });
+  rec.mediaRecorder = null;
+  rec.chunks = [];
+  rec.active = false;
+  setLiveRecordingUi(false);
+  try {
+    const out = await uploadLiveRecordingChunks(blob, rec.mimeType || "video/webm");
+    toast(`Recording saved${out?.file_url ? "" : " (storage ref only)"}`);
+  } finally {
+    rec.uploadInFlight = false;
+  }
+}
+
 function normalizeWsBase() {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.host}`;
@@ -3265,6 +3461,23 @@ async function openLiveSignalSocket() {
     }
     if (type === "presence") {
       refreshLiveRoomState().catch(() => {});
+      if (state.liveRoom.role === "provider") refreshLiveModerationState().catch(() => {});
+      return;
+    }
+    if (type === "room_access") {
+      setLiveWaitingOverlay(msg?.status || "admitted", msg?.flags || {});
+      refreshLiveRoomState().catch(() => {});
+      return;
+    }
+    if (type === "room_flags") {
+      const flags = msg?.flags || {};
+      setLiveWaitingOverlay(state.liveRoom.accessStatus || "admitted", flags);
+      setLiveHostMuted(Boolean(flags.muted));
+      return;
+    }
+    if (type === "moderation" && state.liveRoom.role === "provider") {
+      state.liveRoom.moderation = msg?.state || null;
+      refreshLiveModerationState().catch(() => {});
     }
   };
 }
@@ -3394,6 +3607,16 @@ function setLiveMicMuted(muted) {
   });
   if (el.liveRoomToggleMicBtn) el.liveRoomToggleMicBtn.textContent = rtc.micMuted ? "Unmute Mic" : "Mute Mic";
   attachLocalVideoPreview();
+}
+
+function setLiveHostMuted(muted) {
+  state.liveRoom.hostMuted = Boolean(muted);
+  if (state.liveRoom.hostMuted) setLiveMicMuted(true);
+  if (el.liveRoomToggleMicBtn) {
+    el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
+    if (state.liveRoom.hostMuted) el.liveRoomToggleMicBtn.textContent = "Muted by Host";
+    else el.liveRoomToggleMicBtn.textContent = liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic";
+  }
 }
 
 async function toggleLiveMic() {
@@ -3567,6 +3790,7 @@ function stopLiveRoomPolling() {
 
 function clearLiveRoomState() {
   closeLiveSignalSocket();
+  try { stopLiveRecording().catch(() => {}); } catch {}
   stopLiveRoomPolling();
   if (state.liveRoom.classTimerId) {
     clearInterval(state.liveRoom.classTimerId);
@@ -3579,6 +3803,17 @@ function clearLiveRoomState() {
   state.liveRoom.lastMessageId = 0;
   state.liveRoom.lastRoomState = null;
   state.liveRoom.participantMap = {};
+  state.liveRoom.moderation = null;
+  state.liveRoom.selectedParticipantId = 0;
+  state.liveRoom.accessStatus = "admitted";
+  state.liveRoom.hostMuted = false;
+  state.liveRoom.recording = {
+    mediaRecorder: null,
+    chunks: [],
+    mimeType: "video/webm",
+    active: false,
+    uploadInFlight: false,
+  };
   const rtc = liveRtcState();
   stopTracks(rtc.screenStream);
   stopTracks(rtc.cameraStream);
@@ -3598,6 +3833,8 @@ function clearLiveRoomState() {
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
   if (el.liveRoomRemoteVideoGrid) el.liveRoomRemoteVideoGrid.innerHTML = "";
   attachLocalVideoPreview();
+  setLiveRecordingUi(false);
+  setLiveWaitingOverlay("admitted", {});
   if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
   if (el.liveRoomPollPanel) {
     el.liveRoomPollPanel.classList.add("hidden");
@@ -3646,13 +3883,17 @@ function renderLiveRoomParticipants(room) {
   participants.forEach((p) => {
     state.liveRoom.participantMap[String(Number(p.user_id || 0))] = p;
   });
+  const isProvider = state.liveRoom.role === "provider";
   renderList(
     el.liveRoomParticipantsList,
     participants,
     (p) => `
-      <div class="row between">
+      <div class="row between" data-live-participant-id="${Number(p.user_id || 0)}">
         <span><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></span>
-        ${p.raised_hand ? "<span class='badge'>Hand Raised</span>" : "<span class='meta'>Active</span>"}
+        <span class="actions">
+          ${p.raised_hand ? "<span class='badge'>Hand Raised</span>" : "<span class='meta'>Active</span>"}
+          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" data-live-mute="${Number(p.user_id || 0)}">Mute</button><button class="btn small danger" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
+        </span>
       </div>
     `,
     "No active participants.",
@@ -3663,6 +3904,21 @@ function renderLiveRoomParticipants(room) {
     (p) => `<div><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></div>`,
     "No raised hands.",
   );
+  ensureLiveParticipantSelectBinding();
+  document.querySelectorAll("[data-live-mute]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.getAttribute("data-live-mute") || 0);
+      if (!uid) return;
+      runHostAction("mute", { target_user_id: uid }).catch((err) => toast(err?.message || "Mute failed", "error"));
+    });
+  });
+  document.querySelectorAll("[data-live-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.getAttribute("data-live-remove") || 0);
+      if (!uid) return;
+      runHostAction("remove", { target_user_id: uid }).catch((err) => toast(err?.message || "Remove failed", "error"));
+    });
+  });
   renderLiveRemoteVideos();
 }
 
@@ -3722,6 +3978,12 @@ function applyLiveRoomState(room) {
   state.liveRoom.lastRoomState = room || null;
   const session = room?.session || {};
   const me = room?.me || {};
+  setLiveWaitingOverlay(me.access_status || "admitted", {
+    muted: Boolean(me.muted),
+    removed: Boolean(me.removed),
+    breakout_room: me.breakout_room || null,
+  });
+  setLiveHostMuted(Boolean(me.muted));
   if (el.liveRoomTitle) el.liveRoomTitle.textContent = session.title || "Live Classroom";
   if (el.liveRoomMeta) {
     const mode = session.meeting_mode === "external" ? "External meeting + in-app tools" : "In-app video classroom";
@@ -3755,18 +4017,30 @@ function applyLiveRoomState(room) {
     el.liveRoomSendChatBtn.disabled = !session.allow_chat;
   }
   if (el.liveRoomChatInput) {
-    el.liveRoomChatInput.disabled = !session.allow_chat;
+    el.liveRoomChatInput.disabled = !session.allow_chat || (me.access_status && me.access_status !== "admitted") || Boolean(me.muted);
     if (!session.allow_chat) el.liveRoomChatInput.placeholder = "Chat is disabled for this class";
+    else if (Boolean(me.muted)) el.liveRoomChatInput.placeholder = "You are muted by host";
+    else if (me.access_status && me.access_status !== "admitted") el.liveRoomChatInput.placeholder = "Waiting for host approval";
     else el.liveRoomChatInput.placeholder = "Type message";
   }
   if (el.liveRoomVideoStartBtn) el.liveRoomVideoStartBtn.disabled = false;
   if (el.liveRoomVideoStopBtn) el.liveRoomVideoStopBtn.disabled = false;
   if (el.liveRoomToggleMicBtn) {
-    el.liveRoomToggleMicBtn.disabled = false;
-    el.liveRoomToggleMicBtn.textContent = liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic";
+    el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
+    el.liveRoomToggleMicBtn.textContent = state.liveRoom.hostMuted
+      ? "Muted by Host"
+      : (liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic");
   }
   if (el.liveRoomShareScreenBtn) el.liveRoomShareScreenBtn.disabled = false;
   if (el.liveRoomStopShareBtn) el.liveRoomStopShareBtn.disabled = false;
+  if (el.liveRoomStartRecordingBtn) el.liveRoomStartRecordingBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomStopRecordingBtn) el.liveRoomStopRecordingBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomRecordingBadge) el.liveRoomRecordingBadge.classList.toggle("hidden", !(isProvider && state.liveRoom.recording.active));
+  if (el.liveRoomWaitingToggle) el.liveRoomWaitingToggle.closest("label")?.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomWaitingList) el.liveRoomWaitingList.parentElement?.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomAssignBreakoutBtn) el.liveRoomAssignBreakoutBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomClearBreakoutsBtn) el.liveRoomClearBreakoutsBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomBreakoutName) el.liveRoomBreakoutName.classList.toggle("hidden", !isProvider);
 
   renderLiveRoomParticipants(room);
   renderLivePollPanel(room);
@@ -3792,7 +4066,9 @@ async function refreshLiveRoomState() {
 
 async function refreshLiveRoom() {
   if (!state.liveRoom.active || !state.liveRoom.sessionId) return;
-  await Promise.all([refreshLiveRoomState(), refreshLiveRoomMessages()]);
+  const tasks = [refreshLiveRoomState(), refreshLiveRoomMessages()];
+  if (state.liveRoom.role === "provider") tasks.push(refreshLiveModerationState());
+  await Promise.all(tasks);
 }
 
 function startLiveRoomPolling() {
@@ -3812,10 +4088,16 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.lastRoomState = null;
   if (liveRtcState().signalSeenIds) liveRtcState().signalSeenIds = {};
   if (liveRtcState().signalSeenKeys) liveRtcState().signalSeenKeys = {};
+  state.liveRoom.moderation = null;
+  state.liveRoom.selectedParticipantId = 0;
+  state.liveRoom.accessStatus = "admitted";
+  state.liveRoom.hostMuted = false;
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
   setLiveSignalStatus(false);
+  setLiveRecordingUi(false);
+  setLiveWaitingOverlay("admitted", {});
   if (el.liveClassroomScreen) el.liveClassroomScreen.classList.remove("hidden");
   if (initialState) applyLiveRoomState(initialState);
   await refreshLiveRoom();
@@ -3851,6 +4133,12 @@ async function leaveLiveClassroom() {
 async function sendLiveRoomChatMessage(messageType = "chat", contentRaw = "") {
   const sessionId = Number(state.liveRoom.sessionId || 0);
   if (!sessionId) return;
+  if (state.liveRoom.accessStatus && state.liveRoom.accessStatus !== "admitted") {
+    throw new Error("Waiting for host approval");
+  }
+  if (messageType === "chat" && state.liveRoom.hostMuted && state.liveRoom.role === "student") {
+    throw new Error("You are muted by host");
+  }
   const content = String(contentRaw || "").trim();
   if (!content) return;
   const prefix = getLiveRoomApiPrefix();
@@ -7422,6 +7710,34 @@ function bindEvents() {
   });
   $("liveRoomExportAttendanceBtn")?.addEventListener("click", () => {
     exportLiveAttendanceCsv();
+  });
+  $("liveRoomWaitingToggle")?.addEventListener("change", () => {
+    runHostAction("toggle_waiting_room", { enabled: Boolean(el.liveRoomWaitingToggle?.checked) })
+      .catch((err) => toast(err?.message || "Failed to update waiting room", "error"));
+  });
+  $("liveRoomAssignBreakoutBtn")?.addEventListener("click", () => {
+    const uid = Number(state.liveRoom.selectedParticipantId || 0);
+    const room = String(el.liveRoomBreakoutName?.value || "").trim();
+    if (!uid) return toast("Select a participant first", "error");
+    if (!room) return toast("Enter breakout room name", "error");
+    runHostAction("assign_breakout", { target_user_id: uid, room })
+      .then(() => toast("Breakout assigned"))
+      .catch((err) => toast(err?.message || "Failed to assign breakout", "error"));
+  });
+  $("liveRoomClearBreakoutsBtn")?.addEventListener("click", () => {
+    runHostAction("clear_breakouts")
+      .then(() => toast("Breakout rooms closed"))
+      .catch((err) => toast(err?.message || "Failed to close breakouts", "error"));
+  });
+  $("liveRoomStartRecordingBtn")?.addEventListener("click", () => {
+    startLiveRecording()
+      .then(() => toast("Recording started"))
+      .catch((err) => toast(err?.message || "Failed to start recording", "error"));
+  });
+  $("liveRoomStopRecordingBtn")?.addEventListener("click", () => {
+    stopLiveRecording()
+      .then(() => toast("Recording stopped"))
+      .catch((err) => toast(err?.message || "Failed to stop recording", "error"));
   });
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }

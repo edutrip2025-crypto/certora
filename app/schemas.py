@@ -449,3 +449,10 @@ class LiveClassPollCreate(BaseModel):
 
 class LiveClassPollVoteCreate(BaseModel):
     option_index: int = Field(ge=0, le=7)
+
+
+class LiveClassHostAction(BaseModel):
+    action: str = Field(min_length=2, max_length=40)  # admit|reject|remove|mute|unmute|assign_breakout|clear_breakouts|toggle_waiting_room
+    target_user_id: int | None = None
+    room: str | None = None
+    enabled: bool | None = None
