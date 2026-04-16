@@ -356,6 +356,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   right: 14px;
   z-index: 12;
   pointer-events: none;
+  transition: transform .28s ease, opacity .22s ease;
+}
+.live-stage-topbar.is-hidden {
+  transform: translateY(calc(-100% - 18px));
+  opacity: 0;
+  pointer-events: none;
 }
 .live-topbar-row {
   justify-content: flex-end;

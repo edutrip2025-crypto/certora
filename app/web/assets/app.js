@@ -96,6 +96,7 @@ const state = {
     boardDraftDirty: false,
     controlDockIdleTimer: null,
     controlDockPointerInside: false,
+    topbarPointerInside: false,
     controlDockVisible: true,
     reactionBurstRecent: {},
     screenShareInFlight: false,
@@ -1220,6 +1221,7 @@ const el = {
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
   liveRoomSignalStatus: $("liveRoomSignalStatus"),
   liveRoomStageShell: $("liveRoomStageShell"),
+  liveRoomStageTopbar: $("liveRoomStageTopbar"),
   liveRoomControlDock: $("liveRoomControlDock"),
   liveRoomStageVideo: $("liveRoomStageVideo"),
   liveRoomStagePlaceholder: $("liveRoomStagePlaceholder"),
@@ -3479,13 +3481,14 @@ function clearLiveControlDockIdleTimer() {
 function setLiveControlDockVisibility(visible) {
   state.liveRoom.controlDockVisible = Boolean(visible);
   if (el.liveRoomControlDock) el.liveRoomControlDock.classList.toggle("is-hidden", !state.liveRoom.controlDockVisible);
+  if (el.liveRoomStageTopbar) el.liveRoomStageTopbar.classList.toggle("is-hidden", !state.liveRoom.controlDockVisible);
 }
 
 function scheduleLiveControlDockAutoHide() {
   clearLiveControlDockIdleTimer();
   if (!state.liveRoom.active) return;
   state.liveRoom.controlDockIdleTimer = setTimeout(() => {
-    if (!state.liveRoom.controlDockPointerInside) setLiveControlDockVisibility(false);
+    if (!state.liveRoom.controlDockPointerInside && !state.liveRoom.topbarPointerInside) setLiveControlDockVisibility(false);
   }, 3000);
 }
 
@@ -3521,12 +3524,12 @@ function setIconButtonLabel(button, icon, label) {
 function liveUiIcon(name) {
   const stroke = "currentColor";
   const w = 18;
-  const base = (path) => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+  const base = (path, sw = 1.8) => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
   if (name === "tools") return base("<rect x='4' y='4' width='6' height='6' rx='1.2'/><rect x='14' y='4' width='6' height='6' rx='1.2'/><rect x='4' y='14' width='6' height='6' rx='1.2'/><rect x='14' y='14' width='6' height='6' rx='1.2'/>");
   if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
   if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
-  if (name === "fullscreen") return base("<path d='M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5'/>");
-  if (name === "fullscreen-exit") return base("<path d='M9 9H3V3M15 9h6V3M9 15H3v6M21 15v6h-6'/>");
+  if (name === "fullscreen") return base("<path d='M4 9V4h5M15 4h5v5M4 15v5h5M20 15v5h-5'/>", 2.2);
+  if (name === "fullscreen-exit") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>", 2.2);
   if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
   if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
   if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
@@ -4391,6 +4394,7 @@ function stopLiveRoomPolling() {
 function clearLiveRoomState() {
   clearLiveControlDockIdleTimer();
   state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.topbarPointerInside = false;
   state.liveRoom.controlDockVisible = true;
   closeLiveSignalSocket();
   try { stopLiveRecording().catch(() => {}); } catch {}
@@ -4424,6 +4428,7 @@ function clearLiveRoomState() {
   state.liveRoom.boardServerText = "";
   state.liveRoom.boardDraftDirty = false;
   state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.topbarPointerInside = false;
   state.liveRoom.controlDockVisible = true;
   state.liveRoom.reactionBurstRecent = {};
   state.liveRoom.screenShareInFlight = false;
@@ -4802,6 +4807,7 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.boardServerText = "";
   state.liveRoom.boardDraftDirty = false;
   state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.topbarPointerInside = false;
   state.liveRoom.controlDockVisible = true;
   refreshLiveLeaveButton();
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
@@ -7594,6 +7600,24 @@ function bindEvents() {
   });
   el.liveRoomControlDock?.addEventListener("focusout", () => {
     state.liveRoom.controlDockPointerInside = false;
+    scheduleLiveControlDockAutoHide();
+  });
+  el.liveRoomStageTopbar?.addEventListener("mouseenter", () => {
+    state.liveRoom.topbarPointerInside = true;
+    setLiveControlDockVisibility(true);
+    clearLiveControlDockIdleTimer();
+  });
+  el.liveRoomStageTopbar?.addEventListener("mouseleave", () => {
+    state.liveRoom.topbarPointerInside = false;
+    scheduleLiveControlDockAutoHide();
+  });
+  el.liveRoomStageTopbar?.addEventListener("focusin", () => {
+    state.liveRoom.topbarPointerInside = true;
+    setLiveControlDockVisibility(true);
+    clearLiveControlDockIdleTimer();
+  });
+  el.liveRoomStageTopbar?.addEventListener("focusout", () => {
+    state.liveRoom.topbarPointerInside = false;
     scheduleLiveControlDockAutoHide();
   });
   el.showSignupBtn?.addEventListener("click", () => showAuthMode("signup"));
