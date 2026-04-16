@@ -501,6 +501,7 @@
         <button class="nav-btn active student-nav-btn" data-student-view="home">Home</button>
         <button class="nav-btn student-nav-btn" data-student-view="available">Available Courses</button>
         <button class="nav-btn student-nav-btn" data-student-view="enrolled">My Courses</button>
+        <button class="nav-btn student-nav-btn" data-student-view="certifications">Certifications</button>
         <div class="sidebar-tools">
           <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">&#9881;</button>
           <div class="settings-menu hidden">
@@ -520,13 +521,6 @@
           <button id="refreshStudentDashboardBtn" class="btn small">Refresh</button>
         </div>
         <div id="studentStats" class="stats"></div>
-        <section class="moderation-toolbar" style="margin-top:18px;">
-          <div class="row between">
-            <h3 style="margin:0;">My Certificates</h3>
-            <div class="meta">Certificates issued after passing eligible assessments.</div>
-          </div>
-          <div id="studentCertificatesList" class="list" style="margin-top:10px;"></div>
-        </section>
       </section>
 
       <section class="panel content hidden" id="student-view-available">
@@ -537,13 +531,6 @@
       <section class="panel content hidden" id="student-view-enrolled">
         <h2>My Enrolled Courses</h2>
         <div id="studentEnrolledCourses" class="list"></div>
-        <section class="moderation-toolbar" style="margin-top:14px;">
-          <div class="row between">
-            <h3 style="margin:0;">Certifications</h3>
-            <div class="meta">Certificates earned from passed assessments.</div>
-          </div>
-          <div id="studentEnrolledCertificatesList" class="list" style="margin-top:10px;"></div>
-        </section>
         <section id="studentCourseViewer" class="moderation-toolbar hidden">
           <div class="row between">
             <h3 id="scvTitle" style="margin:0;">Course Viewer</h3>
@@ -609,6 +596,15 @@
             </div>
           </div>
         </section>
+      </section>
+
+      <section class="panel content hidden" id="student-view-certifications">
+        <div class="row between">
+          <h2>Certifications</h2>
+          <button id="refreshStudentCertificationsBtn" class="btn small">Refresh</button>
+        </div>
+        <p class="muted">Certificates issued after passing eligible assessments.</p>
+        <div id="studentCertificatesTabList" class="list"></div>
       </section>
     </section>
 

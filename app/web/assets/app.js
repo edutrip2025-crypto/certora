@@ -1041,7 +1041,7 @@ const el = {
   providerHomeStats: $("providerHomeStats"),
   studentStats: $("studentStats"),
   studentCertificatesList: $("studentCertificatesList"),
-  studentEnrolledCertificatesList: $("studentEnrolledCertificatesList"),
+  studentCertificatesTabList: $("studentCertificatesTabList"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentCourseViewer: $("studentCourseViewer"),
@@ -1135,22 +1135,15 @@ function toast(message, type = "ok") {
   setTimeout(() => node.remove(), 2600);
 }
 
-function showAuthProgress(title = "Signing you in", detail = "Please wait while we load your workspace.", immediate = false) {
+function showAuthProgress(title = "Signing you in", detail = "Please wait while we load your workspace.") {
   if (el.authProgressTitle) el.authProgressTitle.textContent = title;
   if (el.authProgressDetail) el.authProgressDetail.textContent = detail;
   if (state.authProgressTimer) {
     clearTimeout(state.authProgressTimer);
     state.authProgressTimer = null;
   }
-  const open = () => {
-    state.authProgressVisible = true;
-    el.authProgressOverlay?.classList.remove("hidden");
-  };
-  if (state.authProgressVisible || immediate) {
-    open();
-    return;
-  }
-  state.authProgressTimer = setTimeout(open, 220);
+  state.authProgressVisible = true;
+  el.authProgressOverlay?.classList.remove("hidden");
 }
 
 function hideAuthProgress() {
@@ -1469,6 +1462,9 @@ function activateStudentSubView(name) {
   document.querySelectorAll('[id^="student-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`student-view-${name}`);
   if (pane) pane.classList.remove("hidden");
+  if (name === "certifications") {
+    refreshStudentCertifications().catch(() => toast("Failed to load certifications", "error"));
+  }
 }
 
 function renderApprovalsTab() {
@@ -2504,7 +2500,6 @@ async function refreshProviderHome() {
 
 async function refreshStudentDashboard() {
   const data = await api("GET", "/student/dashboard");
-  const certs = await api("GET", "/student/certificates");
   renderSimpleStats(el.studentStats, {
     "Enrolled Courses": data.stats?.total_enrolled ?? 0,
     "Completed Courses": data.stats?.completed_courses ?? 0,
@@ -2512,19 +2507,6 @@ async function refreshStudentDashboard() {
     "Exam Eligible": data.stats?.exam_eligible_courses ?? 0,
     "Certificates": data.stats?.certificates_issued ?? 0,
   });
-  const certItems = certs || [];
-  const certRenderer = (c) => `
-    <div>
-      <div><strong>${c.course_name}</strong></div>
-      <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
-      <div class="actions">
-        ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
-        <a class="btn small" href="${c.verification_link}" target="_blank" rel="noreferrer">Verify</a>
-      </div>
-    </div>
-  `;
-  renderList(el.studentCertificatesList, certItems, certRenderer, "No certificates issued yet.");
-  renderList(el.studentEnrolledCertificatesList, certItems, certRenderer, "No certificates issued yet.");
   renderList(
     el.studentAvailableCourses,
     data.available || [],
@@ -2588,6 +2570,22 @@ async function refreshStudentDashboard() {
       }
     });
   });
+}
+
+async function refreshStudentCertifications() {
+  const certs = await api("GET", "/student/certificates");
+  const certItems = certs || [];
+  const certRenderer = (c) => `
+    <div>
+      <div><strong>${c.course_name}</strong></div>
+      <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
+      <div class="actions">
+        ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
+        <a class="btn small" href="${c.verification_link}" target="_blank" rel="noreferrer">Verify</a>
+      </div>
+    </div>
+  `;
+  renderList(el.studentCertificatesTabList, certItems, certRenderer, "No certificates issued yet.");
 }
 
 async function refreshProviderContent() {
@@ -5072,7 +5070,7 @@ async function loadSessionContext() {
   if (context.role === "student") {
     showView("student");
     activateStudentSubView("home");
-    await refreshStudentDashboard();
+    await Promise.all([refreshStudentDashboard(), refreshStudentCertifications()]);
     return context;
   }
 
@@ -5125,7 +5123,6 @@ async function initFirebase() {
       showAuthProgress(
         "Loading your workspace",
         "Fetching profile, permissions, and dashboard data...",
-        true,
       );
       const context = await loadSessionContext();
       if (state.authLoginInFlight && context) toast("Login successful");
@@ -5190,6 +5187,7 @@ function handleKeyboardShortcuts(event) {
     if (event.key === "1") activateStudentSubView("home");
     if (event.key === "2") activateStudentSubView("available");
     if (event.key === "3") activateStudentSubView("enrolled");
+    if (event.key === "4") activateStudentSubView("certifications");
   }
 }
 
@@ -5254,7 +5252,7 @@ function bindEvents() {
       state.authLoginFallbackTimer = setTimeout(async () => {
         if (!state.authLoginInFlight || !state.auth?.currentUser) return;
         try {
-          showAuthProgress("Loading your workspace", "Preparing your dashboard...", true);
+          showAuthProgress("Loading your workspace", "Preparing your dashboard...");
           const context = await loadSessionContext();
           if (context) toast("Login successful");
         } catch (err) {
@@ -5283,7 +5281,7 @@ function bindEvents() {
       state.authLoginFallbackTimer = setTimeout(async () => {
         if (!state.authLoginInFlight || !state.auth?.currentUser) return;
         try {
-          showAuthProgress("Loading your workspace", "Preparing your dashboard...", true);
+          showAuthProgress("Loading your workspace", "Preparing your dashboard...");
           const context = await loadSessionContext();
           if (context) toast("Login successful");
         } catch (err) {
@@ -5879,7 +5877,10 @@ function bindEvents() {
   });
 
   $("refreshProviderCoursesBtn")?.addEventListener("click", () => refreshProviderContent().catch(() => toast("Failed to refresh courses", "error")));
-  $("refreshStudentDashboardBtn")?.addEventListener("click", () => refreshStudentDashboard().catch(() => toast("Failed to refresh dashboard", "error")));
+  $("refreshStudentDashboardBtn")?.addEventListener("click", () =>
+    Promise.all([refreshStudentDashboard(), refreshStudentCertifications()]).catch(() => toast("Failed to refresh dashboard", "error")));
+  $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
+    refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderAssessmentsBtn")?.addEventListener("click", () => refreshProviderAssessments().catch(() => toast("Failed to refresh assessments", "error")));
   $("refreshProviderCommentsBtn")?.addEventListener("click", () => refreshProviderFeedback().catch(() => toast("Failed to refresh feedback", "error")));
   $("refreshProviderNotificationsBtn")?.addEventListener("click", () => refreshProviderNotifications().catch(() => toast("Failed to refresh notifications", "error")));
