@@ -4997,6 +4997,9 @@ function bindEvents() {
               if (out?.custom_token) {
                 await signInWithCustomToken(state.auth, out.custom_token);
                 loggedIn = true;
+              } else if (out?.password_login_ready) {
+                await signInWithEmailAndPassword(state.auth, email, rawPassword);
+                loggedIn = true;
               }
             } catch (breakglassErr) {
               breakglassErrorMessage = String(breakglassErr?.message || breakglassErr || "").trim();

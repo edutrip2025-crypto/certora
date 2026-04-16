@@ -453,9 +453,18 @@ def admin_breakglass_login(
         raise HTTPException(status_code=400, detail="Email is required.")
     if email_norm != "admin@certora.in":
         raise HTTPException(status_code=403, detail="Break-glass login is allowed only for admin@certora.in")
-    uid = ensure_firebase_user_uid(email_norm, display_name="Certora Admin")
-    if not uid:
-        raise HTTPException(status_code=500, detail="Failed to resolve Firebase admin user.")
+    try:
+        uid = ensure_firebase_user_uid(email_norm, display_name="Certora Admin")
+        if not uid:
+            raise HTTPException(status_code=500, detail="Failed to resolve Firebase admin user.")
+        # Ensure client password sign-in can always work without mailbox access.
+        updated_uid = set_firebase_password_by_email(email_norm, payload.password)
+        if not updated_uid:
+            raise HTTPException(status_code=500, detail="Failed to set Firebase admin password.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Firebase admin recovery failed: {str(exc)}")
 
     user = db.scalar(_normalized_user_query(email_norm))
     if not user:
@@ -481,19 +490,25 @@ def admin_breakglass_login(
     db.commit()
     db.refresh(user)
     _safe_sync_claims(uid, user, ApprovalStatus.APPROVED)
-    custom_token = create_firebase_custom_token(
-        uid,
-        {
-            "role": UserRole.ADMIN.value,
-            "approval_status": ApprovalStatus.APPROVED.value,
-            "app_user_id": user.id,
-            "is_active": True,
-        },
-    )
+    custom_token = None
+    try:
+        custom_token = create_firebase_custom_token(
+            uid,
+            {
+                "role": UserRole.ADMIN.value,
+                "approval_status": ApprovalStatus.APPROVED.value,
+                "app_user_id": user.id,
+                "is_active": True,
+            },
+        )
+    except Exception:
+        # Fallback path: frontend can sign in using admin email + recovery key password.
+        custom_token = None
     return {
         "ok": True,
         "email": user.email,
         "public_uid": _public_uid(user.id),
         "role": user.role.value,
         "custom_token": custom_token,
+        "password_login_ready": True,
     }
