@@ -963,6 +963,54 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   to { opacity: 1; transform: translateY(0); }
 }
 
+.auth-progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(3px);
+}
+.auth-progress-card {
+  width: min(420px, 100%);
+  border-radius: 16px;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  padding: 24px 20px;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 10px;
+}
+.auth-progress-spinner {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: 6px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-right-color: #14b8a6;
+  animation: auth-spinner-spin 0.95s linear infinite;
+}
+.auth-progress-title {
+  margin-top: 2px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.14rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.auth-progress-detail {
+  font-size: .95rem;
+  color: #475569;
+  line-height: 1.5;
+}
+@keyframes auth-spinner-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .proctor-modal {
   position: fixed;
   inset: 0;

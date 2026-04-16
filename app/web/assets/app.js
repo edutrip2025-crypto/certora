@@ -22,6 +22,8 @@ const state = {
   context: null,
   authLoginInFlight: false,
   authLoginFallbackTimer: null,
+  authProgressTimer: null,
+  authProgressVisible: false,
   authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
@@ -1114,6 +1116,9 @@ const el = {
   providerRatingsList: $("providerRatingsList"),
   providerNotificationsList: $("providerNotificationsList"),
   providerCertsList: $("providerCertsList"),
+  authProgressOverlay: $("authProgressOverlay"),
+  authProgressTitle: $("authProgressTitle"),
+  authProgressDetail: $("authProgressDetail"),
   toastStack: $("toastStack"),
 };
 
@@ -1128,6 +1133,33 @@ function toast(message, type = "ok") {
   node.textContent = message;
   el.toastStack.appendChild(node);
   setTimeout(() => node.remove(), 2600);
+}
+
+function showAuthProgress(title = "Signing you in", detail = "Please wait while we load your workspace.", immediate = false) {
+  if (el.authProgressTitle) el.authProgressTitle.textContent = title;
+  if (el.authProgressDetail) el.authProgressDetail.textContent = detail;
+  if (state.authProgressTimer) {
+    clearTimeout(state.authProgressTimer);
+    state.authProgressTimer = null;
+  }
+  const open = () => {
+    state.authProgressVisible = true;
+    el.authProgressOverlay?.classList.remove("hidden");
+  };
+  if (state.authProgressVisible || immediate) {
+    open();
+    return;
+  }
+  state.authProgressTimer = setTimeout(open, 220);
+}
+
+function hideAuthProgress() {
+  if (state.authProgressTimer) {
+    clearTimeout(state.authProgressTimer);
+    state.authProgressTimer = null;
+  }
+  state.authProgressVisible = false;
+  el.authProgressOverlay?.classList.add("hidden");
 }
 
 async function getHeaders(authRequired = true) {
@@ -1179,6 +1211,7 @@ function showView(mode) {
   if (mode === "non-admin") el.nonAdminView?.classList.remove("hidden");
   el.workspaceBrand?.classList.toggle("hidden", mode === "auth");
   if (mode === "auth") {
+    hideAuthProgress();
     el.workspaceExpandFab?.classList.add("hidden");
   } else {
     const collapsed = document.body.classList.contains("workspace-collapsed");
@@ -5078,6 +5111,7 @@ async function initFirebase() {
     }
     if (!user) {
       state.authLoginInFlight = false;
+      hideAuthProgress();
       setSessionBadge("Not signed in");
       setUserUidBadge("");
       el.logoutBtns.forEach((b) => {
@@ -5088,13 +5122,20 @@ async function initFirebase() {
       return;
     }
     try {
+      showAuthProgress(
+        "Loading your workspace",
+        "Fetching profile, permissions, and dashboard data...",
+        true,
+      );
       const context = await loadSessionContext();
       if (state.authLoginInFlight && context) toast("Login successful");
       if (state.authLoginInFlight && !context) toast("Complete account setup by choosing Student or Provider.", "error");
       state.authLoginInFlight = false;
+      hideAuthProgress();
       if (!context) return;
     } catch (err) {
       state.authLoginInFlight = false;
+      hideAuthProgress();
       log("session_error", String(err));
       if (isRoleRegistrationRequiredError(err)) {
         openAccountSetupForCurrentUser();
@@ -5163,6 +5204,7 @@ function bindEvents() {
     const trimmedPassword = rawPassword.trim();
     try {
       state.authLoginInFlight = true;
+      showAuthProgress("Signing you in", "Verifying email and password...");
       let loggedIn = false;
       let breakglassErrorMessage = "";
       try {
@@ -5212,16 +5254,19 @@ function bindEvents() {
       state.authLoginFallbackTimer = setTimeout(async () => {
         if (!state.authLoginInFlight || !state.auth?.currentUser) return;
         try {
+          showAuthProgress("Loading your workspace", "Preparing your dashboard...", true);
           const context = await loadSessionContext();
           if (context) toast("Login successful");
         } catch (err) {
           toast(formatAuthError(err, "Session load failed"), "error");
         } finally {
           state.authLoginInFlight = false;
+          hideAuthProgress();
         }
       }, 250);
     } catch (err) {
       state.authLoginInFlight = false;
+      hideAuthProgress();
       toast(formatAuthError(err, "Login failed"), "error");
       log("login_error", String(err));
     }
@@ -5231,22 +5276,26 @@ function bindEvents() {
     if (!ensureAuthReady()) return;
     try {
       state.authLoginInFlight = true;
+      showAuthProgress("Signing in with Google", "Authenticating your Google account...");
       const provider = new GoogleAuthProvider();
       await signInWithPopup(state.auth, provider);
       if (state.authLoginFallbackTimer) clearTimeout(state.authLoginFallbackTimer);
       state.authLoginFallbackTimer = setTimeout(async () => {
         if (!state.authLoginInFlight || !state.auth?.currentUser) return;
         try {
+          showAuthProgress("Loading your workspace", "Preparing your dashboard...", true);
           const context = await loadSessionContext();
           if (context) toast("Login successful");
         } catch (err) {
           toast(formatAuthError(err, "Session load failed"), "error");
         } finally {
           state.authLoginInFlight = false;
+          hideAuthProgress();
         }
       }, 250);
     } catch (err) {
       state.authLoginInFlight = false;
+      hideAuthProgress();
       toast(formatAuthError(err, "Google login failed"), "error");
       log("google_error", String(err));
     }
@@ -5360,6 +5409,7 @@ function bindEvents() {
     btn.addEventListener("click", async () => {
       try {
         stopAdminPolling();
+        hideAuthProgress();
         await signOut(state.auth);
         showView("auth");
         showAuthMode("login");
@@ -5377,6 +5427,7 @@ function bindEvents() {
 
   $("nonAdminBackToLoginBtn")?.addEventListener("click", async () => {
     try {
+      hideAuthProgress();
       if (state.auth?.currentUser) await signOut(state.auth);
     } catch {}
     showView("auth");
