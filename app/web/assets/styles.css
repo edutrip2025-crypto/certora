@@ -354,6 +354,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   height: min(88vh, 900px);
   background: #000;
   object-fit: cover;
+  transform: scaleX(1);
 }
 .live-stage-placeholder {
   position: absolute;
@@ -395,6 +396,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   min-height: 130px;
   background: #0b1220;
   object-fit: cover;
+  transform: scaleX(1);
 }
 .live-popover {
   position: absolute;
@@ -572,6 +574,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-radius: 10px;
   background: #0b1220;
   object-fit: cover;
+  transform: scaleX(1);
 }
 .live-video-grid {
   display: grid;

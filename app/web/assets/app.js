@@ -3389,6 +3389,11 @@ function setIconButtonLabel(button, icon, label) {
 
 function setVideoElementStream(videoEl, stream, options = {}) {
   if (!videoEl) return;
+  // Keep live-room video orientation explicit and never mirrored.
+  videoEl.style.transform = "scaleX(1)";
+  videoEl.style.webkitTransform = "scaleX(1)";
+  videoEl.style.objectFit = "cover";
+  videoEl.playsInline = true;
   if (Object.prototype.hasOwnProperty.call(options, "muted")) {
     videoEl.muted = Boolean(options.muted);
   }
@@ -3396,6 +3401,56 @@ function setVideoElementStream(videoEl, stream, options = {}) {
   if (videoEl.srcObject !== nextStream) {
     videoEl.srcObject = nextStream;
   }
+}
+
+function preferredCameraVideoConstraints() {
+  return {
+    width: { ideal: 1280, max: 1920 },
+    height: { ideal: 720, max: 1080 },
+    frameRate: { ideal: 30, max: 30 },
+    facingMode: "user",
+  };
+}
+
+function preferredCameraAudioConstraints() {
+  return {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+  };
+}
+
+async function requestCameraStream() {
+  if (!navigator?.mediaDevices?.getUserMedia) {
+    throw new Error("Camera is unavailable in this browser/environment.");
+  }
+  const attempts = [
+    { video: preferredCameraVideoConstraints(), audio: preferredCameraAudioConstraints() },
+    { video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: preferredCameraAudioConstraints() },
+    { video: { facingMode: "user" }, audio: preferredCameraAudioConstraints() },
+    { video: true, audio: preferredCameraAudioConstraints() },
+    { video: true, audio: true },
+  ];
+  let lastError = null;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Unable to access camera and microphone.");
+}
+
+async function tuneCapturedVideoTrack(videoTrack) {
+  if (!videoTrack) return;
+  try {
+    videoTrack.contentHint = "detail";
+  } catch {}
+  try {
+    await videoTrack.applyConstraints(preferredCameraVideoConstraints());
+  } catch {}
 }
 
 function refreshLiveControlButtonStates() {
@@ -3763,7 +3818,8 @@ async function ensureLiveCameraStream() {
   const rtc = liveRtcState();
   const activeTrack = rtc.cameraStream?.getTracks?.().find((t) => t.readyState === "live");
   if (activeTrack) return rtc.cameraStream;
-  rtc.cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  rtc.cameraStream = await requestCameraStream();
+  await tuneCapturedVideoTrack(rtc.cameraStream?.getVideoTracks?.()[0]);
   return rtc.cameraStream;
 }
 
