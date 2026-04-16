@@ -1139,11 +1139,10 @@ const el = {
   closeLiveClassSchedulerBtn: $("closeLiveClassSchedulerBtn"),
   cancelLiveClassSchedulerBtn: $("cancelLiveClassSchedulerBtn"),
   providerLiveClassScheduler: $("providerLiveClassScheduler"),
+  providerLiveStats: $("providerLiveStats"),
   refreshProviderLiveClassesBtn: $("refreshProviderLiveClassesBtn"),
   providerLiveClassSessionsList: $("providerLiveClassSessionsList"),
   createLiveClassBtn: $("createLiveClassBtn"),
-  liveClassCourseSelect: $("liveClassCourseSelect"),
-  liveClassCourseId: $("liveClassCourseId"),
   liveClassTitle: $("liveClassTitle"),
   liveClassDescription: $("liveClassDescription"),
   liveClassTimezone: $("liveClassTimezone"),
@@ -1155,7 +1154,6 @@ const el = {
   liveClassAllowChat: $("liveClassAllowChat"),
   liveClassAllowRaiseHand: $("liveClassAllowRaiseHand"),
   liveClassAllowReactions: $("liveClassAllowReactions"),
-  liveCompletionCourseSelect: $("liveCompletionCourseSelect"),
   refreshStudentLiveClassesBtn: $("refreshStudentLiveClassesBtn"),
   liveClassroomScreen: $("liveClassroomScreen"),
   liveRoomTitle: $("liveRoomTitle"),
@@ -2682,25 +2680,6 @@ async function refreshStudentCertifications() {
   renderList(el.studentCertificatesTabList, certItems, certRenderer, "No certificates issued yet.");
 }
 
-function renderProviderCourseSelectors() {
-  const options = (state.providerCourses || []).map((c) => ({
-    value: String(c.id),
-    label: `${c.title} (#${c.id})`,
-  }));
-  const applySelect = (node, preferred = "") => {
-    if (!node) return;
-    const previous = String(preferred || node.value || "");
-    node.innerHTML = `<option value="">Select Course</option>${options
-      .map((opt) => `<option value="${opt.value}">${escapeHtmlAttr(opt.label)}</option>`)
-      .join("")}`;
-    if (previous && options.some((opt) => opt.value === previous)) {
-      node.value = previous;
-    }
-  };
-  applySelect(el.liveClassCourseSelect, el.liveClassCourseId?.value || "");
-  applySelect(el.liveCompletionCourseSelect, $("liveCourseId")?.value || "");
-}
-
 function providerLiveSchedulerSetVisible(visible) {
   if (!el.providerLiveClassScheduler) return;
   el.providerLiveClassScheduler.classList.toggle("hidden", !visible);
@@ -2717,8 +2696,6 @@ function applyProviderLiveModeUi() {
 
 function resetProviderLiveScheduler() {
   state.providerLiveEditSessionId = null;
-  if (el.liveClassCourseSelect) el.liveClassCourseSelect.value = "";
-  if (el.liveClassCourseId) el.liveClassCourseId.value = "";
   if (el.liveClassTitle) el.liveClassTitle.value = "";
   if (el.liveClassDescription) el.liveClassDescription.value = "";
   if (el.liveClassTimezone) el.liveClassTimezone.value = "Asia/Kolkata";
@@ -2737,8 +2714,6 @@ function resetProviderLiveScheduler() {
 function fillProviderLiveScheduler(session) {
   if (!session) return;
   state.providerLiveEditSessionId = Number(session.session_id || 0);
-  if (el.liveClassCourseSelect) el.liveClassCourseSelect.value = String(session.course_id || "");
-  if (el.liveClassCourseId) el.liveClassCourseId.value = String(session.course_id || "");
   if (el.liveClassTitle) el.liveClassTitle.value = session.title || "";
   if (el.liveClassDescription) el.liveClassDescription.value = session.description || "";
   if (el.liveClassTimezone) el.liveClassTimezone.value = session.timezone || "Asia/Kolkata";
@@ -2758,12 +2733,21 @@ async function refreshProviderLiveClasses() {
   const out = await api("GET", "/provider/workspace/live-classes");
   const items = out?.items || [];
   state.providerLiveSessions = items;
+  const liveCount = items.filter((s) => s.status === "live").length;
+  const scheduledCount = items.filter((s) => s.status === "scheduled").length;
+  const completedCount = items.filter((s) => s.status === "ended").length;
+  renderSimpleStats(el.providerLiveStats, {
+    "Scheduled": scheduledCount,
+    "Live Now": liveCount,
+    "Completed": completedCount,
+  });
   renderList(
     el.providerLiveClassSessionsList,
     items,
     (s) => {
       const isLive = s.status === "live";
       const isClosed = s.status === "ended" || s.status === "cancelled";
+      const isScheduled = s.status === "scheduled";
       const ratingClass = isLive ? "status-open" : (isClosed ? "status-dismissed" : "status-in_review");
       const modeLabel = s.meeting_mode === "external" ? "External" : "In-app";
       return `
@@ -2772,15 +2756,15 @@ async function refreshProviderLiveClasses() {
             <strong>${escapeHtmlAttr(s.title || "Untitled class")}</strong>
             <span class="status-pill ${ratingClass}">${escapeHtmlAttr(s.status || "scheduled")}</span>
           </div>
-          <div class="meta">Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} | Participants: ${Number(s.participant_count || 0)} | Mode: ${modeLabel}</div>
+          <div class="meta">Live Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} (ID #${Number(s.course_id || 0)}) | Participants: ${Number(s.participant_count || 0)} | Mode: ${modeLabel}</div>
           <div class="meta">${formatTime(s.scheduled_start_at)}${s.scheduled_end_at ? ` to ${formatTime(s.scheduled_end_at)}` : ""} (${escapeHtmlAttr(s.timezone || "UTC")})</div>
           ${s.description ? `<div style="margin-top:4px;">${escapeHtmlAttr(s.description)}</div>` : ""}
           <div class="actions">
             ${isClosed ? "" : `<button class="btn small" data-provider-live-join="${s.session_id}">Join Room</button>`}
-            ${(!isClosed && !isLive) ? `<button class="btn small" data-provider-live-start="${s.session_id}">Start</button>` : ""}
-            ${!isClosed ? `<button class="btn small danger" data-provider-live-end="${s.session_id}">End</button>` : ""}
+            ${isScheduled ? `<button class="btn small" data-provider-live-start="${s.session_id}">Start Session</button>` : ""}
+            ${isLive ? `<button class="btn small danger" data-provider-live-end="${s.session_id}">Complete Session</button>` : ""}
             ${s.meeting_mode === "external" && s.external_meeting_url ? `<a class="btn small" href="${s.external_meeting_url}" target="_blank" rel="noreferrer">Open Meeting</a>` : ""}
-            ${!isClosed ? `<button class="btn small" data-provider-live-edit="${s.session_id}">Edit</button>` : ""}
+            ${isScheduled ? `<button class="btn small" data-provider-live-edit="${s.session_id}">Edit</button>` : ""}
           </div>
         </div>
       `;
@@ -2839,9 +2823,6 @@ async function refreshProviderLiveClasses() {
 }
 
 async function submitProviderLiveSchedule() {
-  const selectedCourseId = Number(el.liveClassCourseSelect?.value || 0);
-  const typedCourseId = Number(el.liveClassCourseId?.value || 0);
-  const courseId = selectedCourseId || typedCourseId;
   const title = String(el.liveClassTitle?.value || "").trim();
   const startIso = toIsoFromLocalDatetime(el.liveClassStartAt?.value || "");
   const endIsoRaw = toIsoFromLocalDatetime(el.liveClassEndAt?.value || "");
@@ -2850,7 +2831,6 @@ async function submitProviderLiveSchedule() {
   const externalUrl = String(el.liveClassExternalUrl?.value || "").trim();
   const maxParticipants = Number(el.liveClassMaxParticipants?.value || 200);
   const payload = {
-    course_id: courseId,
     title,
     description: String(el.liveClassDescription?.value || "").trim() || null,
     scheduled_start_at: startIso,
@@ -2863,7 +2843,6 @@ async function submitProviderLiveSchedule() {
     allow_raise_hand: Boolean(el.liveClassAllowRaiseHand?.checked),
     allow_reactions: Boolean(el.liveClassAllowReactions?.checked),
   };
-  if (!payload.course_id) throw new Error("Course ID is required");
   if (!payload.title) throw new Error("Class title is required");
   if (!payload.scheduled_start_at) throw new Error("Scheduled start time is required");
   if (payload.meeting_mode === "external" && !payload.external_meeting_url) {
@@ -2885,8 +2864,8 @@ async function submitProviderLiveSchedule() {
     });
     toast("Live class schedule updated");
   } else {
-    await api("POST", "/provider/workspace/live-classes", payload);
-    toast("Live class scheduled");
+    const created = await api("POST", "/provider/workspace/live-classes", payload);
+    toast(`Live class scheduled. Auto course ID: ${Number(created?.course_id || 0)}`);
   }
   resetProviderLiveScheduler();
   providerLiveSchedulerSetVisible(false);
@@ -3197,7 +3176,6 @@ async function sendLiveRoomChatMessage(messageType = "chat", contentRaw = "") {
 async function refreshProviderContent() {
   const items = await api("GET", "/provider/workspace/content/courses");
   state.providerCourses = items || [];
-  renderProviderCourseSelectors();
   renderList(
     el.providerCoursesList,
     state.providerCourses,
@@ -5695,7 +5673,6 @@ async function loadSessionContext() {
       refreshProviderHome(),
       refreshProviderAssessments(),
       refreshProviderFeedback(),
-      refreshProviderNotifications(),
       refreshProviderCertifications(),
       refreshProviderLiveClasses(),
     ]);
@@ -6548,12 +6525,6 @@ function bindEvents() {
   $("refreshProviderCertsBtn")?.addEventListener("click", () => refreshProviderCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderLiveClassesBtn")?.addEventListener("click", () => refreshProviderLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
   $("refreshStudentLiveClassesBtn")?.addEventListener("click", () => refreshStudentLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
-  $("liveClassCourseSelect")?.addEventListener("change", () => {
-    if (el.liveClassCourseId) el.liveClassCourseId.value = el.liveClassCourseSelect?.value || "";
-  });
-  $("liveCompletionCourseSelect")?.addEventListener("change", () => {
-    if ($("liveCourseId")) $("liveCourseId").value = el.liveCompletionCourseSelect?.value || "";
-  });
   $("openLiveClassSchedulerBtn")?.addEventListener("click", () => {
     if (el.providerLiveClassScheduler?.classList.contains("hidden")) {
       resetProviderLiveScheduler();
@@ -6634,8 +6605,6 @@ function bindEvents() {
       .then(() => toast("Poll closed"))
       .catch((err) => toast(err?.message || "Failed to close poll", "error"));
   });
-  $("completeLiveClassBtn")?.addEventListener("click", () => completeLiveClassAction().catch(() => toast("Failed to complete live class", "error")));
-
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 

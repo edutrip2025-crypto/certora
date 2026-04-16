@@ -721,6 +721,7 @@ def provider_live_classes(
                 "session_id": sess.id,
                 "course_id": sess.course_id,
                 "course_title": (courses.get(sess.course_id).title if courses.get(sess.course_id) else None),
+                "course_category": (courses.get(sess.course_id).category if courses.get(sess.course_id) else None),
                 "room_code": sess.room_code,
                 "title": sess.title,
                 "description": sess.description,
@@ -748,11 +749,26 @@ def create_live_class_schedule(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    course = db.get(Course, payload.course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found. Select a valid course from your provider workspace.")
-    if course.provider_id != provider.id:
-        raise HTTPException(status_code=403, detail="You can only schedule classes for your own courses.")
+    schedule_title = payload.title.strip()
+    if payload.course_id:
+        course = db.get(Course, payload.course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found. Select a valid course from your provider workspace.")
+        if course.provider_id != provider.id:
+            raise HTTPException(status_code=403, detail="You can only schedule classes for your own courses.")
+    else:
+        # Live classes are treated as standalone offerings and get an auto-created course record.
+        course = Course(
+            provider_id=provider.id,
+            title=schedule_title,
+            description=(payload.description or f"Live class session: {schedule_title}"),
+            category="Live Class",
+            thumbnail_url=None,
+            includes_certification_exam=True,
+            is_published=True,
+        )
+        db.add(course)
+        db.flush()
     if payload.scheduled_end_at and payload.scheduled_end_at <= payload.scheduled_start_at:
         raise HTTPException(status_code=400, detail="scheduled_end_at must be after scheduled_start_at")
     meeting_mode = str(payload.meeting_mode or "in_app").strip().lower()
@@ -764,7 +780,7 @@ def create_live_class_schedule(
         course_id=course.id,
         provider_id=provider.id,
         room_code=uuid4().hex[:10].upper(),
-        title=payload.title.strip(),
+        title=schedule_title,
         description=(payload.description or "").strip() or None,
         timezone=(payload.timezone or "UTC").strip() or "UTC",
         meeting_mode=meeting_mode,
@@ -791,7 +807,14 @@ def create_live_class_schedule(
         ),
     )
     db.commit()
-    return {"created": True, "session_id": sess.id, "room_code": sess.room_code}
+    return {
+        "created": True,
+        "session_id": sess.id,
+        "room_code": sess.room_code,
+        "course_id": course.id,
+        "course_title": course.title,
+        "course_auto_created": bool(payload.course_id is None),
+    }
 
 
 @router.patch("/workspace/live-classes/{session_id}")

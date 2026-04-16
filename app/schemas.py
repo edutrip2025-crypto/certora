@@ -398,7 +398,7 @@ class CourseFeedbackCreate(BaseModel):
 
 
 class LiveClassScheduleCreate(BaseModel):
-    course_id: int
+    course_id: int | None = None
     title: str = Field(min_length=2, max_length=255)
     description: str | None = None
     scheduled_start_at: datetime

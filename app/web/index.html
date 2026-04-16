@@ -389,26 +389,25 @@
       </section>
 
       <section class="panel content hidden" id="provider-view-live">
-        <h2>Live Class</h2>
-        <p class="muted">Schedule classes, run your own classroom tools, and unlock assessments when class is completed.</p>
         <div class="row between">
-          <h3 style="margin:0;">Scheduled Live Classes</h3>
+          <div>
+            <h2 style="margin:0;">Live Classes</h2>
+            <p class="muted" style="margin-top:6px;">Schedule sessions, start class at the right time, and end class to unlock assessment access.</p>
+          </div>
           <div class="row wrap gap-sm">
             <button id="refreshProviderLiveClassesBtn" class="btn small">Refresh</button>
-            <button id="openLiveClassSchedulerBtn" class="btn primary" title="Schedule Live Class">+</button>
+            <button id="openLiveClassSchedulerBtn" class="btn primary" title="Schedule Live Class">+ New Live Class</button>
           </div>
         </div>
-        <section id="providerLiveClassScheduler" class="moderation-toolbar hidden" style="margin-top:10px;">
+        <div id="providerLiveStats" class="stats small" style="margin-top:12px;"></div>
+        <section id="providerLiveClassScheduler" class="moderation-toolbar hidden" style="margin-top:14px;">
           <div class="row between">
-            <h3 style="margin:0;">Schedule Live Class</h3>
+            <h3 style="margin:0;">Create Live Class Schedule</h3>
             <button id="closeLiveClassSchedulerBtn" class="btn small">Close</button>
           </div>
+          <p class="muted" style="margin:6px 0 10px;">A dedicated live-course ID is auto-generated when this schedule is created.</p>
           <div class="row wrap gap-sm">
-            <select id="liveClassCourseSelect" class="search">
-              <option value="">Select Course</option>
-            </select>
-            <input id="liveClassCourseId" type="number" class="filter" placeholder="Or Course ID" />
-            <input id="liveClassTitle" class="search" type="text" placeholder="Class Title" />
+            <input id="liveClassTitle" class="search" type="text" placeholder="Live class title" />
             <input id="liveClassTimezone" class="filter" type="text" value="Asia/Kolkata" placeholder="Timezone" />
             <input id="liveClassStartAt" class="filter" type="datetime-local" />
             <input id="liveClassEndAt" class="filter" type="datetime-local" />
@@ -434,22 +433,7 @@
             <button id="cancelLiveClassSchedulerBtn" class="btn small">Cancel</button>
           </div>
         </section>
-        <div id="providerLiveClassSessionsList" class="list" style="margin-top:10px;"></div>
-        <h3 style="margin-top:14px;">Class Completion</h3>
-        <div class="row wrap gap-sm">
-          <select id="liveCompletionCourseSelect" class="search">
-            <option value="">Select Course</option>
-          </select>
-          <input id="liveCourseId" type="number" class="filter" placeholder="Course ID" />
-          <input id="liveCompletionNote" class="search" type="text" placeholder="Completion note (optional)" />
-          <button id="completeLiveClassBtn" class="btn">Complete Live Class</button>
-        </div>
-        <h3 style="margin-top:14px;">Notifications</h3>
-        <div class="row between">
-          <div class="meta">Unread student comments/questions</div>
-          <button id="refreshProviderNotificationsBtn" class="btn small">Refresh</button>
-        </div>
-        <div id="providerNotificationsList" class="list"></div>
+        <div id="providerLiveClassSessionsList" class="list" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel content hidden" id="provider-view-certifications">
