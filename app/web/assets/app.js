@@ -97,6 +97,7 @@ const state = {
     controlDockIdleTimer: null,
     controlDockPointerInside: false,
     controlDockVisible: true,
+    reactionBurstRecent: {},
     screenShareInFlight: false,
     recording: {
       mediaRecorder: null,
@@ -1229,6 +1230,7 @@ const el = {
   liveRoomToggleChatBtn: $("liveRoomToggleChatBtn"),
   liveRoomReactBtn: $("liveRoomReactBtn"),
   liveRoomReactionMenu: $("liveRoomReactionMenu"),
+  liveRoomReactionBurstLayer: $("liveRoomReactionBurstLayer"),
   liveRoomFullscreenBtn: $("liveRoomFullscreenBtn"),
   liveRoomToolsPanel: $("liveRoomToolsPanel"),
   liveRoomChatPanel: $("liveRoomChatPanel"),
@@ -3524,6 +3526,7 @@ function liveUiIcon(name) {
   if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
   if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
   if (name === "fullscreen") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>");
+  if (name === "fullscreen-exit") return base("<path d='M9 4v5H4M20 9h-5V4M9 20v-5H4M20 15h-5v5'/>");
   if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
   if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
   if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
@@ -3580,6 +3583,13 @@ function initializeLiveIconButtons() {
   if (el.liveRoomOpenPollBtn) el.liveRoomOpenPollBtn.querySelector(".ico").innerHTML = liveUiIcon("poll");
   if (el.liveRoomOpenQaBtn) el.liveRoomOpenQaBtn.querySelector(".ico").innerHTML = liveUiIcon("qa");
   if (el.liveRoomSendChatBtn) el.liveRoomSendChatBtn.innerHTML = `<span class="ico">${liveUiIcon("send")}</span><span class="lbl">Send</span>`;
+}
+
+function refreshLiveFullscreenButton() {
+  if (!el.liveRoomFullscreenBtn) return;
+  const target = el.liveRoomStageShell || el.liveClassroomScreen;
+  const isFs = Boolean(target && document.fullscreenElement === target);
+  setIconButtonLabel(el.liveRoomFullscreenBtn, liveUiIcon(isFs ? "fullscreen-exit" : "fullscreen"), isFs ? "Exit Fullscreen" : "Fullscreen");
 }
 
 function setVideoElementStream(videoEl, stream, options = {}) {
@@ -3780,7 +3790,7 @@ function updateLiveStageAndFocusVideo() {
   const stageHasVideo = streamHasActiveVideo(stageStream);
   const stageRenderStream = stageHasVideo ? stageStream : null;
   const isLocalStage = Boolean(stageRenderStream && stageRenderStream === rtc.localStream);
-  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: isLocalStage });
+  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: false });
   if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageRenderStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
@@ -4168,6 +4178,8 @@ async function startLiveScreenShare() {
   if (state.liveRoom.screenShareInFlight) return false;
   const rtc = liveRtcState();
   if (rtc.screenStream?.getVideoTracks?.().some((t) => t.readyState === "live")) return false;
+  const fullscreenTarget = el.liveRoomStageShell || el.liveClassroomScreen;
+  const shouldRestoreFullscreen = Boolean(fullscreenTarget && document.fullscreenElement === fullscreenTarget);
   state.liveRoom.screenShareInFlight = true;
   if (el.liveRoomShareScreenBtn) {
     el.liveRoomShareScreenBtn.disabled = true;
@@ -4190,6 +4202,9 @@ async function startLiveScreenShare() {
     };
     await sendLiveSignal("presence", { media: "screen" }).catch(() => {});
     await renegotiateAllLivePeers().catch(() => {});
+    if (shouldRestoreFullscreen && !document.fullscreenElement) {
+      await fullscreenTarget?.requestFullscreen?.().catch(() => {});
+    }
     return true;
   } finally {
     state.liveRoom.screenShareInFlight = false;
@@ -4400,6 +4415,7 @@ function clearLiveRoomState() {
   state.liveRoom.boardDraftDirty = false;
   state.liveRoom.controlDockPointerInside = false;
   state.liveRoom.controlDockVisible = true;
+  state.liveRoom.reactionBurstRecent = {};
   state.liveRoom.screenShareInFlight = false;
   state.liveRoom.recording = {
     mediaRecorder: null,
@@ -4450,6 +4466,11 @@ function clearLiveRoomState() {
 }
 
 function liveRoomMessageRow(item) {
+  const typeRaw = String(item.message_type || "").toLowerCase();
+  if (typeRaw === "reaction") {
+    const emoji = escapeHtmlAttr(String(item.content || "").trim() || "\u{1F44D}");
+    return `<div class="live-chat-reaction-item">${emoji}</div>`;
+  }
   const who = escapeHtmlAttr(item.actor_name || item.actor_role || "User");
   const kind = escapeHtmlAttr(item.message_type || "chat");
   const content = escapeHtmlAttr(item.content || "");
@@ -4465,6 +4486,28 @@ function liveRoomMessageRow(item) {
   `;
 }
 
+function burstLiveReactionOnStage(emoji, dedupeKey = "") {
+  const layer = el.liveRoomReactionBurstLayer;
+  const glyph = String(emoji || "").trim();
+  if (!layer || !glyph) return;
+  const now = Date.now();
+  const key = String(dedupeKey || `glyph:${glyph}`);
+  const lastAt = Number(state.liveRoom.reactionBurstRecent[key] || 0);
+  if (now - lastAt < 220) return;
+  state.liveRoom.reactionBurstRecent[key] = now;
+  const node = document.createElement("span");
+  node.className = "live-reaction-burst";
+  node.textContent = glyph;
+  const offset = Math.round((Math.random() * 54) - 27);
+  const duration = 900 + Math.round(Math.random() * 350);
+  node.style.setProperty("--rx", `${offset}px`);
+  node.style.setProperty("--dur", `${duration}ms`);
+  layer.appendChild(node);
+  setTimeout(() => {
+    try { node.remove(); } catch {}
+  }, duration + 120);
+}
+
 function appendLiveRoomMessages(items) {
   if (!el.liveRoomChatList || !Array.isArray(items) || !items.length) return;
   const maxId = Math.max(...items.map((row) => Number(row.id || 0)));
@@ -4474,6 +4517,9 @@ function appendLiveRoomMessages(items) {
     if (String(row?.message_type || "").toLowerCase() === "signal") {
       handleLiveSignalMessage(row).catch(() => {});
       return;
+    }
+    if (String(row?.message_type || "").toLowerCase() === "reaction") {
+      burstLiveReactionOnStage(String(row?.content || ""), `msg:${Number(row?.id || 0)}`);
     }
     visibleItems.push(row);
   });
@@ -4499,12 +4545,12 @@ function renderLiveRoomParticipants(room) {
         <span class="live-participant-main">
           <span class="live-participant-avatar">${escapeHtmlAttr(liveParticipantInitials(p.display_name || "User"))}</span>
           <span class="live-participant-copy">
-            <strong>${escapeHtmlAttr(p.display_name || "User")}</strong>
+            <strong>${escapeHtmlAttr(p.display_name || "User")}${p.raised_hand ? " <span class='live-hand-indicator' aria-label='Raised hand' title='Raised hand'>✋</span>" : ""}</strong>
             <span class="meta">${escapeHtmlAttr(p.actor_role || "participant")}</span>
           </span>
         </span>
         <span class="actions">
-          ${p.raised_hand ? "<span class='badge'>Hand</span>" : "<span class='meta'>Active</span>"}
+          <span class='meta'>Active</span>
           ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" title="Mute ${escapeHtmlAttr(p.display_name || "user")}" data-live-mute="${Number(p.user_id || 0)}">Mute</button><button class="btn small danger" title="Remove ${escapeHtmlAttr(p.display_name || "user")}" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
         </span>
       </div>
@@ -7505,6 +7551,7 @@ function handleKeyboardShortcuts(event) {
 
 function bindEvents() {
   initializeLiveIconButtons();
+  refreshLiveFullscreenButton();
   window.addEventListener("resize", () => {
     if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
   });
@@ -8311,11 +8358,11 @@ function bindEvents() {
   $("liveRoomFullscreenBtn")?.addEventListener("click", () => {
     const target = el.liveRoomStageShell || el.liveClassroomScreen;
     if (!target) return;
-    if (!document.fullscreenElement) {
+    if (document.fullscreenElement === target) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
       target.requestFullscreen?.().catch(() => {});
-      return;
     }
-    document.exitFullscreen?.().catch(() => {});
   });
   $("liveRoomVideoStartBtn")?.addEventListener("click", () => {
     startLiveCamera()
@@ -8363,10 +8410,15 @@ function bindEvents() {
     btn.addEventListener("click", () => {
       const reaction = String(btn.dataset.liveReaction || "").trim();
       if (!reaction) return;
-      sendLiveRoomChatMessage("reaction", reaction).catch((err) => toast(err?.message || "Failed to send reaction", "error"));
+      sendLiveRoomChatMessage("reaction", reaction)
+        .then(() => {
+          burstLiveReactionOnStage(reaction, `local:${Date.now()}:${reaction}`);
+        })
+        .catch((err) => toast(err?.message || "Failed to send reaction", "error"));
       setLiveDrawerState("reaction", false);
     });
   });
+  document.addEventListener("fullscreenchange", refreshLiveFullscreenButton);
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -8562,3 +8614,4 @@ function bindEvents() {
   }
   log("ready", { message: "Admin + provider workspace loaded." });
 })();
+

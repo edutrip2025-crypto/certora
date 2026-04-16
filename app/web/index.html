@@ -753,11 +753,7 @@
       </div>
       <div class="live-stage-shell" id="liveRoomStageShell">
         <div class="live-stage-topbar">
-          <div class="row between" style="width:100%;align-items:center;">
-            <div class="row wrap gap-sm">
-              <span id="liveRoomSignalStatus" class="status-pill status-in_review">Realtime: fallback</span>
-              <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
-            </div>
+          <div class="row live-topbar-row" style="width:100%;align-items:center;">
             <div class="row gap-sm live-topbar-actions">
               <button id="liveRoomFullscreenBtn" class="btn small live-icon-btn live-topbar-icon" title="Fullscreen" aria-label="Fullscreen"><span class="ico"></span><span class="lbl">Fullscreen</span></button>
               <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room" aria-label="Leave room"><span class="ico"></span><span class="lbl">Leave</span></button>
@@ -766,7 +762,13 @@
         </div>
         <video id="liveRoomStageVideo" autoplay playsinline class="live-stage-video"></video>
         <div id="liveRoomStagePlaceholder" class="live-stage-placeholder hidden">
-          <div class="icon">📷</div>
+          <div class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="7" width="13" height="10" rx="2"></rect>
+              <path d="M16 10l5-3v10l-5-3z"></path>
+              <path d="M4 4l16 16"></path>
+            </svg>
+          </div>
           <div class="title">Camera is turned off</div>
           <div class="sub">Video will appear once camera/screen is active.</div>
         </div>
@@ -785,6 +787,7 @@
             <button class="btn small" data-live-reaction="🎉">🎉</button>
           </div>
         </div>
+        <div id="liveRoomReactionBurstLayer" class="live-reaction-burst-layer" aria-hidden="true"></div>
         <div id="liveRoomControlDock" class="live-control-dock">
           <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico"></span><span class="lbl">Tools</span></button>
           <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico"></span><span class="lbl">Chat</span></button>
@@ -832,9 +835,6 @@
             <span id="liveRoomParticipantsCountText" class="meta">0 online</span>
           </div>
           <div id="liveRoomParticipantsList" class="list" style="max-height:220px;overflow:auto;margin-top:8px;"></div>
-          <div class="row wrap gap-sm" style="margin-top:8px;">
-            <button id="liveRoomRaiseHandBtn" class="btn small">Raise Hand</button>
-          </div>
         </div>
         <aside id="liveRoomWhiteboardPanel" class="live-side-panel hidden">
           <div class="row between" style="align-items:center;">
