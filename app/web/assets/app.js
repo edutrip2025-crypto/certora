@@ -88,6 +88,7 @@ const state = {
     toolsOpen: false,
     chatOpen: false,
     reactionOpen: false,
+    screenShareInFlight: false,
     recording: {
       mediaRecorder: null,
       chunks: [],
@@ -3386,6 +3387,17 @@ function setIconButtonLabel(button, icon, label) {
   button.innerHTML = `<span class="ico">${icon}</span><span class="lbl">${escapeHtmlAttr(label)}</span>`;
 }
 
+function setVideoElementStream(videoEl, stream, options = {}) {
+  if (!videoEl) return;
+  if (Object.prototype.hasOwnProperty.call(options, "muted")) {
+    videoEl.muted = Boolean(options.muted);
+  }
+  const nextStream = stream || null;
+  if (videoEl.srcObject !== nextStream) {
+    videoEl.srcObject = nextStream;
+  }
+}
+
 function refreshLiveControlButtonStates() {
   const rtc = liveRtcState();
   const camOn = Boolean(rtc.localStream?.getVideoTracks?.().some((t) => t.readyState === "live" && t.enabled));
@@ -3395,6 +3407,7 @@ function refreshLiveControlButtonStates() {
     setIconButtonLabel(el.liveRoomVideoStartBtn, camOn ? "📷" : "📷", camOn ? "Camera On" : "Camera");
   }
   if (el.liveRoomShareScreenBtn) {
+    el.liveRoomShareScreenBtn.disabled = Boolean(state.liveRoom.screenShareInFlight);
     el.liveRoomShareScreenBtn.classList.toggle("is-active", screenOn);
     setIconButtonLabel(el.liveRoomShareScreenBtn, "🖥", screenOn ? "Sharing" : "Share");
   }
@@ -3432,8 +3445,9 @@ function updateLiveStageAndFocusVideo() {
   const providerPeer = pickProviderPeerId();
   const activePeer = state.liveRoom.focusPeerId || pickLastJoinedRemotePeerId();
   state.liveRoom.focusPeerId = activePeer || "";
-  if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.toggle("hidden", !activePeer || !streamForPeer(activePeer));
-  if (el.liveRoomFocusVideo) el.liveRoomFocusVideo.srcObject = activePeer ? streamForPeer(activePeer) : null;
+  const focusStream = activePeer ? streamForPeer(activePeer) : null;
+  if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.toggle("hidden", !activePeer || !focusStream);
+  setVideoElementStream(el.liveRoomFocusVideo, focusStream, { muted: true });
   if (el.liveRoomFocusLabel) el.liveRoomFocusLabel.textContent = activePeer ? liveParticipantLabel(activePeer) : "Active speaker";
 
   let stageStream = null;
@@ -3454,7 +3468,8 @@ function updateLiveStageAndFocusVideo() {
     stageStream = liveRtcState().localStream;
     stageLabel = selfId ? "You" : "Live stage";
   }
-  if (el.liveRoomStageVideo) el.liveRoomStageVideo.srcObject = stageStream || null;
+  const isLocalStage = Boolean(stageStream && stageStream === liveRtcState().localStream);
+  setVideoElementStream(el.liveRoomStageVideo, stageStream, { muted: isLocalStage });
   if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
@@ -3550,14 +3565,14 @@ function renderLiveRemoteVideos() {
   entries.forEach(([peerId, stream]) => {
     const video = el.liveRoomRemoteVideoGrid.querySelector(`[data-live-remote-peer="${peerId}"] video`);
     if (!video) return;
-    video.srcObject = stream;
+    setVideoElementStream(video, stream, { muted: true });
   });
   updateLiveStageAndFocusVideo();
 }
 
 function attachLocalVideoPreview() {
   if (!el.liveRoomLocalVideo) return;
-  el.liveRoomLocalVideo.srcObject = liveRtcState().localStream || null;
+  setVideoElementStream(el.liveRoomLocalVideo, liveRtcState().localStream, { muted: true });
   el.liveRoomLocalVideo.classList.toggle("live-video-muted", Boolean(liveRtcState().micMuted));
   updateLiveStageAndFocusVideo();
 }
@@ -3829,28 +3844,42 @@ async function toggleLiveMic() {
 }
 
 async function startLiveScreenShare() {
+  if (state.liveRoom.screenShareInFlight) return false;
   const rtc = liveRtcState();
-  if (!rtc.cameraStream) await ensureLiveCameraStream();
-  rtc.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-  const screenTrack = rtc.screenStream.getVideoTracks()[0];
-  if (!screenTrack) throw new Error("Unable to start screen share");
-  if (!rtc.localStream) rtc.localStream = new MediaStream(rtc.cameraStream.getTracks());
-  const oldVideo = rtc.localStream.getVideoTracks()[0];
-  if (oldVideo) rtc.localStream.removeTrack(oldVideo);
-  rtc.localStream.addTrack(screenTrack);
-  replaceLiveOutboundVideoTrack(screenTrack);
-  attachLocalVideoPreview();
-  refreshLiveControlButtonStates();
-  screenTrack.onended = () => {
-    stopLiveScreenShare().catch(() => {});
-  };
-  await sendLiveSignal("presence", { media: "screen" }).catch(() => {});
-  await renegotiateAllLivePeers().catch(() => {});
+  if (rtc.screenStream?.getVideoTracks?.().some((t) => t.readyState === "live")) return false;
+  state.liveRoom.screenShareInFlight = true;
+  if (el.liveRoomShareScreenBtn) {
+    el.liveRoomShareScreenBtn.disabled = true;
+    setIconButtonLabel(el.liveRoomShareScreenBtn, "🖥", "Starting...");
+  }
+  try {
+    if (!rtc.cameraStream) await ensureLiveCameraStream();
+    rtc.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const screenTrack = rtc.screenStream.getVideoTracks()[0];
+    if (!screenTrack) throw new Error("Unable to start screen share");
+    if (!rtc.localStream) rtc.localStream = new MediaStream(rtc.cameraStream.getTracks());
+    const oldVideo = rtc.localStream.getVideoTracks()[0];
+    if (oldVideo) rtc.localStream.removeTrack(oldVideo);
+    rtc.localStream.addTrack(screenTrack);
+    replaceLiveOutboundVideoTrack(screenTrack);
+    attachLocalVideoPreview();
+    refreshLiveControlButtonStates();
+    screenTrack.onended = () => {
+      stopLiveScreenShare().catch(() => {});
+    };
+    await sendLiveSignal("presence", { media: "screen" }).catch(() => {});
+    await renegotiateAllLivePeers().catch(() => {});
+    return true;
+  } finally {
+    state.liveRoom.screenShareInFlight = false;
+    if (el.liveRoomShareScreenBtn) el.liveRoomShareScreenBtn.disabled = false;
+    refreshLiveControlButtonStates();
+  }
 }
 
 async function stopLiveScreenShare() {
   const rtc = liveRtcState();
-  if (!rtc.screenStream) return;
+  if (!rtc.screenStream && !state.liveRoom.screenShareInFlight) return;
   stopTracks(rtc.screenStream);
   rtc.screenStream = null;
   if (!rtc.cameraStream) await ensureLiveCameraStream();
@@ -4019,6 +4048,7 @@ function clearLiveRoomState() {
   state.liveRoom.toolsOpen = false;
   state.liveRoom.chatOpen = false;
   state.liveRoom.reactionOpen = false;
+  state.liveRoom.screenShareInFlight = false;
   state.liveRoom.recording = {
     mediaRecorder: null,
     chunks: [],
@@ -7876,7 +7906,9 @@ function bindEvents() {
   });
   $("liveRoomShareScreenBtn")?.addEventListener("click", () => {
     startLiveScreenShare()
-      .then(() => toast("Screen sharing started"))
+      .then((started) => {
+        if (started) toast("Screen sharing started");
+      })
       .catch((err) => toast(err?.message || "Unable to share screen", "error"));
   });
   $("liveRoomStopShareBtn")?.addEventListener("click", () => {
