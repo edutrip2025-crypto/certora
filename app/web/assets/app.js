@@ -3525,8 +3525,8 @@ function liveUiIcon(name) {
   if (name === "tools") return base("<rect x='4' y='4' width='6' height='6' rx='1.2'/><rect x='14' y='4' width='6' height='6' rx='1.2'/><rect x='4' y='14' width='6' height='6' rx='1.2'/><rect x='14' y='14' width='6' height='6' rx='1.2'/>");
   if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
   if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
-  if (name === "fullscreen") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>");
-  if (name === "fullscreen-exit") return base("<path d='M9 4v5H4M20 9h-5V4M9 20v-5H4M20 15h-5v5'/>");
+  if (name === "fullscreen") return base("<path d='M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5'/>");
+  if (name === "fullscreen-exit") return base("<path d='M9 9H3V3M15 9h6V3M9 15H3v6M21 15v6h-6'/>");
   if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
   if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
   if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
@@ -3567,6 +3567,7 @@ function initializeLiveIconButtons() {
   setIconButtonLabel(el.liveRoomReactBtn, liveUiIcon("reaction"), "Reactions");
   setIconButtonLabel(el.liveRoomFullscreenBtn, liveUiIcon("fullscreen"), "Fullscreen");
   setIconButtonLabel(el.leaveLiveRoomBtn, liveUiIcon("leave"), "Leave");
+  refreshLiveLeaveButton();
   if (el.liveRoomParticipantsBtn) {
     el.liveRoomParticipantsBtn.setAttribute("title", "Participants");
     el.liveRoomParticipantsBtn.setAttribute("aria-label", "Participants");
@@ -3590,6 +3591,14 @@ function refreshLiveFullscreenButton() {
   const target = el.liveRoomStageShell || el.liveClassroomScreen;
   const isFs = Boolean(target && document.fullscreenElement === target);
   setIconButtonLabel(el.liveRoomFullscreenBtn, liveUiIcon(isFs ? "fullscreen-exit" : "fullscreen"), isFs ? "Exit Fullscreen" : "Fullscreen");
+}
+
+function refreshLiveLeaveButton() {
+  if (!el.leaveLiveRoomBtn) return;
+  const isProvider = state.liveRoom.role === "provider";
+  const label = isProvider ? "End Class" : "Leave";
+  setIconButtonLabel(el.leaveLiveRoomBtn, liveUiIcon("leave"), label);
+  el.leaveLiveRoomBtn.classList.add("live-topbar-danger");
 }
 
 function setVideoElementStream(videoEl, stream, options = {}) {
@@ -4464,6 +4473,7 @@ function clearLiveRoomState() {
   setLiveControlDockVisibility(true);
   setLiveSidePanel("", false);
   renderLiveQaList();
+  refreshLiveLeaveButton();
 }
 
 function liveRoomMessageRow(item) {
@@ -4793,6 +4803,7 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.boardDraftDirty = false;
   state.liveRoom.controlDockPointerInside = false;
   state.liveRoom.controlDockVisible = true;
+  refreshLiveLeaveButton();
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
