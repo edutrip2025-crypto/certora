@@ -395,3 +395,51 @@ class CourseFeedbackCreate(BaseModel):
     instructor_clarity_rating: int = Field(ge=1, le=5)
     practical_usefulness_rating: int = Field(ge=1, le=5)
     comment: str | None = None
+
+
+class LiveClassScheduleCreate(BaseModel):
+    course_id: int
+    title: str = Field(min_length=2, max_length=255)
+    description: str | None = None
+    scheduled_start_at: datetime
+    scheduled_end_at: datetime | None = None
+    timezone: str = "UTC"
+    meeting_mode: str = "in_app"  # in_app | external
+    external_meeting_url: str | None = None
+    max_participants: int = Field(default=200, ge=1, le=2000)
+    allow_chat: bool = True
+    allow_raise_hand: bool = True
+    allow_reactions: bool = True
+
+
+class LiveClassScheduleUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    description: str | None = None
+    scheduled_start_at: datetime | None = None
+    scheduled_end_at: datetime | None = None
+    timezone: str | None = None
+    meeting_mode: str | None = None  # in_app | external
+    external_meeting_url: str | None = None
+    max_participants: int | None = Field(default=None, ge=1, le=2000)
+    allow_chat: bool | None = None
+    allow_raise_hand: bool | None = None
+    allow_reactions: bool | None = None
+
+
+class LiveClassMessageCreate(BaseModel):
+    message_type: str = "chat"  # chat | announcement | reaction
+    content: str = Field(min_length=1, max_length=2000)
+    payload: dict = {}
+
+
+class LiveClassBoardUpdate(BaseModel):
+    board_text: str = Field(min_length=0, max_length=12000)
+
+
+class LiveClassPollCreate(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+    options: list[str] = Field(min_length=2, max_length=8)
+
+
+class LiveClassPollVoteCreate(BaseModel):
+    option_index: int = Field(ge=0, le=7)

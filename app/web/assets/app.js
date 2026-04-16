@@ -36,6 +36,9 @@ const state = {
   providerCourses: [],
   providerDrafts: [],
   providerAssessments: [],
+  providerLiveSessions: [],
+  providerLiveEditSessionId: null,
+  studentLiveSessions: [],
   viewerTopics: [],
   studentViewerTopics: [],
   studentActiveCourseId: null,
@@ -57,6 +60,13 @@ const state = {
     timerPaused: false,
     warningPauseCount: 0,
     proctor: defaultProctorState(),
+  },
+  liveRoom: {
+    active: false,
+    sessionId: null,
+    role: null,
+    lastMessageId: 0,
+    pollerId: null,
   },
 };
 
@@ -1044,6 +1054,7 @@ const el = {
   studentCertificatesTabList: $("studentCertificatesTabList"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
+  studentLiveClassesList: $("studentLiveClassesList"),
   studentCourseViewer: $("studentCourseViewer"),
   scvTitle: $("scvTitle"),
   scvMeta: $("scvMeta"),
@@ -1052,6 +1063,14 @@ const el = {
   scvResourceList: $("scvResourceList"),
   scvProgressBar: $("scvProgressBar"),
   scvProgressText: $("scvProgressText"),
+  scvCourseRatingSummary: $("scvCourseRatingSummary"),
+  scvRateValue: $("scvRateValue"),
+  scvRateContent: $("scvRateContent"),
+  scvRateClarity: $("scvRateClarity"),
+  scvRatePractical: $("scvRatePractical"),
+  scvRatingComment: $("scvRatingComment"),
+  scvSaveRatingBtn: $("scvSaveRatingBtn"),
+  scvRatingStatus: $("scvRatingStatus"),
   scvAssessmentPanel: $("scvAssessmentPanel"),
   scvAssessmentStatus: $("scvAssessmentStatus"),
   providerCoursesList: $("providerCoursesList"),
@@ -1116,6 +1135,44 @@ const el = {
   providerRatingsList: $("providerRatingsList"),
   providerNotificationsList: $("providerNotificationsList"),
   providerCertsList: $("providerCertsList"),
+  openLiveClassSchedulerBtn: $("openLiveClassSchedulerBtn"),
+  closeLiveClassSchedulerBtn: $("closeLiveClassSchedulerBtn"),
+  cancelLiveClassSchedulerBtn: $("cancelLiveClassSchedulerBtn"),
+  providerLiveClassScheduler: $("providerLiveClassScheduler"),
+  refreshProviderLiveClassesBtn: $("refreshProviderLiveClassesBtn"),
+  providerLiveClassSessionsList: $("providerLiveClassSessionsList"),
+  createLiveClassBtn: $("createLiveClassBtn"),
+  liveClassCourseId: $("liveClassCourseId"),
+  liveClassTitle: $("liveClassTitle"),
+  liveClassDescription: $("liveClassDescription"),
+  liveClassTimezone: $("liveClassTimezone"),
+  liveClassStartAt: $("liveClassStartAt"),
+  liveClassEndAt: $("liveClassEndAt"),
+  liveClassMode: $("liveClassMode"),
+  liveClassExternalUrl: $("liveClassExternalUrl"),
+  liveClassMaxParticipants: $("liveClassMaxParticipants"),
+  liveClassAllowChat: $("liveClassAllowChat"),
+  liveClassAllowRaiseHand: $("liveClassAllowRaiseHand"),
+  liveClassAllowReactions: $("liveClassAllowReactions"),
+  refreshStudentLiveClassesBtn: $("refreshStudentLiveClassesBtn"),
+  liveClassroomScreen: $("liveClassroomScreen"),
+  liveRoomTitle: $("liveRoomTitle"),
+  liveRoomMeta: $("liveRoomMeta"),
+  liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
+  leaveLiveRoomBtn: $("leaveLiveRoomBtn"),
+  liveRoomBoardText: $("liveRoomBoardText"),
+  liveRoomSaveBoardBtn: $("liveRoomSaveBoardBtn"),
+  liveRoomRaiseHandBtn: $("liveRoomRaiseHandBtn"),
+  liveRoomHandsList: $("liveRoomHandsList"),
+  liveRoomPollQuestion: $("liveRoomPollQuestion"),
+  liveRoomPollOptions: $("liveRoomPollOptions"),
+  liveRoomStartPollBtn: $("liveRoomStartPollBtn"),
+  liveRoomClosePollBtn: $("liveRoomClosePollBtn"),
+  liveRoomPollPanel: $("liveRoomPollPanel"),
+  liveRoomChatList: $("liveRoomChatList"),
+  liveRoomChatInput: $("liveRoomChatInput"),
+  liveRoomSendChatBtn: $("liveRoomSendChatBtn"),
+  liveRoomParticipantsList: $("liveRoomParticipantsList"),
   authProgressOverlay: $("authProgressOverlay"),
   authProgressTitle: $("authProgressTitle"),
   authProgressDetail: $("authProgressDetail"),
@@ -1196,6 +1253,10 @@ async function api(method, path, body, authRequired = true) {
 }
 
 function showView(mode) {
+  if (mode === "auth" && state.liveRoom.active) {
+    clearLiveRoomState();
+    el.liveClassroomScreen?.classList.add("hidden");
+  }
   [el.authView, el.adminView, el.providerView, el.studentView, el.nonAdminView].forEach((n) => n && n.classList.add("hidden"));
   if (mode === "auth") el.authView?.classList.remove("hidden");
   if (mode === "admin") el.adminView?.classList.remove("hidden");
@@ -1452,6 +1513,9 @@ function activateProviderSubView(name) {
   document.querySelectorAll('[id^="provider-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`provider-view-${name}`);
   if (pane) pane.classList.remove("hidden");
+  if (name === "live") {
+    refreshProviderLiveClasses().catch(() => toast("Failed to load live classes", "error"));
+  }
 }
 
 function activateStudentSubView(name) {
@@ -1462,6 +1526,9 @@ function activateStudentSubView(name) {
   document.querySelectorAll('[id^="student-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`student-view-${name}`);
   if (pane) pane.classList.remove("hidden");
+  if (name === "live") {
+    refreshStudentLiveClasses().catch(() => toast("Failed to load live classes", "error"));
+  }
   if (name === "certifications") {
     refreshStudentCertifications().catch(() => toast("Failed to load certifications", "error"));
   }
@@ -1480,6 +1547,29 @@ function formatTime(value) {
   } catch {
     return value || "-";
   }
+}
+
+function toLocalDatetimeValue(value) {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  const off = dt.getTimezoneOffset();
+  const local = new Date(dt.getTime() - (off * 60 * 1000));
+  return local.toISOString().slice(0, 16);
+}
+
+function toIsoFromLocalDatetime(value) {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
+}
+
+function formatCourseRating(average, count) {
+  const avg = Number(average || 0);
+  const cnt = Number(count || 0);
+  if (!cnt || avg <= 0) return "No ratings yet";
+  return `Rating ${avg.toFixed(1)}/5 (${cnt})`;
 }
 
 function parseTimeToSeconds(raw) {
@@ -2516,6 +2606,7 @@ async function refreshStudentDashboard() {
         <div>
           <div><strong>${c.title}</strong></div>
           <div class="meta">Category: ${c.category || "-"}</div>
+          <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}</div>
           <div class="actions"><button class="btn small" data-student-enroll="${c.course_id}">Enroll</button></div>
         </div>
       </div>
@@ -2531,6 +2622,7 @@ async function refreshStudentDashboard() {
         <div>
           <div><strong>${c.title}</strong></div>
           <div class="meta">Category: ${c.category || "-"}</div>
+          <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}${Number(c.my_rating || 0) > 0 ? ` | Your rating: ${Number(c.my_rating).toFixed(1)}` : ""}</div>
           <div style="margin-top:6px;">
             <div style="height:8px;border:1px solid #dbe4f0;border-radius:999px;background:#eef2ff;overflow:hidden;">
               <div style="height:100%;width:${Math.max(0, Math.min(100, Number(c.progress_pct || 0)))}%;background:linear-gradient(90deg,#2563eb,#0ea5e9);"></div>
@@ -2588,6 +2680,495 @@ async function refreshStudentCertifications() {
   renderList(el.studentCertificatesTabList, certItems, certRenderer, "No certificates issued yet.");
 }
 
+function providerLiveSchedulerSetVisible(visible) {
+  if (!el.providerLiveClassScheduler) return;
+  el.providerLiveClassScheduler.classList.toggle("hidden", !visible);
+}
+
+function applyProviderLiveModeUi() {
+  const mode = String(el.liveClassMode?.value || "in_app");
+  const external = mode === "external";
+  if (el.liveClassExternalUrl) {
+    el.liveClassExternalUrl.disabled = !external;
+    if (!external) el.liveClassExternalUrl.value = "";
+  }
+}
+
+function resetProviderLiveScheduler() {
+  state.providerLiveEditSessionId = null;
+  if (el.liveClassCourseId) el.liveClassCourseId.value = "";
+  if (el.liveClassTitle) el.liveClassTitle.value = "";
+  if (el.liveClassDescription) el.liveClassDescription.value = "";
+  if (el.liveClassTimezone) el.liveClassTimezone.value = "Asia/Kolkata";
+  if (el.liveClassStartAt) el.liveClassStartAt.value = "";
+  if (el.liveClassEndAt) el.liveClassEndAt.value = "";
+  if (el.liveClassMode) el.liveClassMode.value = "in_app";
+  if (el.liveClassExternalUrl) el.liveClassExternalUrl.value = "";
+  if (el.liveClassMaxParticipants) el.liveClassMaxParticipants.value = "200";
+  if (el.liveClassAllowChat) el.liveClassAllowChat.checked = true;
+  if (el.liveClassAllowRaiseHand) el.liveClassAllowRaiseHand.checked = true;
+  if (el.liveClassAllowReactions) el.liveClassAllowReactions.checked = true;
+  if (el.createLiveClassBtn) el.createLiveClassBtn.textContent = "Create Live Class";
+  applyProviderLiveModeUi();
+}
+
+function fillProviderLiveScheduler(session) {
+  if (!session) return;
+  state.providerLiveEditSessionId = Number(session.session_id || 0);
+  if (el.liveClassCourseId) el.liveClassCourseId.value = String(session.course_id || "");
+  if (el.liveClassTitle) el.liveClassTitle.value = session.title || "";
+  if (el.liveClassDescription) el.liveClassDescription.value = session.description || "";
+  if (el.liveClassTimezone) el.liveClassTimezone.value = session.timezone || "Asia/Kolkata";
+  if (el.liveClassStartAt) el.liveClassStartAt.value = toLocalDatetimeValue(session.scheduled_start_at);
+  if (el.liveClassEndAt) el.liveClassEndAt.value = toLocalDatetimeValue(session.scheduled_end_at);
+  if (el.liveClassMode) el.liveClassMode.value = session.meeting_mode || "in_app";
+  if (el.liveClassExternalUrl) el.liveClassExternalUrl.value = session.external_meeting_url || "";
+  if (el.liveClassMaxParticipants) el.liveClassMaxParticipants.value = String(session.max_participants || 200);
+  if (el.liveClassAllowChat) el.liveClassAllowChat.checked = Boolean(session.allow_chat);
+  if (el.liveClassAllowRaiseHand) el.liveClassAllowRaiseHand.checked = Boolean(session.allow_raise_hand);
+  if (el.liveClassAllowReactions) el.liveClassAllowReactions.checked = Boolean(session.allow_reactions);
+  if (el.createLiveClassBtn) el.createLiveClassBtn.textContent = "Update Live Class";
+  applyProviderLiveModeUi();
+}
+
+async function refreshProviderLiveClasses() {
+  const out = await api("GET", "/provider/workspace/live-classes");
+  const items = out?.items || [];
+  state.providerLiveSessions = items;
+  renderList(
+    el.providerLiveClassSessionsList,
+    items,
+    (s) => {
+      const isLive = s.status === "live";
+      const isClosed = s.status === "ended" || s.status === "cancelled";
+      const ratingClass = isLive ? "status-open" : (isClosed ? "status-dismissed" : "status-in_review");
+      const modeLabel = s.meeting_mode === "external" ? "External" : "In-app";
+      return `
+        <div>
+          <div class="row between">
+            <strong>${escapeHtmlAttr(s.title || "Untitled class")}</strong>
+            <span class="status-pill ${ratingClass}">${escapeHtmlAttr(s.status || "scheduled")}</span>
+          </div>
+          <div class="meta">Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} | Participants: ${Number(s.participant_count || 0)} | Mode: ${modeLabel}</div>
+          <div class="meta">${formatTime(s.scheduled_start_at)}${s.scheduled_end_at ? ` to ${formatTime(s.scheduled_end_at)}` : ""} (${escapeHtmlAttr(s.timezone || "UTC")})</div>
+          ${s.description ? `<div style="margin-top:4px;">${escapeHtmlAttr(s.description)}</div>` : ""}
+          <div class="actions">
+            ${isClosed ? "" : `<button class="btn small" data-provider-live-join="${s.session_id}">Join Room</button>`}
+            ${(!isClosed && !isLive) ? `<button class="btn small" data-provider-live-start="${s.session_id}">Start</button>` : ""}
+            ${!isClosed ? `<button class="btn small danger" data-provider-live-end="${s.session_id}">End</button>` : ""}
+            ${s.meeting_mode === "external" && s.external_meeting_url ? `<a class="btn small" href="${s.external_meeting_url}" target="_blank" rel="noreferrer">Open Meeting</a>` : ""}
+            ${!isClosed ? `<button class="btn small" data-provider-live-edit="${s.session_id}">Edit</button>` : ""}
+          </div>
+        </div>
+      `;
+    },
+    "No live classes scheduled yet.",
+  );
+  document.querySelectorAll("[data-provider-live-join]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sessionId = Number(btn.dataset.providerLiveJoin || 0);
+      if (!sessionId) return;
+      try {
+        await api("POST", `/provider/workspace/live-classes/${sessionId}/join`);
+        await openLiveClassroom(sessionId, "provider");
+      } catch (err) {
+        toast(err?.message || "Failed to join live class", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-provider-live-start]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sessionId = Number(btn.dataset.providerLiveStart || 0);
+      if (!sessionId) return;
+      try {
+        await api("POST", `/provider/workspace/live-classes/${sessionId}/start`);
+        toast("Live class started");
+        await refreshProviderLiveClasses();
+      } catch (err) {
+        toast(err?.message || "Failed to start live class", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-provider-live-end]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sessionId = Number(btn.dataset.providerLiveEnd || 0);
+      if (!sessionId) return;
+      const ok = confirm("End this live class now? This will unlock assessments for enrolled students.");
+      if (!ok) return;
+      try {
+        const out2 = await api("POST", `/provider/workspace/live-classes/${sessionId}/end`);
+        toast(`Live class ended. Students unlocked: ${Number(out2?.students_unlocked || 0)}`);
+        await refreshProviderLiveClasses();
+      } catch (err) {
+        toast(err?.message || "Failed to end live class", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-provider-live-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const sessionId = Number(btn.dataset.providerLiveEdit || 0);
+      const sess = state.providerLiveSessions.find((row) => Number(row.session_id) === sessionId);
+      if (!sess) return;
+      fillProviderLiveScheduler(sess);
+      providerLiveSchedulerSetVisible(true);
+    });
+  });
+}
+
+async function submitProviderLiveSchedule() {
+  const courseId = Number(el.liveClassCourseId?.value || 0);
+  const title = String(el.liveClassTitle?.value || "").trim();
+  const startIso = toIsoFromLocalDatetime(el.liveClassStartAt?.value || "");
+  const endIsoRaw = toIsoFromLocalDatetime(el.liveClassEndAt?.value || "");
+  const timezone = String(el.liveClassTimezone?.value || "Asia/Kolkata").trim() || "Asia/Kolkata";
+  const meetingMode = String(el.liveClassMode?.value || "in_app").trim() || "in_app";
+  const externalUrl = String(el.liveClassExternalUrl?.value || "").trim();
+  const maxParticipants = Number(el.liveClassMaxParticipants?.value || 200);
+  const payload = {
+    course_id: courseId,
+    title,
+    description: String(el.liveClassDescription?.value || "").trim() || null,
+    scheduled_start_at: startIso,
+    scheduled_end_at: endIsoRaw || null,
+    timezone,
+    meeting_mode: meetingMode,
+    external_meeting_url: externalUrl || null,
+    max_participants: Number.isFinite(maxParticipants) && maxParticipants > 0 ? maxParticipants : 200,
+    allow_chat: Boolean(el.liveClassAllowChat?.checked),
+    allow_raise_hand: Boolean(el.liveClassAllowRaiseHand?.checked),
+    allow_reactions: Boolean(el.liveClassAllowReactions?.checked),
+  };
+  if (!payload.course_id) throw new Error("Course ID is required");
+  if (!payload.title) throw new Error("Class title is required");
+  if (!payload.scheduled_start_at) throw new Error("Scheduled start time is required");
+  if (payload.meeting_mode === "external" && !payload.external_meeting_url) {
+    throw new Error("External meeting URL is required when mode is external");
+  }
+  if (state.providerLiveEditSessionId) {
+    await api("PATCH", `/provider/workspace/live-classes/${state.providerLiveEditSessionId}`, {
+      title: payload.title,
+      description: payload.description,
+      scheduled_start_at: payload.scheduled_start_at,
+      scheduled_end_at: payload.scheduled_end_at,
+      timezone: payload.timezone,
+      meeting_mode: payload.meeting_mode,
+      external_meeting_url: payload.external_meeting_url,
+      max_participants: payload.max_participants,
+      allow_chat: payload.allow_chat,
+      allow_raise_hand: payload.allow_raise_hand,
+      allow_reactions: payload.allow_reactions,
+    });
+    toast("Live class schedule updated");
+  } else {
+    await api("POST", "/provider/workspace/live-classes", payload);
+    toast("Live class scheduled");
+  }
+  resetProviderLiveScheduler();
+  providerLiveSchedulerSetVisible(false);
+  await refreshProviderLiveClasses();
+}
+
+async function refreshStudentLiveClasses() {
+  const out = await api("GET", "/student/live-classes");
+  const items = out?.items || [];
+  state.studentLiveSessions = items;
+  renderList(
+    el.studentLiveClassesList,
+    items,
+    (s) => {
+      const isClosed = s.status === "ended" || s.status === "cancelled";
+      const statusClass = s.status === "live" ? "status-open" : (isClosed ? "status-dismissed" : "status-in_review");
+      return `
+        <div>
+          <div class="row between">
+            <strong>${escapeHtmlAttr(s.title || "Live class")}</strong>
+            <span class="status-pill ${statusClass}">${escapeHtmlAttr(s.status || "scheduled")}</span>
+          </div>
+          <div class="meta">Course: ${escapeHtmlAttr(s.course_title || `#${s.course_id}`)} | Participants: ${Number(s.participant_count || 0)}</div>
+          <div class="meta">${formatTime(s.scheduled_start_at)}${s.scheduled_end_at ? ` to ${formatTime(s.scheduled_end_at)}` : ""}</div>
+          ${s.description ? `<div style="margin-top:4px;">${escapeHtmlAttr(s.description)}</div>` : ""}
+          <div class="actions">
+            ${isClosed ? "" : `<button class="btn small" data-student-live-join="${s.session_id}">${s.joined ? "Enter Room" : "Join Class"}</button>`}
+            ${s.joined ? `<button class="btn small" data-student-live-leave="${s.session_id}">Leave</button>` : ""}
+            ${s.meeting_mode === "external" && s.external_meeting_url ? `<a class="btn small" href="${s.external_meeting_url}" target="_blank" rel="noreferrer">Open Meeting</a>` : ""}
+          </div>
+        </div>
+      `;
+    },
+    "No live classes for your enrolled courses.",
+  );
+  document.querySelectorAll("[data-student-live-join]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sessionId = Number(btn.dataset.studentLiveJoin || 0);
+      if (!sessionId) return;
+      try {
+        const out2 = await api("POST", `/student/live-classes/${sessionId}/join`);
+        await openLiveClassroom(sessionId, "student", out2?.room_state || null);
+      } catch (err) {
+        toast(err?.message || "Failed to join class", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-student-live-leave]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const sessionId = Number(btn.dataset.studentLiveLeave || 0);
+      if (!sessionId) return;
+      try {
+        await api("POST", `/student/live-classes/${sessionId}/leave`);
+        toast("You left the class");
+        await refreshStudentLiveClasses();
+      } catch (err) {
+        toast(err?.message || "Failed to leave class", "error");
+      }
+    });
+  });
+}
+
+function getLiveRoomApiPrefix(role = state.liveRoom.role) {
+  return role === "provider" ? "/provider/workspace/live-classes" : "/student/live-classes";
+}
+
+function stopLiveRoomPolling() {
+  if (state.liveRoom.pollerId) {
+    clearInterval(state.liveRoom.pollerId);
+    state.liveRoom.pollerId = null;
+  }
+}
+
+function clearLiveRoomState() {
+  stopLiveRoomPolling();
+  state.liveRoom.active = false;
+  state.liveRoom.sessionId = null;
+  state.liveRoom.role = null;
+  state.liveRoom.lastMessageId = 0;
+  if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
+  if (el.liveRoomParticipantsList) el.liveRoomParticipantsList.innerHTML = "";
+  if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
+  if (el.liveRoomPollPanel) {
+    el.liveRoomPollPanel.classList.add("hidden");
+    el.liveRoomPollPanel.innerHTML = "";
+  }
+}
+
+function liveRoomMessageRow(item) {
+  const who = escapeHtmlAttr(item.actor_name || item.actor_role || "User");
+  const kind = escapeHtmlAttr(item.message_type || "chat");
+  const content = escapeHtmlAttr(item.content || "");
+  return `
+    <div>
+      <div class="row between">
+        <strong>${who}</strong>
+        <span class="meta">${kind}</span>
+      </div>
+      <div style="margin-top:4px;">${content}</div>
+      <div class="meta">${formatTime(item.created_at)}</div>
+    </div>
+  `;
+}
+
+function appendLiveRoomMessages(items) {
+  if (!el.liveRoomChatList || !Array.isArray(items) || !items.length) return;
+  const nearBottom = (el.liveRoomChatList.scrollHeight - el.liveRoomChatList.scrollTop - el.liveRoomChatList.clientHeight) < 30;
+  const html = items.map((row) => `<div class="item">${liveRoomMessageRow(row)}</div>`).join("");
+  el.liveRoomChatList.insertAdjacentHTML("beforeend", html);
+  const maxId = Math.max(...items.map((row) => Number(row.id || 0)));
+  state.liveRoom.lastMessageId = Math.max(state.liveRoom.lastMessageId, maxId);
+  if (nearBottom) el.liveRoomChatList.scrollTop = el.liveRoomChatList.scrollHeight;
+}
+
+function renderLiveRoomParticipants(room) {
+  const participants = room?.participants || [];
+  renderList(
+    el.liveRoomParticipantsList,
+    participants,
+    (p) => `
+      <div class="row between">
+        <span><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></span>
+        ${p.raised_hand ? "<span class='badge'>Hand Raised</span>" : "<span class='meta'>Active</span>"}
+      </div>
+    `,
+    "No active participants.",
+  );
+  renderList(
+    el.liveRoomHandsList,
+    participants.filter((p) => p.raised_hand),
+    (p) => `<div><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></div>`,
+    "No raised hands.",
+  );
+}
+
+function renderLivePollPanel(room) {
+  if (!el.liveRoomPollPanel) return;
+  const session = room?.session || {};
+  const poll = session.active_poll || {};
+  const options = Array.isArray(poll.options) ? poll.options : [];
+  if (!poll.key || !options.length) {
+    el.liveRoomPollPanel.classList.add("hidden");
+    el.liveRoomPollPanel.innerHTML = "";
+    return;
+  }
+  const canVote = state.liveRoom.role === "student" && Boolean(poll.is_open);
+  const totalVotes = Number(poll.total_votes || 0);
+  const votes = Array.isArray(poll.votes) ? poll.votes : [];
+  const myVote = (poll.my_vote === null || poll.my_vote === undefined) ? null : Number(poll.my_vote);
+  el.liveRoomPollPanel.classList.remove("hidden");
+  el.liveRoomPollPanel.innerHTML = `
+    <div class="row between">
+      <strong>${escapeHtmlAttr(poll.question || "Live poll")}</strong>
+      <span class="meta">${poll.is_open ? "Open" : "Closed"} | Votes: ${totalVotes}</span>
+    </div>
+    <div class="list" style="margin-top:8px;">
+      ${options.map((opt, idx) => {
+    const count = Number(votes[idx] || 0);
+    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+    const active = myVote === idx ? "status-open" : "status-dismissed";
+    return `
+          <div>
+            <div class="row between">
+              <span>${escapeHtmlAttr(opt)}</span>
+              <span class="status-pill ${active}">${count} (${pct}%)</span>
+            </div>
+            ${canVote ? `<div class="actions"><button class="btn small" data-live-poll-vote="${idx}">${myVote === idx ? "Selected" : "Vote"}</button></div>` : ""}
+          </div>
+        `;
+  }).join("")}
+    </div>
+  `;
+  if (canVote) {
+    el.liveRoomPollPanel.querySelectorAll("[data-live-poll-vote]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const optionIndex = Number(btn.dataset.livePollVote || 0);
+        try {
+          await api("POST", `/student/live-classes/${state.liveRoom.sessionId}/poll-vote`, { option_index: optionIndex });
+          await refreshLiveRoomState();
+        } catch (err) {
+          toast(err?.message || "Failed to submit poll vote", "error");
+        }
+      });
+    });
+  }
+}
+
+function applyLiveRoomState(room) {
+  const session = room?.session || {};
+  const me = room?.me || {};
+  if (el.liveRoomTitle) el.liveRoomTitle.textContent = session.title || "Live Classroom";
+  if (el.liveRoomMeta) {
+    const mode = session.meeting_mode === "external" ? "External meeting + in-app tools" : "In-app classroom";
+    el.liveRoomMeta.textContent = `${session.course_title || "Course"} | ${mode} | ${session.status || "scheduled"}`;
+  }
+  if (el.liveRoomPresenceBadge) {
+    el.liveRoomPresenceBadge.textContent = `Participants: ${Number(room?.participant_count || 0)}`;
+  }
+  if (el.liveRoomBoardText) el.liveRoomBoardText.value = session.board_text || "";
+
+  const isProvider = state.liveRoom.role === "provider";
+  if (el.liveRoomBoardText) el.liveRoomBoardText.disabled = !isProvider;
+  if (el.liveRoomSaveBoardBtn) el.liveRoomSaveBoardBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomPollQuestion) el.liveRoomPollQuestion.disabled = !isProvider;
+  if (el.liveRoomPollOptions) el.liveRoomPollOptions.disabled = !isProvider;
+  if (el.liveRoomStartPollBtn) el.liveRoomStartPollBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomClosePollBtn) el.liveRoomClosePollBtn.classList.toggle("hidden", !isProvider);
+
+  const canRaise = !isProvider && Boolean(session.allow_raise_hand);
+  if (el.liveRoomRaiseHandBtn) {
+    el.liveRoomRaiseHandBtn.classList.toggle("hidden", !canRaise);
+    el.liveRoomRaiseHandBtn.textContent = me.raised_hand ? "Lower Hand" : "Raise Hand";
+  }
+  if (el.liveRoomSendChatBtn) {
+    el.liveRoomSendChatBtn.disabled = !session.allow_chat;
+  }
+  if (el.liveRoomChatInput) {
+    el.liveRoomChatInput.disabled = !session.allow_chat;
+    if (!session.allow_chat) el.liveRoomChatInput.placeholder = "Chat is disabled for this class";
+    else el.liveRoomChatInput.placeholder = "Type message";
+  }
+
+  renderLiveRoomParticipants(room);
+  renderLivePollPanel(room);
+}
+
+async function refreshLiveRoomMessages() {
+  if (!state.liveRoom.active || !state.liveRoom.sessionId) return;
+  const prefix = getLiveRoomApiPrefix();
+  const out = await api(
+    "GET",
+    `${prefix}/${state.liveRoom.sessionId}/messages?after_id=${state.liveRoom.lastMessageId}&limit=100`,
+  );
+  appendLiveRoomMessages(out?.items || []);
+}
+
+async function refreshLiveRoomState() {
+  if (!state.liveRoom.active || !state.liveRoom.sessionId) return;
+  const prefix = getLiveRoomApiPrefix();
+  const room = await api("GET", `${prefix}/${state.liveRoom.sessionId}/room-state`);
+  applyLiveRoomState(room);
+}
+
+async function refreshLiveRoom() {
+  if (!state.liveRoom.active || !state.liveRoom.sessionId) return;
+  await Promise.all([refreshLiveRoomState(), refreshLiveRoomMessages()]);
+}
+
+function startLiveRoomPolling() {
+  stopLiveRoomPolling();
+  state.liveRoom.pollerId = setInterval(() => {
+    refreshLiveRoom().catch((err) => {
+      log("live_room_poll_error", String(err));
+    });
+  }, 2500);
+}
+
+async function openLiveClassroom(sessionId, role, initialState = null) {
+  state.liveRoom.active = true;
+  state.liveRoom.sessionId = Number(sessionId);
+  state.liveRoom.role = role;
+  state.liveRoom.lastMessageId = 0;
+  if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
+  if (el.liveClassroomScreen) el.liveClassroomScreen.classList.remove("hidden");
+  if (initialState) applyLiveRoomState(initialState);
+  await refreshLiveRoom();
+  startLiveRoomPolling();
+}
+
+async function leaveLiveClassroom() {
+  const { sessionId, role } = state.liveRoom;
+  if (!sessionId || !role) {
+    clearLiveRoomState();
+    if (el.liveClassroomScreen) el.liveClassroomScreen.classList.add("hidden");
+    return;
+  }
+  const prefix = getLiveRoomApiPrefix(role);
+  try {
+    await api("POST", `${prefix}/${sessionId}/leave`);
+  } catch (err) {
+    log("live_room_leave_error", String(err));
+  }
+  clearLiveRoomState();
+  if (el.liveClassroomScreen) el.liveClassroomScreen.classList.add("hidden");
+  if (role === "provider") {
+    refreshProviderLiveClasses().catch(() => {});
+  } else {
+    refreshStudentLiveClasses().catch(() => {});
+  }
+}
+
+async function sendLiveRoomChatMessage(messageType = "chat", contentRaw = "") {
+  const sessionId = Number(state.liveRoom.sessionId || 0);
+  if (!sessionId) return;
+  const content = String(contentRaw || "").trim();
+  if (!content) return;
+  const prefix = getLiveRoomApiPrefix();
+  await api("POST", `${prefix}/${sessionId}/messages`, {
+    message_type: messageType,
+    content,
+    payload: {},
+  });
+  if (el.liveRoomChatInput) el.liveRoomChatInput.value = "";
+  await refreshLiveRoomMessages();
+}
+
+
 async function refreshProviderContent() {
   const items = await api("GET", "/provider/workspace/content/courses");
   state.providerCourses = items || [];
@@ -2609,6 +3190,7 @@ async function refreshProviderContent() {
           <div>
             <div><strong>${c.title}</strong> <span class="status-pill ${c.is_published ? "status-resolved" : "status-open"}">${c.is_published ? "active" : "inactive"}</span></div>
             <div class="meta">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
+            <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}</div>
             <div class="actions">
               ${firstLesson?.recorded_video_url ? `<button class="btn small" data-view-course="${c.id}">View Class</button>` : ""}
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
@@ -4521,6 +5103,26 @@ async function openStudentCourseViewer(courseId) {
   const progressPct = Number(detail.progress_pct || 0);
   if (el.scvProgressBar) el.scvProgressBar.style.width = `${Math.max(0, Math.min(100, progressPct))}%`;
   if (el.scvProgressText) el.scvProgressText.textContent = `${progressPct.toFixed(0)}%`;
+  if (el.scvCourseRatingSummary) {
+    el.scvCourseRatingSummary.textContent = formatCourseRating(detail.average_rating, detail.rating_count);
+  }
+  const myFeedback = detail.my_feedback || {};
+  if (el.scvRateValue) el.scvRateValue.value = String(myFeedback.valuable_time_rating || 5);
+  if (el.scvRateContent) el.scvRateContent.value = String(myFeedback.content_quality_rating || 5);
+  if (el.scvRateClarity) el.scvRateClarity.value = String(myFeedback.instructor_clarity_rating || 5);
+  if (el.scvRatePractical) el.scvRatePractical.value = String(myFeedback.practical_usefulness_rating || 5);
+  if (el.scvRatingComment) el.scvRatingComment.value = String(myFeedback.comment || "");
+  const canRateCourse = progressPct >= 100 || Boolean(detail.exam_eligible);
+  if (el.scvSaveRatingBtn) el.scvSaveRatingBtn.disabled = !canRateCourse;
+  if (el.scvRatingStatus) {
+    if (!canRateCourse) {
+      el.scvRatingStatus.textContent = "Complete this course to enable rating.";
+    } else if (myFeedback.feedback_id) {
+      el.scvRatingStatus.textContent = `Your latest rating is saved (${Number(myFeedback.overall_rating || 0).toFixed(1)}/5).`;
+    } else {
+      el.scvRatingStatus.textContent = "";
+    }
+  }
   renderList(
     el.scvTopicList,
     [...(lesson?.topics || [])].sort((a, b) => a.time_seconds - b.time_seconds),
@@ -5061,7 +5663,14 @@ async function loadSessionContext() {
   if (context.role === "provider") {
     showView("provider");
     activateProviderSubView("home");
-    await Promise.all([refreshProviderHome(), refreshProviderAssessments(), refreshProviderFeedback(), refreshProviderNotifications(), refreshProviderCertifications()]);
+    await Promise.all([
+      refreshProviderHome(),
+      refreshProviderAssessments(),
+      refreshProviderFeedback(),
+      refreshProviderNotifications(),
+      refreshProviderCertifications(),
+      refreshProviderLiveClasses(),
+    ]);
     await refreshProviderContent();
     await refreshProviderDrafts();
     return context;
@@ -5070,7 +5679,7 @@ async function loadSessionContext() {
   if (context.role === "student") {
     showView("student");
     activateStudentSubView("home");
-    await Promise.all([refreshStudentDashboard(), refreshStudentCertifications()]);
+    await Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]);
     return context;
   }
 
@@ -5187,7 +5796,8 @@ function handleKeyboardShortcuts(event) {
     if (event.key === "1") activateStudentSubView("home");
     if (event.key === "2") activateStudentSubView("available");
     if (event.key === "3") activateStudentSubView("enrolled");
-    if (event.key === "4") activateStudentSubView("certifications");
+    if (event.key === "4") activateStudentSubView("live");
+    if (event.key === "5") activateStudentSubView("certifications");
   }
 }
 
@@ -5694,6 +6304,29 @@ function bindEvents() {
   $("scvCloseBtn")?.addEventListener("click", () => {
     el.studentCourseViewer?.classList.add("hidden");
   });
+  $("scvSaveRatingBtn")?.addEventListener("click", async () => {
+    const courseId = Number(state.studentActiveCourseId || 0);
+    if (!courseId) {
+      toast("Open a course first", "error");
+      return;
+    }
+    try {
+      const payload = {
+        valuable_time_rating: Number(el.scvRateValue?.value || 5),
+        content_quality_rating: Number(el.scvRateContent?.value || 5),
+        instructor_clarity_rating: Number(el.scvRateClarity?.value || 5),
+        practical_usefulness_rating: Number(el.scvRatePractical?.value || 5),
+        comment: String(el.scvRatingComment?.value || "").trim() || null,
+      };
+      await api("POST", `/student/courses/${courseId}/feedback`, payload);
+      if (el.scvRatingStatus) el.scvRatingStatus.textContent = "Rating saved.";
+      toast("Course rating submitted");
+      await refreshStudentDashboard().catch(() => {});
+      await openStudentCourseViewer(courseId);
+    } catch (err) {
+      toast(err?.message || "Failed to submit rating", "error");
+    }
+  });
 
   bindCustomPlayerControls({
     videoId: "cwVideoPreview",
@@ -5878,13 +6511,95 @@ function bindEvents() {
 
   $("refreshProviderCoursesBtn")?.addEventListener("click", () => refreshProviderContent().catch(() => toast("Failed to refresh courses", "error")));
   $("refreshStudentDashboardBtn")?.addEventListener("click", () =>
-    Promise.all([refreshStudentDashboard(), refreshStudentCertifications()]).catch(() => toast("Failed to refresh dashboard", "error")));
+    Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]).catch(() => toast("Failed to refresh dashboard", "error")));
   $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
     refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderAssessmentsBtn")?.addEventListener("click", () => refreshProviderAssessments().catch(() => toast("Failed to refresh assessments", "error")));
   $("refreshProviderCommentsBtn")?.addEventListener("click", () => refreshProviderFeedback().catch(() => toast("Failed to refresh feedback", "error")));
   $("refreshProviderNotificationsBtn")?.addEventListener("click", () => refreshProviderNotifications().catch(() => toast("Failed to refresh notifications", "error")));
   $("refreshProviderCertsBtn")?.addEventListener("click", () => refreshProviderCertifications().catch(() => toast("Failed to refresh certifications", "error")));
+  $("refreshProviderLiveClassesBtn")?.addEventListener("click", () => refreshProviderLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
+  $("refreshStudentLiveClassesBtn")?.addEventListener("click", () => refreshStudentLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
+  $("openLiveClassSchedulerBtn")?.addEventListener("click", () => {
+    if (el.providerLiveClassScheduler?.classList.contains("hidden")) {
+      resetProviderLiveScheduler();
+      providerLiveSchedulerSetVisible(true);
+    } else {
+      providerLiveSchedulerSetVisible(false);
+    }
+  });
+  $("closeLiveClassSchedulerBtn")?.addEventListener("click", () => {
+    providerLiveSchedulerSetVisible(false);
+    resetProviderLiveScheduler();
+  });
+  $("cancelLiveClassSchedulerBtn")?.addEventListener("click", () => {
+    providerLiveSchedulerSetVisible(false);
+    resetProviderLiveScheduler();
+  });
+  $("createLiveClassBtn")?.addEventListener("click", () => {
+    submitProviderLiveSchedule().catch((err) => toast(err?.message || "Failed to save live class schedule", "error"));
+  });
+  $("liveClassMode")?.addEventListener("change", () => applyProviderLiveModeUi());
+  $("leaveLiveRoomBtn")?.addEventListener("click", () => {
+    leaveLiveClassroom().catch(() => toast("Failed to leave room", "error"));
+  });
+  $("liveRoomSendChatBtn")?.addEventListener("click", () => {
+    sendLiveRoomChatMessage("chat", el.liveRoomChatInput?.value || "").catch((err) => toast(err?.message || "Failed to send message", "error"));
+  });
+  $("liveRoomChatInput")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    sendLiveRoomChatMessage("chat", el.liveRoomChatInput?.value || "").catch((err) => toast(err?.message || "Failed to send message", "error"));
+  });
+  document.querySelectorAll("[data-live-reaction]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const reaction = String(btn.dataset.liveReaction || "").trim();
+      if (!reaction) return;
+      sendLiveRoomChatMessage("reaction", reaction).catch((err) => toast(err?.message || "Failed to send reaction", "error"));
+    });
+  });
+  $("liveRoomSaveBoardBtn")?.addEventListener("click", () => {
+    const sessionId = Number(state.liveRoom.sessionId || 0);
+    if (!sessionId || state.liveRoom.role !== "provider") return;
+    api("POST", `/provider/workspace/live-classes/${sessionId}/tools/board`, {
+      board_text: String(el.liveRoomBoardText?.value || ""),
+    })
+      .then(() => refreshLiveRoomState())
+      .then(() => toast("Whiteboard updated"))
+      .catch((err) => toast(err?.message || "Failed to save board", "error"));
+  });
+  $("liveRoomRaiseHandBtn")?.addEventListener("click", () => {
+    const sessionId = Number(state.liveRoom.sessionId || 0);
+    if (!sessionId || state.liveRoom.role !== "student") return;
+    api("POST", `/student/live-classes/${sessionId}/raise-hand`)
+      .then(() => refreshLiveRoomState())
+      .catch((err) => toast(err?.message || "Failed to update hand raise", "error"));
+  });
+  $("liveRoomStartPollBtn")?.addEventListener("click", () => {
+    const sessionId = Number(state.liveRoom.sessionId || 0);
+    if (!sessionId || state.liveRoom.role !== "provider") return;
+    const question = String(el.liveRoomPollQuestion?.value || "").trim();
+    const options = String(el.liveRoomPollOptions?.value || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    api("POST", `/provider/workspace/live-classes/${sessionId}/tools/poll`, { question, options })
+      .then(() => {
+        if (el.liveRoomPollQuestion) el.liveRoomPollQuestion.value = "";
+        if (el.liveRoomPollOptions) el.liveRoomPollOptions.value = "";
+        return refreshLiveRoomState();
+      })
+      .then(() => toast("Poll started"))
+      .catch((err) => toast(err?.message || "Failed to start poll", "error"));
+  });
+  $("liveRoomClosePollBtn")?.addEventListener("click", () => {
+    const sessionId = Number(state.liveRoom.sessionId || 0);
+    if (!sessionId || state.liveRoom.role !== "provider") return;
+    api("POST", `/provider/workspace/live-classes/${sessionId}/tools/poll/close`)
+      .then(() => refreshLiveRoomState())
+      .then(() => toast("Poll closed"))
+      .catch((err) => toast(err?.message || "Failed to close poll", "error"));
+  });
   $("completeLiveClassBtn")?.addEventListener("click", () => completeLiveClassAction().catch(() => toast("Failed to complete live class", "error")));
 
   document.addEventListener("keydown", handleKeyboardShortcuts);

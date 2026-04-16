@@ -20,6 +20,10 @@ from app.models.entities import (
     Exam,
     Lesson,
     LessonTopic,
+    LiveClassMessage,
+    LiveClassParticipant,
+    LiveClassPollVote,
+    LiveClassSession,
     LiveClassCompletion,
     ProviderNotification,
     ProviderDocument,
@@ -38,6 +42,11 @@ from app.schemas import (
     CourseCommentReply,
     LessonTopicCreate,
     LessonTopicOut,
+    LiveClassBoardUpdate,
+    LiveClassMessageCreate,
+    LiveClassPollCreate,
+    LiveClassScheduleCreate,
+    LiveClassScheduleUpdate,
     ProviderDocumentCreate,
     ProviderDocumentOut,
     ProviderHomeOut,
@@ -169,6 +178,106 @@ def _provider_or_404(db: Session, user_id: int) -> ProviderProfile:
     return profile
 
 
+def _course_rating_summary(db: Session, course_ids: set[int]) -> dict[int, dict]:
+    if not course_ids:
+        return {}
+    rows = db.execute(
+        select(
+            CourseFeedback.course_id,
+            CourseFeedback.valuable_time_rating,
+            CourseFeedback.content_quality_rating,
+            CourseFeedback.instructor_clarity_rating,
+            CourseFeedback.practical_usefulness_rating,
+        ).where(CourseFeedback.course_id.in_(course_ids)),
+    ).all()
+    totals: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for course_id, v1, v2, v3, v4 in rows:
+        cid = int(course_id)
+        overall = (float(v1 or 0) + float(v2 or 0) + float(v3 or 0) + float(v4 or 0)) / 4.0
+        totals[cid] = totals.get(cid, 0.0) + overall
+        counts[cid] = counts.get(cid, 0) + 1
+    return {
+        cid: {
+            "average_rating": round((totals[cid] / counts[cid]), 2) if counts[cid] else 0.0,
+            "rating_count": int(counts[cid]),
+        }
+        for cid in counts
+    }
+
+
+def _provider_live_session_or_404(db: Session, provider_id: int, session_id: int) -> LiveClassSession:
+    sess = db.get(LiveClassSession, session_id)
+    if not sess or sess.provider_id != provider_id:
+        raise HTTPException(status_code=404, detail="Live class session not found")
+    return sess
+
+
+def _live_poll_tally(db: Session, sess: LiveClassSession) -> dict:
+    if not sess.active_poll_key:
+        return {"total_votes": 0, "votes": []}
+    rows = db.execute(
+        select(LiveClassPollVote.option_index, func.count(LiveClassPollVote.id))
+        .where(and_(LiveClassPollVote.session_id == sess.id, LiveClassPollVote.poll_key == sess.active_poll_key))
+        .group_by(LiveClassPollVote.option_index),
+    ).all()
+    counts = {int(i): int(c) for i, c in rows}
+    options = list(sess.active_poll_options_json or [])
+    votes = [int(counts.get(i, 0)) for i in range(len(options))]
+    return {"total_votes": sum(votes), "votes": votes}
+
+
+def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
+    course = db.get(Course, sess.course_id)
+    participant_rows = db.scalars(
+        select(LiveClassParticipant)
+        .where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)))
+        .order_by(LiveClassParticipant.joined_at.asc()),
+    ).all()
+    poll_tally = _live_poll_tally(db, sess)
+    return {
+        "session": {
+            "id": sess.id,
+            "room_code": sess.room_code,
+            "course_id": sess.course_id,
+            "course_title": course.title if course else None,
+            "title": sess.title,
+            "description": sess.description,
+            "timezone": sess.timezone,
+            "status": sess.status,
+            "scheduled_start_at": sess.scheduled_start_at,
+            "scheduled_end_at": sess.scheduled_end_at,
+            "started_at": sess.started_at,
+            "ended_at": sess.ended_at,
+            "meeting_mode": sess.meeting_mode,
+            "external_meeting_url": sess.external_meeting_url,
+            "allow_chat": bool(sess.allow_chat),
+            "allow_raise_hand": bool(sess.allow_raise_hand),
+            "allow_reactions": bool(sess.allow_reactions),
+            "board_text": sess.board_text or "",
+            "active_poll": {
+                "key": sess.active_poll_key,
+                "question": sess.active_poll_question,
+                "options": list(sess.active_poll_options_json or []),
+                "is_open": bool(sess.active_poll_open),
+                "total_votes": poll_tally["total_votes"],
+                "votes": poll_tally["votes"],
+            },
+        },
+        "participants": [
+            {
+                "user_id": p.user_id,
+                "display_name": p.display_name,
+                "actor_role": p.actor_role,
+                "raised_hand": bool(p.raised_hand),
+                "joined_at": p.joined_at,
+            }
+            for p in participant_rows
+        ],
+        "participant_count": len(participant_rows),
+    }
+
+
 @router.get("/workspace/home", response_model=ProviderHomeOut)
 def provider_home(
     db: Session = Depends(get_db),
@@ -251,6 +360,7 @@ def provider_content_courses(
 ):
     provider = _provider_or_404(db, current_user.id)
     courses = list(db.scalars(select(Course).where(Course.provider_id == provider.id)).all())
+    rating_summary = _course_rating_summary(db, {int(c.id) for c in courses})
     from app.models.entities import CourseModule  # local import to avoid file-wide refactor
 
     response = []
@@ -285,6 +395,8 @@ def provider_content_courses(
                 "title": course.title,
                 "thumbnail_url": course.thumbnail_url,
                 "is_published": course.is_published,
+                "average_rating": float((rating_summary.get(int(course.id)) or {}).get("average_rating", 0.0)),
+                "rating_count": int((rating_summary.get(int(course.id)) or {}).get("rating_count", 0)),
                 "modules": module_items,
             },
         )
@@ -580,6 +692,405 @@ def provider_assessments(
         }
         for exam, course in rows
     ]
+
+
+@router.get("/workspace/live-classes")
+def provider_live_classes(
+    course_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    q = select(LiveClassSession).where(LiveClassSession.provider_id == provider.id)
+    if course_id:
+        q = q.where(LiveClassSession.course_id == course_id)
+    rows = db.scalars(q.order_by(LiveClassSession.scheduled_start_at.desc(), LiveClassSession.id.desc())).all()
+    courses = {c.id: c for c in db.scalars(select(Course).where(Course.provider_id == provider.id)).all()}
+    items = []
+    for sess in rows:
+        participant_count = int(
+            db.scalar(
+                select(func.count(LiveClassParticipant.id)).where(
+                    and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)),
+                ),
+            )
+            or 0
+        )
+        items.append(
+            {
+                "session_id": sess.id,
+                "course_id": sess.course_id,
+                "course_title": (courses.get(sess.course_id).title if courses.get(sess.course_id) else None),
+                "room_code": sess.room_code,
+                "title": sess.title,
+                "description": sess.description,
+                "timezone": sess.timezone,
+                "status": sess.status,
+                "scheduled_start_at": sess.scheduled_start_at,
+                "scheduled_end_at": sess.scheduled_end_at,
+                "started_at": sess.started_at,
+                "ended_at": sess.ended_at,
+                "meeting_mode": sess.meeting_mode,
+                "external_meeting_url": sess.external_meeting_url,
+                "participant_count": participant_count,
+                "allow_chat": bool(sess.allow_chat),
+                "allow_raise_hand": bool(sess.allow_raise_hand),
+                "allow_reactions": bool(sess.allow_reactions),
+            },
+        )
+    return {"items": items}
+
+
+@router.post("/workspace/live-classes", status_code=status.HTTP_201_CREATED)
+def create_live_class_schedule(
+    payload: LiveClassScheduleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    course = db.get(Course, payload.course_id)
+    if not course or course.provider_id != provider.id:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if payload.scheduled_end_at and payload.scheduled_end_at <= payload.scheduled_start_at:
+        raise HTTPException(status_code=400, detail="scheduled_end_at must be after scheduled_start_at")
+    meeting_mode = str(payload.meeting_mode or "in_app").strip().lower()
+    if meeting_mode not in {"in_app", "external"}:
+        raise HTTPException(status_code=400, detail="meeting_mode must be in_app or external")
+    if meeting_mode == "external" and not str(payload.external_meeting_url or "").strip():
+        raise HTTPException(status_code=400, detail="external_meeting_url is required for external mode")
+    sess = LiveClassSession(
+        course_id=course.id,
+        provider_id=provider.id,
+        room_code=uuid4().hex[:10].upper(),
+        title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
+        timezone=(payload.timezone or "UTC").strip() or "UTC",
+        meeting_mode=meeting_mode,
+        external_meeting_url=(payload.external_meeting_url or "").strip() or None,
+        status="scheduled",
+        scheduled_start_at=payload.scheduled_start_at,
+        scheduled_end_at=payload.scheduled_end_at,
+        max_participants=int(payload.max_participants),
+        allow_chat=bool(payload.allow_chat),
+        allow_raise_hand=bool(payload.allow_raise_hand),
+        allow_reactions=bool(payload.allow_reactions),
+    )
+    db.add(sess)
+    db.flush()
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="system",
+            content=f"Live class '{sess.title}' scheduled.",
+            payload_json={},
+        ),
+    )
+    db.commit()
+    return {"created": True, "session_id": sess.id, "room_code": sess.room_code}
+
+
+@router.patch("/workspace/live-classes/{session_id}")
+def update_live_class_schedule(
+    session_id: int,
+    payload: LiveClassScheduleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "meeting_mode" in data and data["meeting_mode"] is not None:
+        mode = str(data["meeting_mode"]).strip().lower()
+        if mode not in {"in_app", "external"}:
+            raise HTTPException(status_code=400, detail="meeting_mode must be in_app or external")
+        data["meeting_mode"] = mode
+    if data.get("meeting_mode") == "external" and not str(data.get("external_meeting_url") or sess.external_meeting_url or "").strip():
+        raise HTTPException(status_code=400, detail="external_meeting_url is required for external mode")
+    next_start = data.get("scheduled_start_at", sess.scheduled_start_at)
+    next_end = data.get("scheduled_end_at", sess.scheduled_end_at)
+    if next_end and next_end <= next_start:
+        raise HTTPException(status_code=400, detail="scheduled_end_at must be after scheduled_start_at")
+    for key, value in data.items():
+        setattr(sess, key, value)
+    db.commit()
+    return {"updated": True, "session_id": sess.id}
+
+
+@router.post("/workspace/live-classes/{session_id}/start")
+def start_live_class(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    if sess.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Cancelled class cannot be started")
+    now = datetime.now(timezone.utc)
+    sess.status = "live"
+    sess.started_at = now
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="system",
+            content="Class is now live.",
+            payload_json={},
+        ),
+    )
+    db.commit()
+    return {"started": True, "session_id": sess.id, "status": sess.status}
+
+
+@router.post("/workspace/live-classes/{session_id}/end")
+def end_live_class(
+    session_id: int,
+    unlock_assessment: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    now = datetime.now(timezone.utc)
+    sess.status = "ended"
+    sess.ended_at = now
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="system",
+            content="Class has ended.",
+            payload_json={},
+        ),
+    )
+    unlocked = 0
+    if unlock_assessment:
+        enrollments = list(db.scalars(select(Enrollment).where(Enrollment.course_id == sess.course_id)).all())
+        for enr in enrollments:
+            enr.exam_eligible = True
+            enr.progress_pct = max(float(enr.progress_pct or 0), 100.0)
+        unlocked = len(enrollments)
+        db.add(LiveClassCompletion(course_id=sess.course_id, provider_id=provider.id, note=f"Session #{sess.id} ended"))
+    db.commit()
+    return {"ended": True, "session_id": sess.id, "status": sess.status, "students_unlocked": unlocked}
+
+
+@router.post("/workspace/live-classes/{session_id}/join")
+def provider_join_live_class(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
+    )
+    now = datetime.now(timezone.utc)
+    if not participant:
+        participant = LiveClassParticipant(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_role="provider",
+            display_name=current_user.full_name or current_user.email,
+            is_present=True,
+            joined_at=now,
+            last_seen_at=now,
+            raised_hand=False,
+        )
+        db.add(participant)
+    else:
+        participant.is_present = True
+        participant.left_at = None
+        participant.last_seen_at = now
+    db.commit()
+    return {"joined": True}
+
+
+@router.post("/workspace/live-classes/{session_id}/leave")
+def provider_leave_live_class(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
+    )
+    if participant:
+        participant.is_present = False
+        participant.raised_hand = False
+        participant.left_at = datetime.now(timezone.utc)
+        participant.last_seen_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"left": True}
+
+
+@router.get("/workspace/live-classes/{session_id}/room-state")
+def provider_live_room_state(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    return _provider_live_room_state(db, sess)
+
+
+@router.get("/workspace/live-classes/{session_id}/messages")
+def provider_live_messages(
+    session_id: int,
+    after_id: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    limit = max(1, min(limit, 200))
+    rows = db.scalars(
+        select(LiveClassMessage)
+        .where(and_(LiveClassMessage.session_id == sess.id, LiveClassMessage.id > int(after_id)))
+        .order_by(LiveClassMessage.id.asc())
+        .limit(limit),
+    ).all()
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "message_type": row.message_type,
+                "content": row.content,
+                "actor_name": row.actor_name,
+                "actor_role": row.actor_role,
+                "payload": row.payload_json or {},
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/workspace/live-classes/{session_id}/messages")
+def provider_send_live_message(
+    session_id: int,
+    payload: LiveClassMessageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    mtype = str(payload.message_type or "chat").strip().lower()
+    if mtype not in {"chat", "announcement", "reaction"}:
+        raise HTTPException(status_code=400, detail="Invalid message type")
+    if mtype == "chat" and not sess.allow_chat:
+        raise HTTPException(status_code=400, detail="Chat is disabled")
+    if mtype == "reaction" and not sess.allow_reactions:
+        raise HTTPException(status_code=400, detail="Reactions are disabled")
+    text = str(payload.content or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message content is required")
+    row = LiveClassMessage(
+        session_id=sess.id,
+        user_id=current_user.id,
+        actor_name=current_user.full_name,
+        actor_role="provider",
+        message_type=mtype,
+        content=text,
+        payload_json=payload.payload or {},
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"message_id": row.id}
+
+
+@router.post("/workspace/live-classes/{session_id}/tools/board")
+def provider_update_live_board(
+    session_id: int,
+    payload: LiveClassBoardUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    sess.board_text = payload.board_text
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="board_update",
+            content="Whiteboard updated.",
+            payload_json={},
+        ),
+    )
+    db.commit()
+    return {"saved": True}
+
+
+@router.post("/workspace/live-classes/{session_id}/tools/poll")
+def provider_start_live_poll(
+    session_id: int,
+    payload: LiveClassPollCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    options = [str(x).strip() for x in payload.options if str(x).strip()]
+    if len(options) < 2:
+        raise HTTPException(status_code=400, detail="Poll requires at least 2 options")
+    sess.active_poll_key = uuid4().hex
+    sess.active_poll_question = str(payload.question).strip()
+    sess.active_poll_options_json = options
+    sess.active_poll_open = True
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="poll",
+            content=f"Poll started: {sess.active_poll_question}",
+            payload_json={"options": options},
+        ),
+    )
+    db.commit()
+    return {"started": True, "poll_key": sess.active_poll_key}
+
+
+@router.post("/workspace/live-classes/{session_id}/tools/poll/close")
+def provider_close_live_poll(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    sess = _provider_live_session_or_404(db, provider.id, session_id)
+    sess.active_poll_open = False
+    tally = _live_poll_tally(db, sess)
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="provider",
+            message_type="poll",
+            content="Poll closed.",
+            payload_json={"tally": tally},
+        ),
+    )
+    db.commit()
+    return {"closed": True, "tally": tally}
 
 
 @router.post("/workspace/live-class/{course_id}/complete")

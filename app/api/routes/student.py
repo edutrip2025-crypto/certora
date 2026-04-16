@@ -24,6 +24,10 @@ from app.models.entities import (
     Result,
     Lesson,
     LessonTopic,
+    LiveClassMessage,
+    LiveClassParticipant,
+    LiveClassPollVote,
+    LiveClassSession,
     Resource,
     CourseModule,
     Option,
@@ -42,6 +46,8 @@ from app.schemas import (
     EnrollmentCreate,
     EnrollmentOut,
     EventRequest,
+    LiveClassMessageCreate,
+    LiveClassPollVoteCreate,
     ProctorTrainingFeedbackCreate,
     ResultOut,
 )
@@ -68,6 +74,61 @@ def _latest_training_feedback(db: Session, attempt_id: int) -> tuple[ProctorTrai
     return latest, count
 
 
+def _course_rating_summary(db: Session, course_ids: set[int]) -> dict[int, dict]:
+    if not course_ids:
+        return {}
+    rows = db.execute(
+        select(
+            CourseFeedback.course_id,
+            CourseFeedback.valuable_time_rating,
+            CourseFeedback.content_quality_rating,
+            CourseFeedback.instructor_clarity_rating,
+            CourseFeedback.practical_usefulness_rating,
+        ).where(CourseFeedback.course_id.in_(course_ids)),
+    ).all()
+    totals: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for course_id, v1, v2, v3, v4 in rows:
+        cid = int(course_id)
+        overall = (float(v1 or 0) + float(v2 or 0) + float(v3 or 0) + float(v4 or 0)) / 4.0
+        totals[cid] = totals.get(cid, 0.0) + overall
+        counts[cid] = counts.get(cid, 0) + 1
+    return {
+        cid: {
+            "average_rating": round((totals[cid] / counts[cid]), 2) if counts[cid] else 0.0,
+            "rating_count": int(counts[cid]),
+        }
+        for cid in counts
+    }
+
+
+def _student_feedback_map(db: Session, student_id: int, course_ids: set[int]) -> dict[int, dict]:
+    if not course_ids:
+        return {}
+    rows = db.scalars(
+        select(CourseFeedback).where(and_(CourseFeedback.student_id == student_id, CourseFeedback.course_id.in_(course_ids))),
+    ).all()
+    out: dict[int, dict] = {}
+    for fb in rows:
+        overall = (
+            float(fb.valuable_time_rating or 0)
+            + float(fb.content_quality_rating or 0)
+            + float(fb.instructor_clarity_rating or 0)
+            + float(fb.practical_usefulness_rating or 0)
+        ) / 4.0
+        out[int(fb.course_id)] = {
+            "feedback_id": int(fb.id),
+            "overall_rating": round(overall, 2),
+            "valuable_time_rating": int(fb.valuable_time_rating),
+            "content_quality_rating": int(fb.content_quality_rating),
+            "instructor_clarity_rating": int(fb.instructor_clarity_rating),
+            "practical_usefulness_rating": int(fb.practical_usefulness_rating),
+            "comment": fb.comment,
+            "created_at": fb.created_at,
+        }
+    return out
+
+
 @router.get("/dashboard")
 def dashboard(
     db: Session = Depends(get_db),
@@ -82,6 +143,9 @@ def dashboard(
     enrolled_course_ids = {course.id for _, course in enrolled_rows}
     published_courses = list(db.scalars(select(Course).where(Course.is_published.is_(True)).order_by(Course.id.desc())).all())
     available_courses = [c for c in published_courses if c.id not in enrolled_course_ids]
+    dashboard_course_ids = {int(c.id) for c in published_courses}
+    rating_summary = _course_rating_summary(db, dashboard_course_ids)
+    my_feedback = _student_feedback_map(db, current_user.id, dashboard_course_ids)
 
     total_enrolled = len(enrolled_rows)
     completed_count = sum(1 for enr, _ in enrolled_rows if (enr.progress_pct or 0) >= 100)
@@ -116,6 +180,9 @@ def dashboard(
                 "exam_eligible": enr.exam_eligible,
                 "published_assessments": int(published_exam_counts.get(int(course.id), 0)),
                 "assessment_available": bool(enr.exam_eligible and int(published_exam_counts.get(int(course.id), 0)) > 0),
+                "average_rating": float((rating_summary.get(int(course.id)) or {}).get("average_rating", 0.0)),
+                "rating_count": int((rating_summary.get(int(course.id)) or {}).get("rating_count", 0)),
+                "my_rating": float((my_feedback.get(int(course.id)) or {}).get("overall_rating", 0.0)),
                 "status": enr.status,
                 "enrolled_at": enr.enrolled_at,
             }
@@ -127,6 +194,8 @@ def dashboard(
                 "title": c.title,
                 "category": c.category,
                 "thumbnail_url": c.thumbnail_url,
+                "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
+                "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
             }
             for c in available_courses
         ],
@@ -184,6 +253,8 @@ def course_detail(
         )
         or 0
     )
+    rating_summary = _course_rating_summary(db, {int(course.id)}).get(int(course.id), {"average_rating": 0.0, "rating_count": 0})
+    my_feedback = _student_feedback_map(db, current_user.id, {int(course.id)}).get(int(course.id))
     return {
         "id": course.id,
         "title": course.title,
@@ -194,6 +265,9 @@ def course_detail(
         "exam_eligible": enrollment.exam_eligible,
         "published_assessments": published_exam_count,
         "assessment_available": bool(enrollment.exam_eligible and published_exam_count > 0),
+        "average_rating": float(rating_summary.get("average_rating", 0.0)),
+        "rating_count": int(rating_summary.get("rating_count", 0)),
+        "my_feedback": my_feedback,
         "modules": module_items,
     }
 
@@ -734,6 +808,405 @@ def assessment_intent(
         "total_assessments": total_assessments,
         "published_assessments": len(exams_published),
     }
+
+
+def _student_live_session_or_403(db: Session, session_id: int, student_id: int) -> tuple[LiveClassSession, Enrollment]:
+    sess = db.get(LiveClassSession, session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Live class session not found")
+    enr = db.scalar(
+        select(Enrollment).where(and_(Enrollment.course_id == sess.course_id, Enrollment.student_id == student_id)),
+    )
+    if not enr:
+        raise HTTPException(status_code=403, detail="Student is not enrolled for this course")
+    return sess, enr
+
+
+def _live_poll_tally(db: Session, sess: LiveClassSession) -> dict:
+    if not sess.active_poll_key:
+        return {"total_votes": 0, "votes": []}
+    rows = db.execute(
+        select(LiveClassPollVote.option_index, func.count(LiveClassPollVote.id))
+        .where(and_(LiveClassPollVote.session_id == sess.id, LiveClassPollVote.poll_key == sess.active_poll_key))
+        .group_by(LiveClassPollVote.option_index),
+    ).all()
+    counts = {int(i): int(c) for i, c in rows}
+    options = list(sess.active_poll_options_json or [])
+    votes = [int(counts.get(i, 0)) for i in range(len(options))]
+    return {"total_votes": sum(votes), "votes": votes}
+
+
+def _student_live_room_state(db: Session, sess: LiveClassSession, student_id: int) -> dict:
+    course = db.get(Course, sess.course_id)
+    provider = db.get(ProviderProfile, sess.provider_id)
+    my_participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == student_id)),
+    )
+    participant_rows = db.scalars(
+        select(LiveClassParticipant)
+        .where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)))
+        .order_by(LiveClassParticipant.joined_at.asc()),
+    ).all()
+    poll_tally = _live_poll_tally(db, sess)
+    my_vote = None
+    if sess.active_poll_key:
+        vote = db.scalar(
+            select(LiveClassPollVote).where(
+                and_(
+                    LiveClassPollVote.session_id == sess.id,
+                    LiveClassPollVote.poll_key == sess.active_poll_key,
+                    LiveClassPollVote.user_id == student_id,
+                ),
+            ),
+        )
+        my_vote = int(vote.option_index) if vote else None
+    return {
+        "session": {
+            "id": sess.id,
+            "room_code": sess.room_code,
+            "course_id": sess.course_id,
+            "course_title": course.title if course else None,
+            "provider_name": provider.display_name if provider else None,
+            "title": sess.title,
+            "description": sess.description,
+            "timezone": sess.timezone,
+            "status": sess.status,
+            "scheduled_start_at": sess.scheduled_start_at,
+            "scheduled_end_at": sess.scheduled_end_at,
+            "started_at": sess.started_at,
+            "ended_at": sess.ended_at,
+            "meeting_mode": sess.meeting_mode,
+            "external_meeting_url": sess.external_meeting_url,
+            "allow_chat": bool(sess.allow_chat),
+            "allow_raise_hand": bool(sess.allow_raise_hand),
+            "allow_reactions": bool(sess.allow_reactions),
+            "board_text": sess.board_text or "",
+            "active_poll": {
+                "key": sess.active_poll_key,
+                "question": sess.active_poll_question,
+                "options": list(sess.active_poll_options_json or []),
+                "is_open": bool(sess.active_poll_open),
+                "total_votes": poll_tally["total_votes"],
+                "votes": poll_tally["votes"],
+                "my_vote": my_vote,
+            },
+        },
+        "me": {
+            "present": bool(my_participant.is_present) if my_participant else False,
+            "raised_hand": bool(my_participant.raised_hand) if my_participant else False,
+        },
+        "participants": [
+            {
+                "user_id": p.user_id,
+                "display_name": p.display_name,
+                "actor_role": p.actor_role,
+                "raised_hand": bool(p.raised_hand),
+                "joined_at": p.joined_at,
+            }
+            for p in participant_rows
+        ],
+        "participant_count": len(participant_rows),
+    }
+
+
+@router.get("/live-classes")
+def student_live_classes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    enrolled_course_ids = list(
+        db.scalars(select(Enrollment.course_id).where(Enrollment.student_id == current_user.id)).all(),
+    )
+    if not enrolled_course_ids:
+        return {"items": []}
+    courses = {c.id: c for c in db.scalars(select(Course).where(Course.id.in_(enrolled_course_ids))).all()}
+    rows = db.scalars(
+        select(LiveClassSession)
+        .where(LiveClassSession.course_id.in_(enrolled_course_ids))
+        .order_by(LiveClassSession.scheduled_start_at.desc(), LiveClassSession.id.desc()),
+    ).all()
+    my_participation = {
+        int(p.session_id): p
+        for p in db.scalars(
+            select(LiveClassParticipant).where(
+                and_(
+                    LiveClassParticipant.user_id == current_user.id,
+                    LiveClassParticipant.session_id.in_([int(s.id) for s in rows]) if rows else False,
+                ),
+            ),
+        ).all()
+    }
+    items = []
+    for sess in rows:
+        course = courses.get(sess.course_id)
+        participant_count = int(
+            db.scalar(
+                select(func.count(LiveClassParticipant.id)).where(
+                    and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)),
+                ),
+            )
+            or 0
+        )
+        mine = my_participation.get(int(sess.id))
+        items.append(
+            {
+                "session_id": sess.id,
+                "course_id": sess.course_id,
+                "course_title": course.title if course else None,
+                "title": sess.title,
+                "description": sess.description,
+                "status": sess.status,
+                "scheduled_start_at": sess.scheduled_start_at,
+                "scheduled_end_at": sess.scheduled_end_at,
+                "meeting_mode": sess.meeting_mode,
+                "external_meeting_url": sess.external_meeting_url,
+                "participant_count": participant_count,
+                "joined": bool(mine and mine.is_present),
+            },
+        )
+    return {"items": items}
+
+
+@router.post("/live-classes/{session_id}/join")
+def join_live_class_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    if sess.status in {"ended", "cancelled"}:
+        raise HTTPException(status_code=400, detail="This live class is no longer active")
+    participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
+    )
+    now = datetime.now(timezone.utc)
+    if not participant:
+        participant = LiveClassParticipant(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_role="student",
+            display_name=current_user.full_name or current_user.email,
+            is_present=True,
+            raised_hand=False,
+            joined_at=now,
+            last_seen_at=now,
+            left_at=None,
+        )
+        db.add(participant)
+    else:
+        participant.is_present = True
+        participant.left_at = None
+        participant.last_seen_at = now
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="student",
+            message_type="system",
+            content=f"{current_user.full_name} joined the class.",
+            payload_json={},
+        ),
+    )
+    db.commit()
+    return {"joined": True, "room_state": _student_live_room_state(db, sess, current_user.id)}
+
+
+@router.post("/live-classes/{session_id}/leave")
+def leave_live_class_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
+    )
+    if participant:
+        participant.is_present = False
+        participant.raised_hand = False
+        participant.left_at = datetime.now(timezone.utc)
+        participant.last_seen_at = datetime.now(timezone.utc)
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="student",
+            message_type="system",
+            content=f"{current_user.full_name} left the class.",
+            payload_json={},
+        ),
+    )
+    db.commit()
+    return {"left": True}
+
+
+@router.get("/live-classes/{session_id}/room-state")
+def student_live_room_state(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    return _student_live_room_state(db, sess, current_user.id)
+
+
+@router.get("/live-classes/{session_id}/messages")
+def student_live_messages(
+    session_id: int,
+    after_id: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    limit = max(1, min(limit, 200))
+    rows = db.scalars(
+        select(LiveClassMessage)
+        .where(and_(LiveClassMessage.session_id == sess.id, LiveClassMessage.id > int(after_id)))
+        .order_by(LiveClassMessage.id.asc())
+        .limit(limit),
+    ).all()
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "message_type": row.message_type,
+                "content": row.content,
+                "actor_name": row.actor_name,
+                "actor_role": row.actor_role,
+                "payload": row.payload_json or {},
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/live-classes/{session_id}/messages")
+def student_send_live_message(
+    session_id: int,
+    payload: LiveClassMessageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    if sess.status in {"ended", "cancelled"}:
+        raise HTTPException(status_code=400, detail="This live class has already ended")
+    mtype = str(payload.message_type or "chat").strip().lower()
+    if mtype not in {"chat", "reaction"}:
+        raise HTTPException(status_code=400, detail="Invalid message type")
+    if mtype == "chat" and not sess.allow_chat:
+        raise HTTPException(status_code=400, detail="Chat is disabled for this class")
+    if mtype == "reaction" and not sess.allow_reactions:
+        raise HTTPException(status_code=400, detail="Reactions are disabled for this class")
+    text = str(payload.content or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message content is required")
+    row = LiveClassMessage(
+        session_id=sess.id,
+        user_id=current_user.id,
+        actor_name=current_user.full_name,
+        actor_role="student",
+        message_type=mtype,
+        content=text,
+        payload_json=payload.payload or {},
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"message_id": row.id}
+
+
+@router.post("/live-classes/{session_id}/raise-hand")
+def student_raise_hand(
+    session_id: int,
+    raised: bool | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    if not sess.allow_raise_hand:
+        raise HTTPException(status_code=400, detail="Raise hand is disabled for this class")
+    participant = db.scalar(
+        select(LiveClassParticipant).where(and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.user_id == current_user.id)),
+    )
+    now = datetime.now(timezone.utc)
+    if not participant:
+        participant = LiveClassParticipant(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_role="student",
+            display_name=current_user.full_name or current_user.email,
+            is_present=True,
+            joined_at=now,
+            last_seen_at=now,
+        )
+        db.add(participant)
+    participant.raised_hand = (not bool(participant.raised_hand)) if raised is None else bool(raised)
+    participant.last_seen_at = now
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="student",
+            message_type="system",
+            content=f"{current_user.full_name} {'raised' if participant.raised_hand else 'lowered'} hand.",
+            payload_json={"raised_hand": bool(participant.raised_hand)},
+        ),
+    )
+    db.commit()
+    return {"raised_hand": bool(participant.raised_hand)}
+
+
+@router.post("/live-classes/{session_id}/poll-vote")
+def student_poll_vote(
+    session_id: int,
+    payload: LiveClassPollVoteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    sess, _ = _student_live_session_or_403(db, session_id, current_user.id)
+    if not sess.active_poll_open or not sess.active_poll_key:
+        raise HTTPException(status_code=400, detail="No active poll")
+    options = list(sess.active_poll_options_json or [])
+    if payload.option_index < 0 or payload.option_index >= len(options):
+        raise HTTPException(status_code=400, detail="Invalid poll option")
+    vote = db.scalar(
+        select(LiveClassPollVote).where(
+            and_(
+                LiveClassPollVote.session_id == sess.id,
+                LiveClassPollVote.poll_key == sess.active_poll_key,
+                LiveClassPollVote.user_id == current_user.id,
+            ),
+        ),
+    )
+    if not vote:
+        vote = LiveClassPollVote(
+            session_id=sess.id,
+            poll_key=sess.active_poll_key,
+            user_id=current_user.id,
+            option_index=payload.option_index,
+        )
+        db.add(vote)
+    else:
+        vote.option_index = payload.option_index
+    db.add(
+        LiveClassMessage(
+            session_id=sess.id,
+            user_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role="student",
+            message_type="poll_vote",
+            content=f"{current_user.full_name} voted.",
+            payload_json={"option_index": int(payload.option_index)},
+        ),
+    )
+    db.commit()
+    tally = _live_poll_tally(db, sess)
+    return {"saved": True, "tally": tally}
 
 
 @router.post("/courses/{course_id}/comments")

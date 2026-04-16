@@ -390,7 +390,49 @@
 
       <section class="panel content hidden" id="provider-view-live">
         <h2>Live Class</h2>
-        <p class="muted">Mark live class complete to unlock assessments for enrolled users.</p>
+        <p class="muted">Schedule classes, run your own classroom tools, and unlock assessments when class is completed.</p>
+        <div class="row between">
+          <h3 style="margin:0;">Scheduled Live Classes</h3>
+          <div class="row wrap gap-sm">
+            <button id="refreshProviderLiveClassesBtn" class="btn small">Refresh</button>
+            <button id="openLiveClassSchedulerBtn" class="btn primary" title="Schedule Live Class">+</button>
+          </div>
+        </div>
+        <section id="providerLiveClassScheduler" class="moderation-toolbar hidden" style="margin-top:10px;">
+          <div class="row between">
+            <h3 style="margin:0;">Schedule Live Class</h3>
+            <button id="closeLiveClassSchedulerBtn" class="btn small">Close</button>
+          </div>
+          <div class="row wrap gap-sm">
+            <input id="liveClassCourseId" type="number" class="filter" placeholder="Course ID" />
+            <input id="liveClassTitle" class="search" type="text" placeholder="Class Title" />
+            <input id="liveClassTimezone" class="filter" type="text" value="Asia/Kolkata" placeholder="Timezone" />
+            <input id="liveClassStartAt" class="filter" type="datetime-local" />
+            <input id="liveClassEndAt" class="filter" type="datetime-local" />
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <select id="liveClassMode" class="filter">
+              <option value="in_app">In-App Classroom</option>
+              <option value="external">External Link</option>
+            </select>
+            <input id="liveClassExternalUrl" class="search" type="url" placeholder="External meeting URL (if external mode)" />
+            <input id="liveClassMaxParticipants" class="filter" type="number" min="1" max="2000" value="200" placeholder="Max participants" />
+          </div>
+          <label>Description
+            <textarea id="liveClassDescription" rows="2" placeholder="Agenda and class notes"></textarea>
+          </label>
+          <div class="row wrap gap-sm">
+            <label class="checkbox-row"><input id="liveClassAllowChat" type="checkbox" checked /><span>Enable chat</span></label>
+            <label class="checkbox-row"><input id="liveClassAllowRaiseHand" type="checkbox" checked /><span>Enable raise hand</span></label>
+            <label class="checkbox-row"><input id="liveClassAllowReactions" type="checkbox" checked /><span>Enable reactions</span></label>
+          </div>
+          <div class="row wrap gap-sm">
+            <button id="createLiveClassBtn" class="btn primary">Create Live Class</button>
+            <button id="cancelLiveClassSchedulerBtn" class="btn small">Cancel</button>
+          </div>
+        </section>
+        <div id="providerLiveClassSessionsList" class="list" style="margin-top:10px;"></div>
+        <h3 style="margin-top:14px;">Class Completion</h3>
         <div class="row wrap gap-sm">
           <input id="liveCourseId" type="number" class="filter" placeholder="Course ID" />
           <input id="liveCompletionNote" class="search" type="text" placeholder="Completion note (optional)" />
@@ -501,6 +543,7 @@
         <button class="nav-btn active student-nav-btn" data-student-view="home">Home</button>
         <button class="nav-btn student-nav-btn" data-student-view="available">Available Courses</button>
         <button class="nav-btn student-nav-btn" data-student-view="enrolled">My Courses</button>
+        <button class="nav-btn student-nav-btn" data-student-view="live">Live Classes</button>
         <button class="nav-btn student-nav-btn" data-student-view="certifications">Certifications</button>
         <div class="sidebar-tools">
           <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">&#9881;</button>
@@ -547,6 +590,42 @@
             </div>
             <div id="scvAssessmentPanel" class="row wrap gap-sm" style="margin-top:10px;">
               <span id="scvAssessmentStatus" class="meta">Watch the full video to unlock assessment.</span>
+            </div>
+          </div>
+          <div class="item" style="margin:10px 0;">
+            <div class="row between">
+              <strong>Rate This Course</strong>
+              <span id="scvCourseRatingSummary" class="meta">No ratings yet</span>
+            </div>
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <label class="meta">Value
+                <select id="scvRateValue" class="filter">
+                  <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                </select>
+              </label>
+              <label class="meta">Content
+                <select id="scvRateContent" class="filter">
+                  <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                </select>
+              </label>
+              <label class="meta">Clarity
+                <select id="scvRateClarity" class="filter">
+                  <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                </select>
+              </label>
+              <label class="meta">Practical
+                <select id="scvRatePractical" class="filter">
+                  <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                </select>
+              </label>
+            </div>
+            <label style="margin-top:8px;">
+              Feedback
+              <textarea id="scvRatingComment" rows="2" placeholder="Share what worked well and what can improve"></textarea>
+            </label>
+            <div class="row wrap gap-sm">
+              <button id="scvSaveRatingBtn" class="btn small">Submit Rating</button>
+              <span id="scvRatingStatus" class="meta"></span>
             </div>
           </div>
           <div class="class-player-grid">
@@ -598,6 +677,15 @@
         </section>
       </section>
 
+      <section class="panel content hidden" id="student-view-live">
+        <div class="row between">
+          <h2>Live Classes</h2>
+          <button id="refreshStudentLiveClassesBtn" class="btn small">Refresh</button>
+        </div>
+        <p class="muted">Join upcoming or active live classes from your enrolled courses.</p>
+        <div id="studentLiveClassesList" class="list"></div>
+      </section>
+
       <section class="panel content hidden" id="student-view-certifications">
         <div class="row between">
           <h2>Certifications</h2>
@@ -606,6 +694,65 @@
         <p class="muted">Certificates issued after passing eligible assessments.</p>
         <div id="studentCertificatesTabList" class="list"></div>
       </section>
+    </section>
+
+    <section id="liveClassroomScreen" class="assessment-screen hidden">
+      <div class="assessment-screen-head">
+        <div>
+          <h2 id="liveRoomTitle">Live Classroom</h2>
+          <p id="liveRoomMeta" class="muted">Interactive class room</p>
+        </div>
+        <div class="row wrap gap-sm">
+          <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
+          <button id="leaveLiveRoomBtn" class="btn small">Leave Room</button>
+        </div>
+      </div>
+      <div class="assessment-screen-grid">
+        <section class="item">
+          <h3>Teaching Tools</h3>
+          <label>Whiteboard Notes
+            <textarea id="liveRoomBoardText" rows="6" placeholder="Write key concepts, formulas, and reminders"></textarea>
+          </label>
+          <div class="row wrap gap-sm">
+            <button id="liveRoomSaveBoardBtn" class="btn small">Save Board</button>
+            <button id="liveRoomRaiseHandBtn" class="btn small">Raise Hand</button>
+          </div>
+          <div id="liveRoomHandsList" class="list" style="margin-top:10px;"></div>
+          <div class="item" style="margin-top:10px;">
+            <div><strong>Quick Poll</strong></div>
+            <input id="liveRoomPollQuestion" class="search" type="text" placeholder="Poll question" style="margin-top:8px;" />
+            <input id="liveRoomPollOptions" class="search" type="text" placeholder="Options (comma separated)" style="margin-top:8px;" />
+            <div class="row wrap gap-sm" style="margin-top:8px;">
+              <button id="liveRoomStartPollBtn" class="btn small">Start Poll</button>
+              <button id="liveRoomClosePollBtn" class="btn small">Close Poll</button>
+            </div>
+          </div>
+        </section>
+        <section class="item">
+          <h3>Live Stage</h3>
+          <div id="liveRoomStage" class="item" style="min-height:280px;background:linear-gradient(180deg,#f8fafc,#eef2ff);">
+            <div class="meta">Your in-app classroom is live. Use announcements, chat, whiteboard notes, poll, and hand raise for interactive teaching.</div>
+            <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
+          </div>
+          <div class="meta" style="margin-top:8px;">For external sessions, keep this room open for tools while teaching in your meeting app.</div>
+        </section>
+        <section class="item">
+          <h3>Class Chat</h3>
+          <div id="liveRoomChatList" class="list" style="max-height:320px;overflow:auto;"></div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <input id="liveRoomChatInput" class="search" type="text" placeholder="Type message" />
+            <button id="liveRoomSendChatBtn" class="btn small">Send</button>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <button class="btn small" data-live-reaction="👍">👍</button>
+            <button class="btn small" data-live-reaction="👏">👏</button>
+            <button class="btn small" data-live-reaction="🔥">🔥</button>
+            <button class="btn small" data-live-reaction="✅">✅</button>
+          </div>
+          <h4 style="margin:12px 0 6px;">Participants</h4>
+          <div id="liveRoomParticipantsList" class="list" style="max-height:180px;overflow:auto;"></div>
+        </section>
+      </div>
     </section>
 
     <section id="nonAdminView" class="panel hidden">

@@ -525,6 +525,78 @@ class LiveClassCompletion(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class LiveClassSession(Base):
+    __tablename__ = "live_class_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    provider_id: Mapped[int] = mapped_column(ForeignKey("providers.id"), index=True)
+    room_code: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="UTC")
+    meeting_mode: Mapped[str] = mapped_column(String(20), default="in_app")  # in_app | external
+    external_meeting_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled | live | ended | cancelled
+    scheduled_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    scheduled_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    max_participants: Mapped[int] = mapped_column(Integer, default=200)
+    allow_chat: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_raise_hand: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_reactions: Mapped[bool] = mapped_column(Boolean, default=True)
+    board_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active_poll_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    active_poll_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active_poll_options_json: Mapped[list] = mapped_column(JSON, default=list)
+    active_poll_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LiveClassParticipant(Base):
+    __tablename__ = "live_class_participants"
+    __table_args__ = (UniqueConstraint("session_id", "user_id", name="uq_live_class_participant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("live_class_sessions.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    actor_role: Mapped[str] = mapped_column(String(20), default="student")  # provider | student
+    display_name: Mapped[str] = mapped_column(String(200))
+    is_present: Mapped[bool] = mapped_column(Boolean, default=True)
+    raised_hand: Mapped[bool] = mapped_column(Boolean, default=False)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LiveClassMessage(Base):
+    __tablename__ = "live_class_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("live_class_sessions.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    actor_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    message_type: Mapped[str] = mapped_column(String(30), default="chat")
+    content: Mapped[str] = mapped_column(Text)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class LiveClassPollVote(Base):
+    __tablename__ = "live_class_poll_votes"
+    __table_args__ = (UniqueConstraint("session_id", "poll_key", "user_id", name="uq_live_class_poll_vote"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("live_class_sessions.id"), index=True)
+    poll_key: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    option_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ProviderNotification(Base):
     __tablename__ = "provider_notifications"
 
