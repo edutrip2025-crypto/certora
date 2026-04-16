@@ -790,7 +790,10 @@ def provider_live_classes(
         return {"items": items}
     except Exception as exc:
         db.rollback()
-        _ensure_live_schema_runtime(db, force=True)
+        try:
+            _ensure_live_schema_runtime(db, force=True)
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"Unable to load live classes: {exc}")
 
 

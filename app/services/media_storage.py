@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 
 try:
@@ -86,11 +86,21 @@ def upload_file_to_cloud_storage(
 def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> str | None:
     if not value:
         return None
+    # Normalize legacy localhost absolute URLs to same-origin media paths to avoid
+    # mixed-content errors on HTTPS deployments.
+    if value.startswith("http://") or value.startswith("https://"):
+        try:
+            parsed = urlparse(value)
+            host = (parsed.hostname or "").lower()
+            if host in {"localhost", "127.0.0.1"} and parsed.path.startswith("/media/"):
+                return parsed.path
+        except Exception:
+            pass
     if value.startswith("http://") or value.startswith("https://"):
         return value
     if value.startswith("/media/"):
-        settings = get_settings()
-        return f"{settings.app_base_url.rstrip('/')}{value}"
+        # Return relative path so browser always uses current origin/protocol.
+        return value
     if value.startswith("s3://"):
         settings = get_settings()
         if not settings.aws_s3_bucket_name:
