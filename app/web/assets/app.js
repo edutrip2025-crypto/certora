@@ -3790,7 +3790,8 @@ function updateLiveStageAndFocusVideo() {
   const stageHasVideo = streamHasActiveVideo(stageStream);
   const stageRenderStream = stageHasVideo ? stageStream : null;
   const isLocalStage = Boolean(stageRenderStream && stageRenderStream === rtc.localStream);
-  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: false });
+  // Some browsers mirror front-camera self view by default; flip local self stage once to compensate.
+  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: isLocalStage });
   if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageRenderStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
@@ -6229,6 +6230,9 @@ async function initializeProctoringForAssessmentStart() {
   p.stream = stream;
   if (el.apProctorVideo) {
     el.apProctorVideo.srcObject = stream;
+    // Keep proctor preview non-mirrored for a natural exam camera framing.
+    el.apProctorVideo.style.transform = "scaleX(-1)";
+    el.apProctorVideo.style.webkitTransform = "scaleX(-1)";
     await el.apProctorVideo.play().catch(() => {});
   }
   try {
