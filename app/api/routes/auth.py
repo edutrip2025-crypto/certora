@@ -12,7 +12,13 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.db.session import get_db
 from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserRole
 from app.schemas import AdminRecoveryRequest, AdminSetUserPasswordRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
-from app.services.firebase_auth import set_firebase_custom_claims, set_firebase_password_by_email, verify_firebase_token
+from app.services.firebase_auth import (
+    create_firebase_custom_token,
+    ensure_firebase_user_uid,
+    set_firebase_custom_claims,
+    set_firebase_password_by_email,
+    verify_firebase_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
@@ -432,4 +438,62 @@ def admin_set_user_password(
         "email": email_norm,
         "firebase_uid": uid,
         "updated_by": current_user.email,
+    }
+
+
+@router.post("/admin/breakglass-login")
+def admin_breakglass_login(
+    payload: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    settings = get_settings()
+    _assert_recovery_key_or_403(payload.password, settings.admin_recovery_key)
+    email_norm = str(payload.email or "").strip().lower()
+    if not email_norm:
+        raise HTTPException(status_code=400, detail="Email is required.")
+    if email_norm != "admin@certora.in":
+        raise HTTPException(status_code=403, detail="Break-glass login is allowed only for admin@certora.in")
+    uid = ensure_firebase_user_uid(email_norm, display_name="Certora Admin")
+    if not uid:
+        raise HTTPException(status_code=500, detail="Failed to resolve Firebase admin user.")
+
+    user = db.scalar(_normalized_user_query(email_norm))
+    if not user:
+        user = User(
+            email=email_norm,
+            full_name="Certora Admin",
+            password_hash="firebase",
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.role = UserRole.ADMIN
+        user.is_active = True
+
+    approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+    if not approval:
+        approval = UserApproval(user_id=user.id)
+        db.add(approval)
+    approval.status = ApprovalStatus.APPROVED
+    approval.rejection_reason = None
+    db.commit()
+    db.refresh(user)
+    _safe_sync_claims(uid, user, ApprovalStatus.APPROVED)
+    custom_token = create_firebase_custom_token(
+        uid,
+        {
+            "role": UserRole.ADMIN.value,
+            "approval_status": ApprovalStatus.APPROVED.value,
+            "app_user_id": user.id,
+            "is_active": True,
+        },
+    )
+    return {
+        "ok": True,
+        "email": user.email,
+        "public_uid": _public_uid(user.id),
+        "role": user.role.value,
+        "custom_token": custom_token,
     }

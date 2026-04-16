@@ -1,4 +1,5 @@
 import json
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,31 @@ def verify_firebase_token(id_token: str) -> dict[str, Any]:
 def set_firebase_custom_claims(uid: str, claims: dict[str, Any]) -> None:
     init_firebase()
     auth.set_custom_user_claims(uid, claims)
+
+
+def ensure_firebase_user_uid(email: str | None, *, display_name: str | None = None) -> str | None:
+    if not email:
+        return None
+    init_firebase()
+    email_norm = str(email).strip().lower()
+    try:
+        user = auth.get_user_by_email(email_norm)
+        return user.uid
+    except auth.UserNotFoundError:
+        created = auth.create_user(
+            email=email_norm,
+            password=secrets.token_urlsafe(24),
+            display_name=display_name or email_norm.split("@")[0],
+        )
+        return created.uid
+
+
+def create_firebase_custom_token(uid: str, claims: dict[str, Any] | None = None) -> str:
+    init_firebase()
+    token = auth.create_custom_token(uid, claims=claims or {})
+    if isinstance(token, bytes):
+        return token.decode("utf-8")
+    return str(token)
 
 
 def get_firebase_uid_by_email(email: str | None) -> str | None:

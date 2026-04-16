@@ -5,6 +5,7 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   signInWithPopup,
   onAuthStateChanged,
@@ -4974,16 +4975,31 @@ function bindEvents() {
     const trimmedPassword = rawPassword.trim();
     try {
       state.authLoginInFlight = true;
+      let loggedIn = false;
       try {
         await signInWithEmailAndPassword(state.auth, email, rawPassword);
+        loggedIn = true;
       } catch (primaryErr) {
-        // Common operator mistake: copied password with leading/trailing spaces.
-        if (
-          String(primaryErr?.code || "").includes("auth/invalid-credential")
-          && rawPassword !== trimmedPassword
-        ) {
-          await signInWithEmailAndPassword(state.auth, email, trimmedPassword);
-          toast("Removed leading/trailing spaces from password input.");
+        if (String(primaryErr?.code || "").includes("auth/invalid-credential")) {
+          // Common operator mistake: copied password with leading/trailing spaces.
+          if (rawPassword !== trimmedPassword) {
+            try {
+              await signInWithEmailAndPassword(state.auth, email, trimmedPassword);
+              loggedIn = true;
+              toast("Removed leading/trailing spaces from password input.");
+            } catch {}
+          }
+          // Break-glass admin login: admin email + recovery key in password field.
+          if (!loggedIn) {
+            try {
+              const out = await api("POST", "/auth/admin/breakglass-login", { email, password: rawPassword }, false);
+              if (out?.custom_token) {
+                await signInWithCustomToken(state.auth, out.custom_token);
+                loggedIn = true;
+              }
+            } catch {}
+          }
+          if (!loggedIn) throw primaryErr;
         } else {
           throw primaryErr;
         }
