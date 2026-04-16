@@ -89,6 +89,15 @@ def dashboard(
     eligible_count = sum(1 for enr, _ in enrolled_rows if enr.exam_eligible)
     certificates_issued = db.scalar(select(func.count(Certificate.id)).where(Certificate.student_id == current_user.id)) or 0
 
+    published_exam_counts = {
+        int(course_id): int(count)
+        for course_id, count in db.execute(
+            select(Exam.course_id, func.count(Exam.id))
+            .where(Exam.status == ExamStatus.PUBLISHED)
+            .group_by(Exam.course_id),
+        ).all()
+    }
+
     return {
         "stats": {
             "total_enrolled": total_enrolled,
@@ -105,6 +114,8 @@ def dashboard(
                 "thumbnail_url": course.thumbnail_url,
                 "progress_pct": enr.progress_pct,
                 "exam_eligible": enr.exam_eligible,
+                "published_assessments": int(published_exam_counts.get(int(course.id), 0)),
+                "assessment_available": bool(enr.exam_eligible and int(published_exam_counts.get(int(course.id), 0)) > 0),
                 "status": enr.status,
                 "enrolled_at": enr.enrolled_at,
             }
@@ -167,6 +178,12 @@ def course_detail(
                 },
             )
         module_items.append({"id": module.id, "title": module.title, "lessons": lesson_items})
+    published_exam_count = int(
+        db.scalar(
+            select(func.count(Exam.id)).where(and_(Exam.course_id == course.id, Exam.status == ExamStatus.PUBLISHED)),
+        )
+        or 0
+    )
     return {
         "id": course.id,
         "title": course.title,
@@ -175,6 +192,8 @@ def course_detail(
         "thumbnail_url": course.thumbnail_url,
         "progress_pct": enrollment.progress_pct,
         "exam_eligible": enrollment.exam_eligible,
+        "published_assessments": published_exam_count,
+        "assessment_available": bool(enrollment.exam_eligible and published_exam_count > 0),
         "modules": module_items,
     }
 
@@ -671,17 +690,49 @@ def assessment_intent(
     )
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    exams_published = list(
+        db.scalars(select(Exam).where(and_(Exam.course_id == course_id, Exam.status == ExamStatus.PUBLISHED))).all(),
+    )
+    total_assessments = int(
+        db.scalar(select(func.count(Exam.id)).where(Exam.course_id == course_id))
+        or 0,
+    )
+
     if ready:
-        exams = list(db.scalars(select(Exam).where(and_(Exam.course_id == course_id, Exam.status == ExamStatus.PUBLISHED))).all())
+        if not enrollment.exam_eligible:
+            return {
+                "ready": False,
+                "assessment_status": "locked",
+                "message": "Complete the course video first to unlock assessment.",
+                "exams": [],
+                "total_assessments": total_assessments,
+                "published_assessments": len(exams_published),
+            }
+        if not exams_published:
+            return {
+                "ready": False,
+                "assessment_status": "unavailable",
+                "message": "No published assessment found for this course yet. Ask provider to publish the assessment.",
+                "exams": [],
+                "total_assessments": total_assessments,
+                "published_assessments": 0,
+            }
         return {
             "ready": True,
+            "assessment_status": "available",
             "message": "Proceed to assessment.",
-            "exams": [{"exam_id": e.id, "title": e.title, "duration_minutes": e.duration_minutes} for e in exams],
+            "exams": [{"exam_id": e.id, "title": e.title, "duration_minutes": e.duration_minutes} for e in exams_published],
+            "total_assessments": total_assessments,
+            "published_assessments": len(exams_published),
         }
     return {
         "ready": False,
+        "assessment_status": "deferred",
         "message": "You can replay the course video or ask questions to the provider.",
         "actions": ["replay_video", "ask_provider_question"],
+        "exams": [],
+        "total_assessments": total_assessments,
+        "published_assessments": len(exams_published),
     }
 
 

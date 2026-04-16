@@ -2521,7 +2521,13 @@ async function refreshStudentDashboard() {
               <div style="height:100%;width:${Math.max(0, Math.min(100, Number(c.progress_pct || 0)))}%;background:linear-gradient(90deg,#2563eb,#0ea5e9);"></div>
             </div>
             <div class="meta" style="margin-top:4px;">${Number(c.progress_pct || 0).toFixed(0)}% completed</div>
-            <div class="meta" style="margin-top:4px;">Assessment: ${c.exam_eligible ? "Available" : "Locked until course completion"}</div>
+            <div class="meta" style="margin-top:4px;">Assessment: ${
+              c.assessment_available
+                ? "Available"
+                : c.exam_eligible
+                  ? "Provider has not published assessment yet"
+                  : "Locked until course completion"
+            }</div>
           </div>
           <div class="actions"><button class="btn small" data-student-view-course="${c.course_id}">View Course</button></div>
         </div>
@@ -4545,6 +4551,8 @@ async function openStudentCourseViewer(courseId) {
   el.studentCourseViewer?.classList.remove("hidden");
   await refreshStudentAssessmentPanel(courseId, {
     examEligible: Boolean(detail.exam_eligible),
+    assessmentAvailable: Boolean(detail.assessment_available),
+    publishedAssessments: Number(detail.published_assessments || 0),
     hasRecordedLesson,
     progressPct: Number(detail.progress_pct || 0),
   });
@@ -4572,6 +4580,8 @@ async function openStudentCourseViewer(courseId) {
 async function refreshStudentAssessmentPanel(courseId, options = {}) {
   if (!el.scvAssessmentPanel) return;
   let examEligible = Boolean(options.examEligible);
+  let assessmentAvailable = Boolean(options.assessmentAvailable);
+  let publishedAssessments = Number(options.publishedAssessments || 0);
   const hasRecordedLesson = Boolean(options.hasRecordedLesson);
   const progressPct = Number(options.progressPct || 0);
 
@@ -4614,8 +4624,18 @@ async function refreshStudentAssessmentPanel(courseId, options = {}) {
   }
   const out = await api("POST", `/student/courses/${courseId}/assessment-intent?ready=true`);
   const exams = out.exams || [];
+  if (out?.assessment_status) assessmentAvailable = out.assessment_status === "available";
+  if (Number.isFinite(Number(out?.published_assessments))) {
+    publishedAssessments = Number(out.published_assessments || 0);
+  }
   if (!exams.length) {
-    el.scvAssessmentPanel.innerHTML = `<span id="scvAssessmentStatus" class="meta">Assessment will be available soon.</span>`;
+    const reason = String(out?.message || "").trim()
+      || (assessmentAvailable
+        ? "Assessment is being prepared."
+        : publishedAssessments > 0
+          ? "Assessment cannot be started yet."
+          : "No published assessment found for this course yet. Ask provider to publish it.");
+    el.scvAssessmentPanel.innerHTML = `<span id="scvAssessmentStatus" class="meta">${reason}</span>`;
     return;
   }
   el.scvAssessmentPanel.innerHTML = exams
