@@ -30,11 +30,6 @@ def sync_existing_accounts(
         user_changed = False
         email = (user.email or "").strip().lower()
 
-        if email and email in settings.admin_email_set and user.role != UserRole.ADMIN:
-            user.role = UserRole.ADMIN
-            roles_updated += 1
-            user_changed = True
-
         approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
         if not approval:
             approval = UserApproval(

@@ -10,7 +10,7 @@ from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
-from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
+from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserRole
 from app.schemas import AdminRecoveryRequest, AdminSetUserPasswordRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
 from app.services.firebase_auth import set_firebase_custom_claims, set_firebase_password_by_email, verify_firebase_token
 
@@ -72,6 +72,18 @@ def _find_user_for_identity(
             return by_email
     local_email = f"{firebase_uid}@firebase.local".strip().lower()
     return db.scalar(_normalized_user_query(local_email))
+
+
+def _resolve_non_admin_role(
+    db: Session,
+    *,
+    user_id: int,
+    role_claim: str,
+) -> UserRole:
+    if role_claim in {UserRole.PROVIDER.value, UserRole.STUDENT.value}:
+        return UserRole(role_claim)
+    provider_profile_id = db.scalar(select(ProviderProfile.id).where(ProviderProfile.user_id == user_id))
+    return UserRole.PROVIDER if provider_profile_id else UserRole.STUDENT
 
 
 def _assert_recovery_key_or_403(submitted_key: str, configured_key: str) -> None:
@@ -140,12 +152,21 @@ def me_context(
     email_norm = str(email or "").strip().lower() or None
     current_user = db.scalar(_normalized_user_query(email_norm)) if email_norm else None
     settings = get_settings()
+    role_claim = str(token_payload.get("role") or "").strip().lower()
+    role_from_claim: UserRole | None = None
+    if role_claim in {r.value for r in UserRole}:
+        role_from_claim = UserRole(role_claim)
     if not current_user:
-        role_claim = str(token_payload.get("role") or "").strip().lower()
-        role_from_claim: UserRole | None = None
-        if role_claim in {r.value for r in UserRole}:
-            role_from_claim = UserRole(role_claim)
-        if email_norm and email_norm in settings.admin_email_set:
+        desired_role: UserRole
+        if role_from_claim in {UserRole.STUDENT, UserRole.PROVIDER}:
+            desired_role = role_from_claim
+        elif role_from_claim == UserRole.ADMIN:
+            desired_role = UserRole.ADMIN if (email_norm and email_norm in settings.admin_email_set) else UserRole.STUDENT
+        elif email_norm and email_norm in settings.admin_email_set:
+            desired_role = UserRole.ADMIN
+        else:
+            desired_role = UserRole.STUDENT
+        if desired_role == UserRole.ADMIN:
             current_user = User(
                 email=email_norm,
                 full_name=fallback_name,
@@ -171,14 +192,11 @@ def me_context(
             db.refresh(current_user)
             _safe_sync_claims(firebase_uid, current_user, ApprovalStatus.APPROVED)
         else:
-            role = role_from_claim or UserRole.STUDENT
-            if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
-                role = UserRole.STUDENT
             current_user = User(
                 email=email_norm or f"{firebase_uid}@firebase.local",
                 full_name=fallback_name,
                 password_hash="firebase",
-                role=role,
+                role=desired_role,
                 is_active=True,
             )
             db.add(current_user)
@@ -194,8 +212,12 @@ def me_context(
             _safe_sync_claims(firebase_uid, current_user, approval.status)
     else:
         changed = False
-        if email_norm and email_norm in settings.admin_email_set and current_user.role != UserRole.ADMIN:
-            current_user.role = UserRole.ADMIN
+        if current_user.role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
+            current_user.role = _resolve_non_admin_role(
+                db,
+                user_id=current_user.id,
+                role_claim=role_claim,
+            )
             changed = True
         if current_user.full_name != fallback_name:
             current_user.full_name = fallback_name

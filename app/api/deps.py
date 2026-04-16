@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.entities import ApprovalStatus, User, UserApproval, UserRole
+from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserRole
 from app.services.firebase_auth import set_firebase_custom_claims, verify_firebase_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
@@ -55,6 +55,18 @@ def _dummy_user(
     return user
 
 
+def _resolve_non_admin_role(
+    db: Session,
+    *,
+    user_id: int,
+    role_claim: str,
+) -> UserRole:
+    if role_claim in {UserRole.PROVIDER.value, UserRole.STUDENT.value}:
+        return UserRole(role_claim)
+    provider_profile_id = db.scalar(select(ProviderProfile.id).where(ProviderProfile.user_id == user_id))
+    return UserRole.PROVIDER if provider_profile_id else UserRole.STUDENT
+
+
 def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -89,35 +101,12 @@ def get_current_user(
 
     user = db.scalar(select(User).where(func.lower(func.trim(User.email)) == email_norm)) if email_norm else None
     if not user:
-        if email_norm and email_norm in settings.admin_email_set:
-            user = User(
-                email=email_norm,
-                full_name=name,
-                password_hash="firebase",
-                role=UserRole.ADMIN,
-                is_active=True,
-            )
-            db.add(user)
-            db.flush()
-            approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
-            if not approval:
-                db.add(
-                    UserApproval(
-                        user_id=user.id,
-                        status=ApprovalStatus.APPROVED,
-                        rejection_reason=None,
-                    ),
-                )
-            else:
-                approval.status = ApprovalStatus.APPROVED
-                approval.rejection_reason = None
-            db.commit()
-            db.refresh(user)
-            return user
-        if role_claim in {r.value for r in UserRole}:
+        if role_claim in {UserRole.PROVIDER.value, UserRole.STUDENT.value}:
             role = UserRole(role_claim)
-            if role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
-                role = UserRole.STUDENT
+        elif role_claim == UserRole.ADMIN.value and email_norm and email_norm in settings.admin_email_set:
+            role = UserRole.ADMIN
+        elif email_norm and email_norm in settings.admin_email_set:
+            role = UserRole.ADMIN
         else:
             role = UserRole.STUDENT
         user = User(
@@ -140,14 +129,14 @@ def get_current_user(
         return user
 
     changed = False
-    if email_norm and email_norm in settings.admin_email_set and user.role != UserRole.ADMIN:
-        user.role = UserRole.ADMIN
+    if user.role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
+        user.role = _resolve_non_admin_role(
+            db,
+            user_id=user.id,
+            role_claim=role_claim,
+        )
         changed = True
-    effective_role = user.role
-    if settings.allow_dev_role_override and x_dev_role and x_dev_role in {r.value for r in UserRole}:
-        effective_role = UserRole(x_dev_role)
-    if user.role != effective_role or user.full_name != name:
-        user.role = effective_role
+    if user.full_name != name:
         user.full_name = name
         changed = True
     if changed:
