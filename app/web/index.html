@@ -783,42 +783,36 @@
           </div>
         </div>
         <div class="live-control-dock">
-          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico">🛠</span><span class="lbl">Tools</span></button>
-          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico">💬</span><span class="lbl">Chat</span></button>
-          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions" data-tip="Reactions" aria-label="Reactions"><span class="ico">😀</span><span class="lbl">React</span></button>
-          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen" data-tip="Fullscreen" aria-label="Fullscreen"><span class="ico">⛶</span><span class="lbl">Fullscreen</span></button>
-          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera" data-tip="Camera" aria-label="Camera"><span class="ico">📷</span><span class="lbl">Camera</span></button>
-          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone" data-tip="Mic" aria-label="Microphone"><span class="ico">🎤</span><span class="lbl">Mic</span></button>
-          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen" data-tip="Share screen" aria-label="Share screen"><span class="ico">🖥</span><span class="lbl">Share</span></button>
+          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico">TL</span><span class="lbl">Tools</span></button>
+          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico">CH</span><span class="lbl">Chat</span></button>
+          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions" data-tip="Reactions" aria-label="Reactions"><span class="ico">RE</span><span class="lbl">React</span></button>
+          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen" data-tip="Fullscreen" aria-label="Fullscreen"><span class="ico">FS</span><span class="lbl">Fullscreen</span></button>
+          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera" data-tip="Camera" aria-label="Camera"><span class="ico">CAM</span><span class="lbl">Camera</span></button>
+          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone" data-tip="Mic" aria-label="Microphone"><span class="ico">MIC</span><span class="lbl">Mic</span></button>
+          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen" data-tip="Share screen" aria-label="Share screen"><span class="ico">SCR</span><span class="lbl">Share</span></button>
+          <button id="liveRoomParticipantsBtn" class="btn small live-dock-btn live-icon-btn" title="Participants" data-tip="Participants" aria-label="Participants">
+            <span class="ico">PPL</span>
+            <span class="lbl">Participants</span>
+            <span id="liveRoomParticipantsCountBadge" class="live-dock-count">0</span>
+          </button>
           <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
         </div>
-        <aside id="liveRoomToolsPanel" class="live-drawer live-drawer-left hidden">
-          <h3>Tools</h3>
-          <div class="live-tools-list">
-            <button id="liveRoomVideoStopBtn" class="btn small live-icon-btn live-tool-action"><span class="ico">🚫</span><span class="lbl">Stop Camera</span></button>
-            <button id="liveRoomStopShareBtn" class="btn small live-icon-btn live-tool-action"><span class="ico">⛔</span><span class="lbl">Stop Share</span></button>
-            <button id="liveRoomStartRecordingBtn" class="btn small live-icon-btn live-tool-action"><span class="ico">⏺</span><span class="lbl">Start Recording</span></button>
-            <button id="liveRoomStopRecordingBtn" class="btn small live-icon-btn live-tool-action"><span class="ico">⏹</span><span class="lbl">Stop Recording</span></button>
+        <button id="liveRoomStopShareOverlayBtn" class="btn small live-stop-share-overlay hidden"><span class="ico">STOP</span><span class="lbl">Stop sharing</span></button>
+        <aside id="liveRoomToolsPanel" class="live-updrawer hidden">
+          <div class="row between" style="align-items:center;">
+            <h3 style="margin:0;">Tools</h3>
+            <div class="live-recording-controls">
+              <button id="liveRoomStartRecordingBtn" class="btn small live-record-icon-btn" title="Start recording" aria-label="Start recording"><span class="ico">REC</span></button>
+              <button id="liveRoomPauseRecordingBtn" class="btn small live-record-icon-btn" title="Pause or resume recording" aria-label="Pause or resume recording"><span class="ico">PAU</span></button>
+              <button id="liveRoomStopRecordingBtn" class="btn small live-record-icon-btn" title="Stop recording" aria-label="Stop recording"><span class="ico">STP</span></button>
+            </div>
           </div>
-          <label>Whiteboard Notes
-            <textarea id="liveRoomBoardText" rows="6" placeholder="Write key concepts, formulas, and reminders"></textarea>
-          </label>
-          <div class="row wrap gap-sm">
-            <button id="liveRoomSaveBoardBtn" class="btn small">Save Board</button>
-            <button id="liveRoomRaiseHandBtn" class="btn small">Raise Hand</button>
-            <button id="liveRoomPickStudentBtn" class="btn small">Pick Student</button>
-            <button id="liveRoomExportAttendanceBtn" class="btn small">Export Attendance</button>
+          <div class="live-tools-grid" style="margin-top:10px;">
+            <button id="liveRoomOpenWhiteboardBtn" class="btn small live-tool-action"><span class="ico">WB</span><span class="lbl">Whiteboard</span></button>
+            <button id="liveRoomOpenBreakoutBtn" class="btn small live-tool-action"><span class="ico">BR</span><span class="lbl">Breakout Rooms</span></button>
+            <button id="liveRoomOpenPollBtn" class="btn small live-tool-action"><span class="ico">PL</span><span class="lbl">Quick Poll</span></button>
+            <button id="liveRoomOpenQaBtn" class="btn small live-tool-action"><span class="ico">QA</span><span class="lbl">Q&amp;A</span></button>
           </div>
-          <div class="row wrap gap-sm" style="margin-top:8px;">
-            <span id="liveRoomTimerText" class="badge">Timer: 00:00</span>
-            <button id="liveRoomStartTimerBtn" class="btn small">Start Timer</button>
-            <button id="liveRoomStopTimerBtn" class="btn small">Stop Timer</button>
-          </div>
-          <div class="row wrap gap-sm" style="margin-top:8px;">
-            <input id="liveRoomAiTopicInput" class="search" type="text" placeholder="Topic for AI explainer" />
-            <button id="liveRoomAiExplainBtn" class="btn small">AI Explain</button>
-          </div>
-          <div id="liveRoomHandsList" class="list" style="margin-top:10px;"></div>
           <div class="item" style="margin-top:10px;">
             <div class="row between">
               <strong>Host Controls</strong>
@@ -829,27 +823,69 @@
             </div>
             <div id="liveRoomWaitingList" class="list" style="margin-top:8px;"></div>
           </div>
-          <div class="item" style="margin-top:10px;">
-            <div><strong>Quick Poll</strong></div>
-            <input id="liveRoomPollQuestion" class="search" type="text" placeholder="Poll question" style="margin-top:8px;" />
-            <input id="liveRoomPollOptions" class="search" type="text" placeholder="Options (comma separated)" style="margin-top:8px;" />
-            <div class="row wrap gap-sm" style="margin-top:8px;">
-              <button id="liveRoomStartPollBtn" class="btn small">Start Poll</button>
-              <button id="liveRoomClosePollBtn" class="btn small">Close Poll</button>
-            </div>
+        </aside>
+        <div id="liveRoomParticipantsMenu" class="live-popover live-participants-popover hidden">
+          <div class="row between" style="align-items:center;">
+            <strong>Participants</strong>
+            <span id="liveRoomParticipantsCountText" class="meta">0 online</span>
           </div>
-          <h4 style="margin:12px 0 6px;">Participants</h4>
-          <div id="liveRoomParticipantsList" class="list" style="max-height:180px;overflow:auto;"></div>
-          <div class="item" style="margin-top:10px;">
-            <div><strong>Breakout Rooms</strong></div>
-            <div class="row wrap gap-sm" style="margin-top:8px;">
-              <input id="liveRoomBreakoutName" class="search" type="text" placeholder="Room name (e.g., Group A)" />
-              <button id="liveRoomAssignBreakoutBtn" class="btn small">Assign Selected</button>
-              <button id="liveRoomClearBreakoutsBtn" class="btn small">Close Breakouts</button>
-            </div>
-            <div class="meta">Select a participant below, then assign breakout room.</div>
+          <div id="liveRoomParticipantsList" class="list" style="max-height:220px;overflow:auto;margin-top:8px;"></div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <button id="liveRoomRaiseHandBtn" class="btn small">Raise Hand</button>
+          </div>
+        </div>
+        <aside id="liveRoomWhiteboardPanel" class="live-side-panel hidden">
+          <div class="row between" style="align-items:center;">
+            <h3 style="margin:0;">Whiteboard</h3>
+            <button class="btn small" data-live-side-close="whiteboard">Close</button>
+          </div>
+          <textarea id="liveRoomBoardText" rows="12" placeholder="Write key concepts, formulas, and reminders" style="margin-top:10px;"></textarea>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <button id="liveRoomSaveBoardBtn" class="btn small">Save Board</button>
+            <button id="liveRoomShareWhiteboardBtn" class="btn small">Show to Everyone</button>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <input id="liveRoomAiTopicInput" class="search" type="text" placeholder="Topic for AI explainer" />
+            <button id="liveRoomAiExplainBtn" class="btn small">AI Explain</button>
+          </div>
+        </aside>
+        <aside id="liveRoomPollComposerPanel" class="live-side-panel hidden">
+          <div class="row between" style="align-items:center;">
+            <h3 style="margin:0;">Quick Poll</h3>
+            <button class="btn small" data-live-side-close="poll-composer">Close</button>
+          </div>
+          <input id="liveRoomPollQuestion" class="search" type="text" placeholder="Poll question" style="margin-top:10px;" />
+          <input id="liveRoomPollOptions" class="search" type="text" placeholder="Options (comma separated)" style="margin-top:8px;" />
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <button id="liveRoomStartPollBtn" class="btn small">Share Poll</button>
+            <button id="liveRoomClosePollBtn" class="btn small">Close Poll</button>
           </div>
           <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
+        </aside>
+        <aside id="liveRoomBreakoutPanel" class="live-side-panel hidden">
+          <div class="row between" style="align-items:center;">
+            <h3 style="margin:0;">Breakout Rooms</h3>
+            <button class="btn small" data-live-side-close="breakout">Close</button>
+          </div>
+          <div class="meta" style="margin-top:8px;">Select a participant from Participants and assign a room.</div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <input id="liveRoomBreakoutName" class="search" type="text" placeholder="Room name (e.g., Group A)" />
+            <button id="liveRoomAssignBreakoutBtn" class="btn small">Assign Selected</button>
+            <button id="liveRoomClearBreakoutsBtn" class="btn small">Close Breakouts</button>
+            <button id="liveRoomShareBreakoutBtn" class="btn small">Show to Everyone</button>
+          </div>
+        </aside>
+        <aside id="liveRoomQaPanel" class="live-side-panel hidden">
+          <div class="row between" style="align-items:center;">
+            <h3 style="margin:0;">Q&amp;A</h3>
+            <button class="btn small" data-live-side-close="qa">Close</button>
+          </div>
+          <input id="liveRoomQaInput" class="search" type="text" placeholder="Type a question or note" style="margin-top:10px;" />
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <button id="liveRoomAddQaBtn" class="btn small">Add</button>
+            <button id="liveRoomShareQaBtn" class="btn small">Show to Everyone</button>
+          </div>
+          <div id="liveRoomQaList" class="list" style="max-height:220px;overflow:auto;margin-top:10px;"></div>
         </aside>
         <aside id="liveRoomChatPanel" class="live-drawer live-drawer-right hidden">
           <h3>Class Chat</h3>
@@ -1011,3 +1047,4 @@
   <script type="module" src="/assets/app.js"></script>
 </body>
 </html>
+

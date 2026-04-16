@@ -434,6 +434,22 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: rgba(15, 23, 42, 0.72);
   backdrop-filter: blur(8px);
 }
+.live-dock-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
 .live-dock-btn {
   border-radius: 999px;
   border: 1px solid rgba(203, 213, 225, 0.4);
@@ -574,6 +590,80 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   right: 0;
   border-left: 1px solid #dbe4f0;
 }
+.live-updrawer {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  transform: translateX(-50%);
+  width: min(760px, calc(100% - 24px));
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.98);
+  z-index: 10;
+  padding: 12px;
+  box-shadow: 0 16px 36px rgba(2, 6, 23, 0.3);
+}
+.live-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.live-recording-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-record-icon-btn {
+  width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
+  padding: 0;
+}
+.live-participants-popover {
+  left: auto;
+  right: 14px;
+  bottom: 74px;
+  transform: none;
+  width: min(360px, 94vw);
+  max-height: min(62vh, 480px);
+  overflow: auto;
+}
+.live-stop-share-overlay {
+  position: absolute;
+  top: 62px;
+  right: 14px;
+  z-index: 10;
+  border-radius: 999px;
+  border-color: #fecaca;
+  background: rgba(239, 68, 68, 0.92);
+  color: #fff;
+}
+.live-stop-share-overlay .ico {
+  margin-right: 6px;
+}
+.live-side-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  bottom: 88px;
+  width: min(360px, 38vw);
+  border: 1px solid rgba(148, 163, 184, 0.58);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  z-index: 8;
+  padding: 12px;
+  overflow: auto;
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.34);
+}
+.live-stage-shell.live-side-open .live-stage-video {
+  width: calc(100% - min(360px, 38vw) - 18px);
+}
+.live-stage-shell.live-side-open .live-stage-placeholder {
+  right: calc(min(360px, 38vw) + 18px);
+}
+.live-stage-shell.live-side-open .live-focus-tile {
+  right: calc(min(360px, 38vw) + 20px);
+}
 .live-video-el {
   width: 100%;
   min-height: 180px;
@@ -651,6 +741,36 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     width: 42px;
     height: 42px;
     min-height: 42px;
+  }
+  .live-updrawer {
+    bottom: 62px;
+    width: calc(100% - 16px);
+    padding: 10px;
+  }
+  .live-tools-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .live-side-panel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 62px;
+    width: auto;
+    max-height: 55vh;
+  }
+  .live-stage-shell.live-side-open .live-stage-video {
+    width: 100%;
+  }
+  .live-stage-shell.live-side-open .live-stage-placeholder {
+    right: 0;
+  }
+  .live-stage-shell.live-side-open .live-focus-tile {
+    right: 14px;
+  }
+  .live-participants-popover {
+    right: 8px;
+    bottom: 62px;
+    width: calc(100% - 16px);
   }
 }
 .course-card {
