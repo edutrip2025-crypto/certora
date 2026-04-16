@@ -92,6 +92,8 @@ const state = {
     sidePanel: "",
     sharedPanel: "",
     qaItems: [],
+    boardServerText: "",
+    boardDraftDirty: false,
     screenShareInFlight: false,
     recording: {
       mediaRecorder: null,
@@ -3386,6 +3388,17 @@ function liveParticipantLabel(userId) {
   return `${name} (${role})`;
 }
 
+function liveParticipantInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "U";
+  const first = parts[0][0] || "";
+  const second = (parts[1] && parts[1][0]) ? parts[1][0] : "";
+  return `${first}${second}`.toUpperCase();
+}
+
 const LIVE_RTC_CONFIG = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
 };
@@ -3419,6 +3432,7 @@ function setLiveDrawerState(drawer, open) {
   if (el.liveRoomChatPanel) el.liveRoomChatPanel.classList.toggle("hidden", !state.liveRoom.chatOpen);
   if (el.liveRoomReactionMenu) el.liveRoomReactionMenu.classList.toggle("hidden", !state.liveRoom.reactionOpen);
   if (el.liveRoomParticipantsMenu) el.liveRoomParticipantsMenu.classList.toggle("hidden", !state.liveRoom.participantsOpen);
+  if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
 }
 
 function renderLiveQaList() {
@@ -3471,6 +3485,71 @@ function setIconButtonLabel(button, icon, label) {
     button.dataset.tip = label;
   }
   button.innerHTML = `<span class="ico">${icon}</span><span class="lbl">${escapeHtmlAttr(label)}</span>`;
+}
+
+function liveUiIcon(name) {
+  const stroke = "currentColor";
+  const w = 18;
+  const base = (path) => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+  if (name === "tools") return base("<path d='M14.7 6.3a3 3 0 0 0 3.9 3.9l2.6 2.6a2 2 0 0 1-2.8 2.8l-2.6-2.6a3 3 0 0 0-3.9-3.9l-5.5 5.5a2 2 0 0 1-2.8-2.8l5.5-5.5z'/>");
+  if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
+  if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
+  if (name === "fullscreen") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>");
+  if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
+  if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
+  if (name === "mic-off") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2M4 4l16 16'/>");
+  if (name === "screen") return base("<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4'/>");
+  if (name === "participants") return base("<circle cx='8' cy='9' r='3'/><circle cx='16' cy='10' r='2.5'/><path d='M3.5 18c1.4-2.3 3-3.5 4.5-3.5S11 15.7 12.5 18M14 18c.9-1.6 2-2.5 3.3-2.5 1.2 0 2.3.9 3.2 2.5'/>");
+  if (name === "leave") return base("<path d='M15 6l6 6-6 6'/><path d='M21 12H10'/><path d='M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5'/>");
+  if (name === "whiteboard") return base("<rect x='4' y='4' width='16' height='12' rx='2'/><path d='M8 20h8M12 16v4M8 8h8M8 11h5'/>");
+  if (name === "breakout") return base("<rect x='3' y='4' width='8' height='7' rx='1.5'/><rect x='13' y='4' width='8' height='7' rx='1.5'/><rect x='8' y='13' width='8' height='7' rx='1.5'/>");
+  if (name === "poll") return base("<path d='M5 19V9M12 19V5M19 19v-8'/>");
+  if (name === "qa") return base("<circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.7 1.2-1.7 2.2'/><path d='M12 16h.01'/>");
+  if (name === "stop-share") return base("<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4M5 5l14 10'/>");
+  if (name === "record") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><circle cx='12' cy='12' r='6' fill='currentColor'/></svg>";
+  if (name === "pause") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><rect x='7' y='6' width='3' height='12' fill='currentColor'/><rect x='14' y='6' width='3' height='12' fill='currentColor'/></svg>";
+  if (name === "stop") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><rect x='7' y='7' width='10' height='10' fill='currentColor'/></svg>";
+  if (name === "send") return base("<path d='M21 3L3 11l7 2 2 7 9-17z'/>");
+  return base("<circle cx='12' cy='12' r='8'/>");
+}
+
+function positionLiveParticipantsMenu() {
+  if (!el.liveRoomParticipantsMenu || !el.liveRoomParticipantsBtn || !el.liveRoomStageShell) return;
+  const shellRect = el.liveRoomStageShell.getBoundingClientRect();
+  const btnRect = el.liveRoomParticipantsBtn.getBoundingClientRect();
+  const menu = el.liveRoomParticipantsMenu;
+  const width = menu.offsetWidth || 320;
+  const preferredLeft = (btnRect.left - shellRect.left) + (btnRect.width / 2) - (width / 2);
+  const left = Math.max(8, Math.min(preferredLeft, el.liveRoomStageShell.clientWidth - width - 8));
+  const bottom = Math.max(70, (shellRect.bottom - btnRect.top) + 8);
+  menu.style.left = `${left}px`;
+  menu.style.right = "auto";
+  menu.style.bottom = `${bottom}px`;
+  menu.style.transform = "none";
+}
+
+function initializeLiveIconButtons() {
+  setIconButtonLabel(el.liveRoomToggleToolsBtn, liveUiIcon("tools"), "Tools");
+  setIconButtonLabel(el.liveRoomToggleChatBtn, liveUiIcon("chat"), "Chat");
+  setIconButtonLabel(el.liveRoomReactBtn, liveUiIcon("reaction"), "Reactions");
+  setIconButtonLabel(el.liveRoomFullscreenBtn, liveUiIcon("fullscreen"), "Fullscreen");
+  setIconButtonLabel(el.leaveLiveRoomBtn, liveUiIcon("leave"), "Leave");
+  if (el.liveRoomParticipantsBtn) {
+    el.liveRoomParticipantsBtn.setAttribute("title", "Participants");
+    el.liveRoomParticipantsBtn.setAttribute("aria-label", "Participants");
+    el.liveRoomParticipantsBtn.dataset.tip = "Participants";
+    const pIcon = el.liveRoomParticipantsBtn.querySelector(".ico");
+    if (pIcon) pIcon.innerHTML = liveUiIcon("participants");
+  }
+  if (el.liveRoomStopShareOverlayBtn) el.liveRoomStopShareOverlayBtn.innerHTML = `<span class="ico">${liveUiIcon("stop-share")}</span><span class="lbl">Stop sharing</span>`;
+  if (el.liveRoomStartRecordingBtn) el.liveRoomStartRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("record")}</span>`;
+  if (el.liveRoomPauseRecordingBtn) el.liveRoomPauseRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("pause")}</span>`;
+  if (el.liveRoomStopRecordingBtn) el.liveRoomStopRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("stop")}</span>`;
+  if (el.liveRoomOpenWhiteboardBtn) el.liveRoomOpenWhiteboardBtn.querySelector(".ico").innerHTML = liveUiIcon("whiteboard");
+  if (el.liveRoomOpenBreakoutBtn) el.liveRoomOpenBreakoutBtn.querySelector(".ico").innerHTML = liveUiIcon("breakout");
+  if (el.liveRoomOpenPollBtn) el.liveRoomOpenPollBtn.querySelector(".ico").innerHTML = liveUiIcon("poll");
+  if (el.liveRoomOpenQaBtn) el.liveRoomOpenQaBtn.querySelector(".ico").innerHTML = liveUiIcon("qa");
+  if (el.liveRoomSendChatBtn) el.liveRoomSendChatBtn.innerHTML = `<span class="ico">${liveUiIcon("send")}</span><span class="lbl">Send</span>`;
 }
 
 function setVideoElementStream(videoEl, stream, options = {}) {
@@ -3578,16 +3657,17 @@ function refreshLiveControlButtonStates() {
   const participantCount = Object.keys(state.liveRoom.participantMap || {}).length;
   if (el.liveRoomVideoStartBtn) {
     el.liveRoomVideoStartBtn.classList.toggle("is-active", camOn);
-    setIconButtonLabel(el.liveRoomVideoStartBtn, camOn ? "CAM" : "CAM", camOn ? "Camera On" : "Camera");
+    setIconButtonLabel(el.liveRoomVideoStartBtn, liveUiIcon("camera"), camOn ? "Camera On" : "Camera");
   }
   if (el.liveRoomShareScreenBtn) {
     el.liveRoomShareScreenBtn.disabled = Boolean(state.liveRoom.screenShareInFlight);
     el.liveRoomShareScreenBtn.classList.toggle("is-active", screenOn);
-    setIconButtonLabel(el.liveRoomShareScreenBtn, "SCR", screenOn ? "Sharing" : "Share");
+    setIconButtonLabel(el.liveRoomShareScreenBtn, liveUiIcon("screen"), screenOn ? "Sharing" : "Share");
   }
   if (el.liveRoomStopShareOverlayBtn) el.liveRoomStopShareOverlayBtn.classList.toggle("hidden", !screenOn);
   if (el.liveRoomParticipantsCountBadge) el.liveRoomParticipantsCountBadge.textContent = String(participantCount);
   if (el.liveRoomParticipantsCountText) el.liveRoomParticipantsCountText.textContent = `${participantCount} online`;
+  if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
 }
 
 function toggleLiveDrawer(drawer) {
@@ -4011,7 +4091,7 @@ function setLiveMicMuted(muted) {
     });
   });
   if (el.liveRoomToggleMicBtn) {
-    setIconButtonLabel(el.liveRoomToggleMicBtn, rtc.micMuted ? "🔇" : "🎤", rtc.micMuted ? "Unmute" : "Mic");
+    setIconButtonLabel(el.liveRoomToggleMicBtn, liveUiIcon(rtc.micMuted ? "mic-off" : "mic"), rtc.micMuted ? "Unmute" : "Mic");
     el.liveRoomToggleMicBtn.classList.toggle("is-muted", Boolean(rtc.micMuted));
     el.liveRoomToggleMicBtn.classList.toggle("is-active", !rtc.micMuted);
   }
@@ -4024,7 +4104,7 @@ function setLiveHostMuted(muted) {
   if (el.liveRoomToggleMicBtn) {
     el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
     if (state.liveRoom.hostMuted) {
-      setIconButtonLabel(el.liveRoomToggleMicBtn, "🔇", "Host Muted");
+      setIconButtonLabel(el.liveRoomToggleMicBtn, liveUiIcon("mic-off"), "Host Muted");
       el.liveRoomToggleMicBtn.classList.add("is-muted");
       el.liveRoomToggleMicBtn.classList.remove("is-active");
     } else {
@@ -4046,7 +4126,7 @@ async function startLiveScreenShare() {
   state.liveRoom.screenShareInFlight = true;
   if (el.liveRoomShareScreenBtn) {
     el.liveRoomShareScreenBtn.disabled = true;
-    setIconButtonLabel(el.liveRoomShareScreenBtn, "SCR", "Starting...");
+    setIconButtonLabel(el.liveRoomShareScreenBtn, liveUiIcon("screen"), "Starting...");
   }
   try {
     if (!rtc.cameraStream) await ensureLiveCameraStream();
@@ -4268,6 +4348,8 @@ function clearLiveRoomState() {
   state.liveRoom.sidePanel = "";
   state.liveRoom.sharedPanel = "";
   state.liveRoom.qaItems = [];
+  state.liveRoom.boardServerText = "";
+  state.liveRoom.boardDraftDirty = false;
   state.liveRoom.screenShareInFlight = false;
   state.liveRoom.recording = {
     mediaRecorder: null,
@@ -4362,11 +4444,17 @@ function renderLiveRoomParticipants(room) {
     el.liveRoomParticipantsList,
     participants,
     (p) => `
-      <div class="row between" data-live-participant-id="${Number(p.user_id || 0)}">
-        <span><strong>${escapeHtmlAttr(p.display_name || "User")}</strong>${p.raised_hand ? " [Hand]" : ""} <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></span>
+      <div class="live-participant-row row between" data-live-participant-id="${Number(p.user_id || 0)}">
+        <span class="live-participant-main">
+          <span class="live-participant-avatar">${escapeHtmlAttr(liveParticipantInitials(p.display_name || "User"))}</span>
+          <span class="live-participant-copy">
+            <strong>${escapeHtmlAttr(p.display_name || "User")}</strong>
+            <span class="meta">${escapeHtmlAttr(p.actor_role || "participant")}</span>
+          </span>
+        </span>
         <span class="actions">
-          <span class='meta'>Active</span>
-          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" title="Mute ${escapeHtmlAttr(p.display_name || "user")}" data-live-mute="${Number(p.user_id || 0)}">🔇</button><button class="btn small danger" title="Remove ${escapeHtmlAttr(p.display_name || "user")}" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
+          ${p.raised_hand ? "<span class='badge'>Hand</span>" : "<span class='meta'>Active</span>"}
+          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" title="Mute ${escapeHtmlAttr(p.display_name || "user")}" data-live-mute="${Number(p.user_id || 0)}">Mute</button><button class="btn small danger" title="Remove ${escapeHtmlAttr(p.display_name || "user")}" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
         </span>
       </div>
     `,
@@ -4470,9 +4558,17 @@ function applyLiveRoomState(room) {
   if (el.liveRoomPresenceBadge) {
     el.liveRoomPresenceBadge.textContent = `Participants: ${Number(room?.participant_count || 0)}`;
   }
-  if (el.liveRoomBoardText) el.liveRoomBoardText.value = session.board_text || "";
+  const boardServerText = String(session.board_text || "");
+  state.liveRoom.boardServerText = boardServerText;
 
   const isProvider = state.liveRoom.role === "provider";
+  if (el.liveRoomBoardText) {
+    const boardFocused = document.activeElement === el.liveRoomBoardText;
+    const shouldSyncBoard = !isProvider || !state.liveRoom.boardDraftDirty || !boardFocused;
+    if (shouldSyncBoard && el.liveRoomBoardText.value !== boardServerText) {
+      el.liveRoomBoardText.value = boardServerText;
+    }
+  }
   if (el.liveRoomBoardText) el.liveRoomBoardText.disabled = !isProvider;
   if (el.liveRoomSaveBoardBtn) el.liveRoomSaveBoardBtn.classList.toggle("hidden", !isProvider);
   if (el.liveRoomPollQuestion) el.liveRoomPollQuestion.disabled = !isProvider;
@@ -4513,7 +4609,7 @@ function applyLiveRoomState(room) {
   if (el.liveRoomToggleMicBtn) {
     el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
     if (state.liveRoom.hostMuted) {
-      setIconButtonLabel(el.liveRoomToggleMicBtn, "🔇", "Host Muted");
+      setIconButtonLabel(el.liveRoomToggleMicBtn, liveUiIcon("mic-off"), "Host Muted");
       el.liveRoomToggleMicBtn.classList.add("is-muted");
       el.liveRoomToggleMicBtn.classList.remove("is-active");
     } else {
@@ -4595,6 +4691,8 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.sidePanel = "";
   state.liveRoom.sharedPanel = "";
   state.liveRoom.qaItems = [];
+  state.liveRoom.boardServerText = "";
+  state.liveRoom.boardDraftDirty = false;
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
@@ -7351,6 +7449,10 @@ function handleKeyboardShortcuts(event) {
 }
 
 function bindEvents() {
+  initializeLiveIconButtons();
+  window.addEventListener("resize", () => {
+    if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
+  });
   el.showSignupBtn?.addEventListener("click", () => showAuthMode("signup"));
   el.showLoginBtn?.addEventListener("click", () => showAuthMode("login"));
 
@@ -8199,9 +8301,16 @@ function bindEvents() {
     api("POST", `/provider/workspace/live-classes/${sessionId}/tools/board`, {
       board_text: String(el.liveRoomBoardText?.value || ""),
     })
+      .then(() => {
+        state.liveRoom.boardDraftDirty = false;
+      })
       .then(() => refreshLiveRoomState())
       .then(() => toast("Whiteboard updated"))
       .catch((err) => toast(err?.message || "Failed to save board", "error"));
+  });
+  $("liveRoomBoardText")?.addEventListener("input", () => {
+    const draft = String(el.liveRoomBoardText?.value || "");
+    state.liveRoom.boardDraftDirty = draft !== String(state.liveRoom.boardServerText || "");
   });
   $("liveRoomOpenWhiteboardBtn")?.addEventListener("click", () => {
     setLiveSidePanel("whiteboard", true);
@@ -8300,6 +8409,7 @@ function bindEvents() {
     const draft = generateLiveTopicExplainer(topic);
     const existing = String(el.liveRoomBoardText?.value || "").trim();
     el.liveRoomBoardText.value = existing ? `${existing}\n\n${draft}` : draft;
+    state.liveRoom.boardDraftDirty = true;
     toast("AI explanation added to board. Save board to publish.");
   });
   $("liveRoomPickStudentBtn")?.addEventListener("click", () => {

@@ -758,7 +758,10 @@
               <span id="liveRoomSignalStatus" class="status-pill status-in_review">Realtime: fallback</span>
               <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
             </div>
-            <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room" aria-label="Leave room"><span class="ico">⏻</span><span class="lbl">Leave</span></button>
+            <div class="row gap-sm live-topbar-actions">
+              <button id="liveRoomFullscreenBtn" class="btn small live-icon-btn live-topbar-icon" title="Fullscreen" aria-label="Fullscreen"><span class="ico"></span><span class="lbl">Fullscreen</span></button>
+              <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room" aria-label="Leave room"><span class="ico"></span><span class="lbl">Leave</span></button>
+            </div>
           </div>
         </div>
         <video id="liveRoomStageVideo" autoplay playsinline class="live-stage-video"></video>
@@ -783,35 +786,34 @@
           </div>
         </div>
         <div class="live-control-dock">
-          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico">TL</span><span class="lbl">Tools</span></button>
-          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico">CH</span><span class="lbl">Chat</span></button>
-          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions" data-tip="Reactions" aria-label="Reactions"><span class="ico">RE</span><span class="lbl">React</span></button>
-          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen" data-tip="Fullscreen" aria-label="Fullscreen"><span class="ico">FS</span><span class="lbl">Fullscreen</span></button>
-          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera" data-tip="Camera" aria-label="Camera"><span class="ico">CAM</span><span class="lbl">Camera</span></button>
-          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone" data-tip="Mic" aria-label="Microphone"><span class="ico">MIC</span><span class="lbl">Mic</span></button>
-          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen" data-tip="Share screen" aria-label="Share screen"><span class="ico">SCR</span><span class="lbl">Share</span></button>
+          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico"></span><span class="lbl">Tools</span></button>
+          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico"></span><span class="lbl">Chat</span></button>
+          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions" data-tip="Reactions" aria-label="Reactions"><span class="ico"></span><span class="lbl">React</span></button>
+          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera" data-tip="Camera" aria-label="Camera"><span class="ico"></span><span class="lbl">Camera</span></button>
+          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone" data-tip="Mic" aria-label="Microphone"><span class="ico"></span><span class="lbl">Mic</span></button>
+          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen" data-tip="Share screen" aria-label="Share screen"><span class="ico"></span><span class="lbl">Share</span></button>
           <button id="liveRoomParticipantsBtn" class="btn small live-dock-btn live-icon-btn" title="Participants" data-tip="Participants" aria-label="Participants">
-            <span class="ico">PPL</span>
+            <span class="ico"></span>
             <span class="lbl">Participants</span>
             <span id="liveRoomParticipantsCountBadge" class="live-dock-count">0</span>
           </button>
           <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
         </div>
-        <button id="liveRoomStopShareOverlayBtn" class="btn small live-stop-share-overlay hidden"><span class="ico">STOP</span><span class="lbl">Stop sharing</span></button>
+        <button id="liveRoomStopShareOverlayBtn" class="btn small live-stop-share-overlay hidden"><span class="ico"></span><span class="lbl">Stop sharing</span></button>
         <aside id="liveRoomToolsPanel" class="live-updrawer hidden">
           <div class="row between" style="align-items:center;">
             <h3 style="margin:0;">Tools</h3>
             <div class="live-recording-controls">
-              <button id="liveRoomStartRecordingBtn" class="btn small live-record-icon-btn" title="Start recording" aria-label="Start recording"><span class="ico">REC</span></button>
-              <button id="liveRoomPauseRecordingBtn" class="btn small live-record-icon-btn" title="Pause or resume recording" aria-label="Pause or resume recording"><span class="ico">PAU</span></button>
-              <button id="liveRoomStopRecordingBtn" class="btn small live-record-icon-btn" title="Stop recording" aria-label="Stop recording"><span class="ico">STP</span></button>
+              <button id="liveRoomStartRecordingBtn" class="btn small live-record-icon-btn" title="Start recording" aria-label="Start recording"><span class="ico"></span></button>
+              <button id="liveRoomPauseRecordingBtn" class="btn small live-record-icon-btn" title="Pause or resume recording" aria-label="Pause or resume recording"><span class="ico"></span></button>
+              <button id="liveRoomStopRecordingBtn" class="btn small live-record-icon-btn" title="Stop recording" aria-label="Stop recording"><span class="ico"></span></button>
             </div>
           </div>
           <div class="live-tools-grid" style="margin-top:10px;">
-            <button id="liveRoomOpenWhiteboardBtn" class="btn small live-tool-action"><span class="ico">WB</span><span class="lbl">Whiteboard</span></button>
-            <button id="liveRoomOpenBreakoutBtn" class="btn small live-tool-action"><span class="ico">BR</span><span class="lbl">Breakout Rooms</span></button>
-            <button id="liveRoomOpenPollBtn" class="btn small live-tool-action"><span class="ico">PL</span><span class="lbl">Quick Poll</span></button>
-            <button id="liveRoomOpenQaBtn" class="btn small live-tool-action"><span class="ico">QA</span><span class="lbl">Q&amp;A</span></button>
+            <button id="liveRoomOpenWhiteboardBtn" class="btn small live-tool-action"><span class="ico"></span><span class="lbl">Whiteboard</span></button>
+            <button id="liveRoomOpenBreakoutBtn" class="btn small live-tool-action"><span class="ico"></span><span class="lbl">Breakout Rooms</span></button>
+            <button id="liveRoomOpenPollBtn" class="btn small live-tool-action"><span class="ico"></span><span class="lbl">Quick Poll</span></button>
+            <button id="liveRoomOpenQaBtn" class="btn small live-tool-action"><span class="ico"></span><span class="lbl">Q&amp;A</span></button>
           </div>
           <div class="item" style="margin-top:10px;">
             <div class="row between">
@@ -887,12 +889,14 @@
           </div>
           <div id="liveRoomQaList" class="list" style="max-height:220px;overflow:auto;margin-top:10px;"></div>
         </aside>
-        <aside id="liveRoomChatPanel" class="live-drawer live-drawer-right hidden">
-          <h3>Class Chat</h3>
-          <div id="liveRoomChatList" class="list" style="max-height:320px;overflow:auto;"></div>
-          <div class="row wrap gap-sm" style="margin-top:10px;">
+        <aside id="liveRoomChatPanel" class="live-drawer live-drawer-right live-chat-panel hidden">
+          <div class="live-chat-head">
+            <h3>Class Chat</h3>
+          </div>
+          <div id="liveRoomChatList" class="list live-chat-list"></div>
+          <div class="live-chat-compose">
             <input id="liveRoomChatInput" class="search" type="text" placeholder="Type message" />
-            <button id="liveRoomSendChatBtn" class="btn small">Send</button>
+            <button id="liveRoomSendChatBtn" class="btn small live-chat-send-btn"><span class="ico"></span><span class="lbl">Send</span></button>
           </div>
         </aside>
       </div>
@@ -1047,4 +1051,5 @@
   <script type="module" src="/assets/app.js"></script>
 </body>
 </html>
+
 

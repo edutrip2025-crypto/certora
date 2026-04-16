@@ -493,6 +493,14 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   font-size: 1.06rem;
   line-height: 1;
   transition: transform .18s ease, filter .18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-icon-btn .ico svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
 }
 .live-icon-btn .lbl {
   font-size: .78rem;
@@ -620,13 +628,47 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   padding: 0;
 }
 .live-participants-popover {
-  left: auto;
-  right: 14px;
+  left: 12px;
+  right: auto;
   bottom: 74px;
-  transform: none;
+  transform: translateX(0);
   width: min(360px, 94vw);
   max-height: min(62vh, 480px);
   overflow: auto;
+}
+.live-participant-row {
+  border-radius: 10px;
+  padding: 8px 6px;
+}
+.live-participant-row .actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-participant-main {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.live-participant-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #1e293b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  font-weight: 700;
+  flex: 0 0 28px;
+}
+.live-participant-copy {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
 }
 .live-stop-share-overlay {
   position: absolute;
@@ -654,6 +696,62 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   padding: 12px;
   overflow: auto;
   box-shadow: 0 16px 34px rgba(2, 6, 23, 0.34);
+}
+.live-topbar-actions {
+  align-items: center;
+}
+.live-topbar-icon {
+  border-color: rgba(148, 163, 184, 0.5);
+}
+.live-chat-panel {
+  top: 12px;
+  bottom: 12px;
+  width: min(380px, 96vw);
+  border-radius: 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.live-chat-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid #dbe4f0;
+  background: #f8fafc;
+}
+.live-chat-head h3 {
+  margin: 0;
+}
+.live-chat-list {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 10px;
+}
+.live-chat-list .item {
+  margin-bottom: 8px;
+}
+.live-chat-compose {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+.live-chat-compose input {
+  margin: 0;
+}
+.live-chat-send-btn {
+  min-width: 40px;
+  min-height: 36px;
+  padding: 0 10px;
+}
+.live-chat-send-btn .lbl {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 .live-stage-shell.live-side-open .live-stage-video {
   width: calc(100% - min(360px, 38vw) - 18px);
@@ -771,6 +869,11 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     right: 8px;
     bottom: 62px;
     width: calc(100% - 16px);
+  }
+  .live-chat-panel {
+    width: calc(100% - 16px);
+    top: 8px;
+    bottom: 8px;
   }
 }
 .course-card {
