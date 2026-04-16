@@ -1039,6 +1039,7 @@ const el = {
   providerHomeStats: $("providerHomeStats"),
   studentStats: $("studentStats"),
   studentCertificatesList: $("studentCertificatesList"),
+  studentEnrolledCertificatesList: $("studentEnrolledCertificatesList"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentCourseViewer: $("studentCourseViewer"),
@@ -2478,21 +2479,19 @@ async function refreshStudentDashboard() {
     "Exam Eligible": data.stats?.exam_eligible_courses ?? 0,
     "Certificates": data.stats?.certificates_issued ?? 0,
   });
-  renderList(
-    el.studentCertificatesList,
-    certs || [],
-    (c) => `
-      <div>
-        <div><strong>${c.course_name}</strong></div>
-        <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
-        <div class="actions">
-          ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
-          <a class="btn small" href="${c.verification_link}" target="_blank" rel="noreferrer">Verify</a>
-        </div>
+  const certItems = certs || [];
+  const certRenderer = (c) => `
+    <div>
+      <div><strong>${c.course_name}</strong></div>
+      <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
+      <div class="actions">
+        ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
+        <a class="btn small" href="${c.verification_link}" target="_blank" rel="noreferrer">Verify</a>
       </div>
-    `,
-    "No certificates issued yet.",
-  );
+    </div>
+  `;
+  renderList(el.studentCertificatesList, certItems, certRenderer, "No certificates issued yet.");
+  renderList(el.studentEnrolledCertificatesList, certItems, certRenderer, "No certificates issued yet.");
   renderList(
     el.studentAvailableCourses,
     data.available || [],
