@@ -326,6 +326,47 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .item { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 12px; }
 .item .meta { font-size: .82rem; color: #64748b; margin-top: 3px; }
 .item .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.live-local-video {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #0b1220;
+}
+.live-video-el {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #0b1220;
+  object-fit: cover;
+}
+.live-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.live-video-tile {
+  position: relative;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1220;
+}
+.live-video-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  font-size: .76rem;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+.live-video-muted {
+  outline: 2px solid #f59e0b;
+}
 .course-card {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);

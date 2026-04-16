@@ -749,6 +749,7 @@
         </div>
         <div class="row wrap gap-sm">
           <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
+          <span id="liveRoomSignalStatus" class="status-pill status-in_review">Realtime: fallback</span>
           <button id="leaveLiveRoomBtn" class="btn small">Leave Room</button>
         </div>
       </div>
@@ -789,11 +790,12 @@
           <div class="row wrap gap-sm" style="margin-bottom:8px;">
             <button id="liveRoomVideoStartBtn" class="btn small">Start Camera</button>
             <button id="liveRoomVideoStopBtn" class="btn small">Stop Camera</button>
+            <button id="liveRoomToggleMicBtn" class="btn small">Mute Mic</button>
             <button id="liveRoomShareScreenBtn" class="btn small">Share Screen</button>
             <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
           </div>
-          <video id="liveRoomLocalVideo" autoplay muted playsinline style="width:100%;min-height:220px;border:1px solid #dbe4f0;border-radius:10px;background:#0b1220;"></video>
-          <div id="liveRoomRemoteVideoGrid" class="list" style="margin-top:8px;"></div>
+          <video id="liveRoomLocalVideo" autoplay muted playsinline class="live-local-video live-video-el"></video>
+          <div id="liveRoomRemoteVideoGrid" class="live-video-grid" style="margin-top:8px;"></div>
           <div id="liveRoomStage" class="item" style="min-height:280px;background:linear-gradient(180deg,#f8fafc,#eef2ff);">
             <div class="meta">Your own in-app video classroom is live. Camera + screen share + chat + poll + hand raise are available.</div>
             <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
@@ -808,10 +810,10 @@
             <button id="liveRoomSendChatBtn" class="btn small">Send</button>
           </div>
           <div class="row wrap gap-sm" style="margin-top:10px;">
-            <button class="btn small" data-live-reaction="👍">👍</button>
-            <button class="btn small" data-live-reaction="👏">👏</button>
-            <button class="btn small" data-live-reaction="🔥">🔥</button>
-            <button class="btn small" data-live-reaction="✅">✅</button>
+            <button class="btn small" data-live-reaction="Thumbs Up">Thumbs Up</button>
+            <button class="btn small" data-live-reaction="Clap">Clap</button>
+            <button class="btn small" data-live-reaction="Great">Great</button>
+            <button class="btn small" data-live-reaction="Done">Done</button>
           </div>
           <h4 style="margin:12px 0 6px;">Participants</h4>
           <div id="liveRoomParticipantsList" class="list" style="max-height:180px;overflow:auto;"></div>

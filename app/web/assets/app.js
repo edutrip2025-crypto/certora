@@ -71,14 +71,21 @@ const state = {
     pollerId: null,
     classTimerId: null,
     classTimerStartedAt: 0,
+    ws: null,
+    wsConnected: false,
+    wsPingId: null,
+    wsReconnectId: null,
+    participantMap: {},
     rtc: {
       peers: {},
       remoteStreams: {},
       signalSeenIds: {},
+      signalSeenKeys: {},
       localStream: null,
       cameraStream: null,
       screenStream: null,
       outboundVideoTrack: null,
+      micMuted: false,
     },
   },
 };
@@ -1181,8 +1188,10 @@ const el = {
   liveRoomTitle: $("liveRoomTitle"),
   liveRoomMeta: $("liveRoomMeta"),
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
+  liveRoomSignalStatus: $("liveRoomSignalStatus"),
   liveRoomVideoStartBtn: $("liveRoomVideoStartBtn"),
   liveRoomVideoStopBtn: $("liveRoomVideoStopBtn"),
+  liveRoomToggleMicBtn: $("liveRoomToggleMicBtn"),
   liveRoomShareScreenBtn: $("liveRoomShareScreenBtn"),
   liveRoomStopShareBtn: $("liveRoomStopShareBtn"),
   liveRoomLocalVideo: $("liveRoomLocalVideo"),
@@ -3095,6 +3104,28 @@ function getLiveRoomApiPrefix(role = state.liveRoom.role) {
   return role === "provider" ? "/provider/workspace/live-classes" : "/student/live-classes";
 }
 
+function setLiveSignalStatus(connected) {
+  state.liveRoom.wsConnected = Boolean(connected);
+  if (!el.liveRoomSignalStatus) return;
+  el.liveRoomSignalStatus.textContent = connected ? "Realtime: connected" : "Realtime: fallback";
+  el.liveRoomSignalStatus.classList.toggle("status-resolved", connected);
+  el.liveRoomSignalStatus.classList.toggle("status-in_review", !connected);
+}
+
+function normalizeWsBase() {
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.host}`;
+}
+
+function liveParticipantLabel(userId) {
+  const key = String(Number(userId || 0));
+  const row = state.liveRoom.participantMap[key];
+  if (!row) return `Participant #${key}`;
+  const role = String(row.actor_role || "participant");
+  const name = String(row.display_name || `Participant #${key}`);
+  return `${name} (${role})`;
+}
+
 const LIVE_RTC_CONFIG = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
 };
@@ -3124,13 +3155,13 @@ function renderLiveRemoteVideos() {
   const rtc = liveRtcState();
   const entries = Object.entries(rtc.remoteStreams || {});
   if (!entries.length) {
-    el.liveRoomRemoteVideoGrid.innerHTML = "<div class='item'><span class='meta'>No remote video yet.</span></div>";
+    el.liveRoomRemoteVideoGrid.innerHTML = "<div class='item'><span class='meta'>Waiting for participants to turn on video.</span></div>";
     return;
   }
   const html = entries.map(([peerId]) => `
-    <div class="item" data-live-remote-peer="${escapeHtmlAttr(peerId)}">
-      <div class="meta">Participant #${escapeHtmlAttr(peerId)}</div>
-      <video autoplay playsinline style="width:100%;min-height:180px;border:1px solid #dbe4f0;border-radius:10px;background:#0b1220;"></video>
+    <div class="live-video-tile" data-live-remote-peer="${escapeHtmlAttr(peerId)}">
+      <video autoplay playsinline class="live-video-el"></video>
+      <div class="live-video-label">${escapeHtmlAttr(liveParticipantLabel(peerId))}</div>
     </div>
   `).join("");
   el.liveRoomRemoteVideoGrid.innerHTML = html;
@@ -3144,6 +3175,7 @@ function renderLiveRemoteVideos() {
 function attachLocalVideoPreview() {
   if (!el.liveRoomLocalVideo) return;
   el.liveRoomLocalVideo.srcObject = liveRtcState().localStream || null;
+  el.liveRoomLocalVideo.classList.toggle("live-video-muted", Boolean(liveRtcState().micMuted));
 }
 
 function replaceLiveOutboundVideoTrack(newVideoTrack) {
@@ -3171,9 +3203,87 @@ function attachTracksToPeer(pc) {
   }
 }
 
+function closeLiveSignalSocket() {
+  if (state.liveRoom.wsPingId) {
+    clearInterval(state.liveRoom.wsPingId);
+    state.liveRoom.wsPingId = null;
+  }
+  if (state.liveRoom.wsReconnectId) {
+    clearTimeout(state.liveRoom.wsReconnectId);
+    state.liveRoom.wsReconnectId = null;
+  }
+  const ws = state.liveRoom.ws;
+  state.liveRoom.ws = null;
+  if (ws) {
+    try { ws.close(); } catch {}
+  }
+  setLiveSignalStatus(false);
+}
+
+async function openLiveSignalSocket() {
+  closeLiveSignalSocket();
+  const sessionId = Number(state.liveRoom.sessionId || 0);
+  if (!sessionId || !state.auth?.currentUser) return;
+  const token = await state.auth.currentUser.getIdToken().catch(() => "");
+  if (!token) return;
+  const url = `${normalizeWsBase()}/ws/live/${sessionId}?token=${encodeURIComponent(token)}`;
+  const ws = new WebSocket(url);
+  state.liveRoom.ws = ws;
+  ws.onopen = () => {
+    if (state.liveRoom.ws !== ws) return;
+    setLiveSignalStatus(true);
+    state.liveRoom.wsPingId = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({ type: "ping" }));
+      } catch {}
+    }, 15000);
+    sendLiveSignal("presence", { media: "camera" }).catch(() => {});
+  };
+  ws.onclose = () => {
+    if (state.liveRoom.ws !== ws) return;
+    closeLiveSignalSocket();
+    if (!state.liveRoom.active || !state.liveRoom.sessionId) return;
+    state.liveRoom.wsReconnectId = setTimeout(() => {
+      openLiveSignalSocket().catch(() => {});
+    }, 1800);
+  };
+  ws.onerror = () => {
+    setLiveSignalStatus(false);
+  };
+  ws.onmessage = (event) => {
+    let msg = null;
+    try {
+      msg = JSON.parse(String(event.data || "{}"));
+    } catch {
+      return;
+    }
+    const type = String(msg?.type || "").toLowerCase();
+    if (type === "signal") {
+      handleLiveSignalEnvelope(msg).catch(() => {});
+      return;
+    }
+    if (type === "presence") {
+      refreshLiveRoomState().catch(() => {});
+    }
+  };
+}
+
 async function sendLiveSignal(kind, data = {}, toUserId = null) {
   const sessionId = Number(state.liveRoom.sessionId || 0);
   if (!sessionId) return;
+  const ws = state.liveRoom.ws;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({
+        type: "signal",
+        kind,
+        to_user_id: toUserId ? Number(toUserId) : null,
+        payload: data || {},
+      }));
+      return;
+    } catch {}
+  }
   const fromUserId = currentLiveUserId();
   if (!fromUserId) return;
   const prefix = getLiveRoomApiPrefix();
@@ -3231,7 +3341,8 @@ function createLivePeerConnection(peerUserId) {
 
 async function ensureLiveCameraStream() {
   const rtc = liveRtcState();
-  if (rtc.cameraStream) return rtc.cameraStream;
+  const activeTrack = rtc.cameraStream?.getTracks?.().find((t) => t.readyState === "live");
+  if (activeTrack) return rtc.cameraStream;
   rtc.cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   return rtc.cameraStream;
 }
@@ -3244,6 +3355,7 @@ async function startLiveCamera() {
   rtc.localStream = new MediaStream(cameraStream.getTracks());
   const videoTrack = rtc.localStream.getVideoTracks()[0] || null;
   replaceLiveOutboundVideoTrack(videoTrack);
+  setLiveMicMuted(Boolean(rtc.micMuted));
   attachLocalVideoPreview();
   await sendLiveSignal("presence", { media: "camera" }).catch(() => {});
   await syncLiveRtcPeersFromRoom().catch(() => {});
@@ -3269,6 +3381,25 @@ async function stopLiveCamera() {
   rtc.outboundVideoTrack = null;
   Object.keys(rtc.peers || {}).forEach((peerId) => closeLivePeerConnection(Number(peerId)));
   attachLocalVideoPreview();
+}
+
+function setLiveMicMuted(muted) {
+  const rtc = liveRtcState();
+  rtc.micMuted = Boolean(muted);
+  const streams = [rtc.localStream, rtc.cameraStream].filter(Boolean);
+  streams.forEach((stream) => {
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !rtc.micMuted;
+    });
+  });
+  if (el.liveRoomToggleMicBtn) el.liveRoomToggleMicBtn.textContent = rtc.micMuted ? "Unmute Mic" : "Mute Mic";
+  attachLocalVideoPreview();
+}
+
+async function toggleLiveMic() {
+  const rtc = liveRtcState();
+  if (!rtc.localStream) await startLiveCamera();
+  setLiveMicMuted(!rtc.micMuted);
 }
 
 async function startLiveScreenShare() {
@@ -3331,20 +3462,28 @@ async function renegotiateAllLivePeers() {
   await Promise.all(keys.map((key) => renegotiateLivePeer(Number(key)).catch(() => {})));
 }
 
-async function handleLiveSignalMessage(item) {
+function liveSignalSeen(rtc, signalId, signalKey) {
+  if (signalId && rtc.signalSeenIds[signalId]) return true;
+  if (signalKey && rtc.signalSeenKeys[signalKey]) return true;
+  if (signalId) rtc.signalSeenIds[signalId] = true;
+  if (signalKey) rtc.signalSeenKeys[signalKey] = true;
+  return false;
+}
+
+async function handleLiveSignalCore(input) {
   const rtc = liveRtcState();
-  const msgId = Number(item?.id || 0);
-  if (!msgId || rtc.signalSeenIds[msgId]) return;
-  rtc.signalSeenIds[msgId] = true;
-  const payload = item?.payload || {};
-  const kind = String(payload.kind || item?.content || "").trim().toLowerCase();
+  const signalId = String(input?.id || "").trim();
+  const kind = String(input?.kind || "").trim().toLowerCase();
+  const toUserId = Number(input?.to_user_id || 0);
+  const fromUserId = Number(input?.from_user_id || 0);
+  const signalKey = `${kind}:${fromUserId}:${toUserId}:${String(input?.ts || "")}`;
+  if (liveSignalSeen(rtc, signalId, signalKey)) return;
   if (!kind) return;
-  const toUserId = Number(payload.to_user_id || 0);
-  const fromUserId = Number(payload.from_user_id || 0);
+  const payload = input?.payload || {};
   const selfId = currentLiveUserId();
   if (!fromUserId || fromUserId === selfId) return;
   if (toUserId && toUserId !== selfId) return;
-  const createdAtMs = item?.created_at ? new Date(item.created_at).getTime() : Date.now();
+  const createdAtMs = Number(input?.ts || 0) || (input?.created_at ? new Date(input.created_at).getTime() : Date.now());
   if (Number.isFinite(createdAtMs) && (Date.now() - createdAtMs) > 90000) return;
 
   if (kind === "offer") {
@@ -3381,6 +3520,30 @@ async function handleLiveSignalMessage(item) {
   }
 }
 
+async function handleLiveSignalEnvelope(msg) {
+  await handleLiveSignalCore({
+    id: msg?.id,
+    kind: msg?.kind,
+    from_user_id: msg?.from_user_id,
+    to_user_id: msg?.to_user_id,
+    payload: msg?.payload || {},
+    ts: msg?.ts || Date.now(),
+  });
+}
+
+async function handleLiveSignalMessage(item) {
+  const payload = item?.payload || {};
+  await handleLiveSignalCore({
+    id: item?.id,
+    kind: String(payload.kind || item?.content || "").trim().toLowerCase(),
+    from_user_id: payload.from_user_id,
+    to_user_id: payload.to_user_id,
+    payload,
+    ts: item?.created_at ? new Date(item.created_at).getTime() : Date.now(),
+    created_at: item?.created_at,
+  });
+}
+
 async function syncLiveRtcPeersFromRoom(room = null) {
   const currentRoom = room || state.liveRoom.lastRoomState || null;
   if (!currentRoom) return;
@@ -3403,6 +3566,7 @@ function stopLiveRoomPolling() {
 }
 
 function clearLiveRoomState() {
+  closeLiveSignalSocket();
   stopLiveRoomPolling();
   if (state.liveRoom.classTimerId) {
     clearInterval(state.liveRoom.classTimerId);
@@ -3414,6 +3578,7 @@ function clearLiveRoomState() {
   state.liveRoom.role = null;
   state.liveRoom.lastMessageId = 0;
   state.liveRoom.lastRoomState = null;
+  state.liveRoom.participantMap = {};
   const rtc = liveRtcState();
   stopTracks(rtc.screenStream);
   stopTracks(rtc.cameraStream);
@@ -3422,10 +3587,12 @@ function clearLiveRoomState() {
   rtc.peers = {};
   rtc.remoteStreams = {};
   rtc.signalSeenIds = {};
+  rtc.signalSeenKeys = {};
   rtc.localStream = null;
   rtc.cameraStream = null;
   rtc.screenStream = null;
   rtc.outboundVideoTrack = null;
+  rtc.micMuted = false;
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   if (el.liveRoomParticipantsList) el.liveRoomParticipantsList.innerHTML = "";
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
@@ -3475,6 +3642,10 @@ function appendLiveRoomMessages(items) {
 
 function renderLiveRoomParticipants(room) {
   const participants = room?.participants || [];
+  state.liveRoom.participantMap = {};
+  participants.forEach((p) => {
+    state.liveRoom.participantMap[String(Number(p.user_id || 0))] = p;
+  });
   renderList(
     el.liveRoomParticipantsList,
     participants,
@@ -3492,6 +3663,7 @@ function renderLiveRoomParticipants(room) {
     (p) => `<div><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></div>`,
     "No raised hands.",
   );
+  renderLiveRemoteVideos();
 }
 
 function renderLivePollPanel(room) {
@@ -3589,6 +3761,10 @@ function applyLiveRoomState(room) {
   }
   if (el.liveRoomVideoStartBtn) el.liveRoomVideoStartBtn.disabled = false;
   if (el.liveRoomVideoStopBtn) el.liveRoomVideoStopBtn.disabled = false;
+  if (el.liveRoomToggleMicBtn) {
+    el.liveRoomToggleMicBtn.disabled = false;
+    el.liveRoomToggleMicBtn.textContent = liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic";
+  }
   if (el.liveRoomShareScreenBtn) el.liveRoomShareScreenBtn.disabled = false;
   if (el.liveRoomStopShareBtn) el.liveRoomStopShareBtn.disabled = false;
 
@@ -3625,7 +3801,7 @@ function startLiveRoomPolling() {
     refreshLiveRoom().catch((err) => {
       log("live_room_poll_error", String(err));
     });
-  }, 1200);
+  }, 4000);
 }
 
 async function openLiveClassroom(sessionId, role, initialState = null) {
@@ -3635,12 +3811,15 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.lastMessageId = 0;
   state.liveRoom.lastRoomState = null;
   if (liveRtcState().signalSeenIds) liveRtcState().signalSeenIds = {};
+  if (liveRtcState().signalSeenKeys) liveRtcState().signalSeenKeys = {};
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
+  setLiveSignalStatus(false);
   if (el.liveClassroomScreen) el.liveClassroomScreen.classList.remove("hidden");
   if (initialState) applyLiveRoomState(initialState);
   await refreshLiveRoom();
+  openLiveSignalSocket().catch(() => {});
   startLiveRoomPolling();
 }
 
@@ -7144,6 +7323,10 @@ function bindEvents() {
     stopLiveCamera()
       .then(() => toast("Camera stopped"))
       .catch((err) => toast(err?.message || "Unable to stop camera", "error"));
+  });
+  $("liveRoomToggleMicBtn")?.addEventListener("click", () => {
+    toggleLiveMic()
+      .catch((err) => toast(err?.message || "Unable to toggle microphone", "error"));
   });
   $("liveRoomShareScreenBtn")?.addEventListener("click", () => {
     startLiveScreenShare()
