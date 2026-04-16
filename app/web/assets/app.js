@@ -3491,11 +3491,12 @@ function liveUiIcon(name) {
   const stroke = "currentColor";
   const w = 18;
   const base = (path) => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
-  if (name === "tools") return base("<path d='M14.7 6.3a3 3 0 0 0 3.9 3.9l2.6 2.6a2 2 0 0 1-2.8 2.8l-2.6-2.6a3 3 0 0 0-3.9-3.9l-5.5 5.5a2 2 0 0 1-2.8-2.8l5.5-5.5z'/>");
+  if (name === "tools") return base("<rect x='4' y='4' width='6' height='6' rx='1.2'/><rect x='14' y='4' width='6' height='6' rx='1.2'/><rect x='4' y='14' width='6' height='6' rx='1.2'/><rect x='14' y='14' width='6' height='6' rx='1.2'/>");
   if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
   if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
   if (name === "fullscreen") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>");
   if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
+  if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
   if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
   if (name === "mic-off") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2M4 4l16 16'/>");
   if (name === "screen") return base("<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4'/>");
@@ -3657,7 +3658,8 @@ function refreshLiveControlButtonStates() {
   const participantCount = Object.keys(state.liveRoom.participantMap || {}).length;
   if (el.liveRoomVideoStartBtn) {
     el.liveRoomVideoStartBtn.classList.toggle("is-active", camOn);
-    setIconButtonLabel(el.liveRoomVideoStartBtn, liveUiIcon("camera"), camOn ? "Camera On" : "Camera");
+    el.liveRoomVideoStartBtn.classList.toggle("is-muted", !camOn);
+    setIconButtonLabel(el.liveRoomVideoStartBtn, liveUiIcon(camOn ? "camera" : "camera-off"), camOn ? "Camera On" : "Camera Off");
   }
   if (el.liveRoomShareScreenBtn) {
     el.liveRoomShareScreenBtn.disabled = Boolean(state.liveRoom.screenShareInFlight);
@@ -3668,6 +3670,10 @@ function refreshLiveControlButtonStates() {
   if (el.liveRoomParticipantsCountBadge) el.liveRoomParticipantsCountBadge.textContent = String(participantCount);
   if (el.liveRoomParticipantsCountText) el.liveRoomParticipantsCountText.textContent = `${participantCount} online`;
   if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
+}
+
+function streamHasActiveVideo(stream) {
+  return Boolean(stream?.getVideoTracks?.().some((t) => t.readyState === "live" && t.enabled !== false));
 }
 
 function toggleLiveDrawer(drawer) {
@@ -3708,6 +3714,7 @@ function pickLastJoinedRemotePeerId() {
 
 function updateLiveStageAndFocusVideo() {
   const selfId = currentLiveUserId();
+  const rtc = liveRtcState();
   const providerPeer = pickProviderPeerId();
   const activePeer = state.liveRoom.focusPeerId || pickLastJoinedRemotePeerId();
   state.liveRoom.focusPeerId = activePeer || "";
@@ -3723,20 +3730,29 @@ function updateLiveStageAndFocusVideo() {
     stageStream = preferred ? streamForPeer(preferred) : null;
     stageLabel = preferred ? liveParticipantLabel(preferred) : "Live stage";
   } else {
-    stageStream = liveRtcState().localStream || null;
+    stageStream = rtc.localStream || null;
     stageLabel = "You";
   }
   if (!stageStream && activePeer) {
     stageStream = streamForPeer(activePeer);
     stageLabel = liveParticipantLabel(activePeer);
   }
-  if (!stageStream && liveRtcState().localStream) {
-    stageStream = liveRtcState().localStream;
+  if (!stageStream && rtc.localStream) {
+    stageStream = rtc.localStream;
     stageLabel = selfId ? "You" : "Live stage";
   }
-  const isLocalStage = Boolean(stageStream && stageStream === liveRtcState().localStream);
-  setVideoElementStream(el.liveRoomStageVideo, stageStream, { muted: isLocalStage, mirror: isLocalStage });
-  if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageStream));
+  const sharingScreen = streamHasActiveVideo(rtc.screenStream);
+  const showingLocalStage = Boolean(stageStream && stageStream === rtc.localStream);
+  if (sharingScreen && showingLocalStage) {
+    // Avoid recursive hall-of-mirrors by not previewing the shared screen on the main stage.
+    stageStream = streamHasActiveVideo(rtc.cameraStream) ? rtc.cameraStream : null;
+    stageLabel = stageStream ? "You" : "You (sharing screen)";
+  }
+  const stageHasVideo = streamHasActiveVideo(stageStream);
+  const stageRenderStream = stageHasVideo ? stageStream : null;
+  const isLocalStage = Boolean(stageRenderStream && stageRenderStream === rtc.localStream);
+  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: isLocalStage });
+  if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageRenderStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
     if (stageLabel) {
