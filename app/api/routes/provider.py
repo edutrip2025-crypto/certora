@@ -339,7 +339,7 @@ def _provider_live_room_state(db: Session, sess: LiveClassSession) -> dict:
             "ended_at": sess.ended_at,
             "meeting_mode": sess.meeting_mode,
             "external_meeting_url": sess.external_meeting_url,
-            "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
+            "video_room_url": f"/live-room/{sess.id}",
             "allow_chat": bool(sess.allow_chat),
             "allow_raise_hand": bool(sess.allow_raise_hand),
             "allow_reactions": bool(sess.allow_reactions),
@@ -827,7 +827,7 @@ def provider_live_classes(
                     "ended_at": sess.ended_at,
                     "meeting_mode": sess.meeting_mode,
                     "external_meeting_url": sess.external_meeting_url,
-                    "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
+                    "video_room_url": f"/live-room/{sess.id}",
                     "participant_count": participant_count,
                     "allow_chat": bool(sess.allow_chat),
                     "allow_raise_hand": bool(sess.allow_raise_hand),
@@ -1174,7 +1174,7 @@ def provider_send_live_message(
     provider = _provider_or_404(db, current_user.id)
     sess = _provider_live_session_or_404(db, provider.id, session_id)
     mtype = str(payload.message_type or "chat").strip().lower()
-    if mtype not in {"chat", "announcement", "reaction"}:
+    if mtype not in {"chat", "announcement", "reaction", "signal"}:
         raise HTTPException(status_code=400, detail="Invalid message type")
     if mtype == "chat" and not sess.allow_chat:
         raise HTTPException(status_code=400, detail="Chat is disabled")

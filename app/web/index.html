@@ -787,14 +787,18 @@
         <section class="item">
           <h3>Live Stage</h3>
           <div class="row wrap gap-sm" style="margin-bottom:8px;">
-            <a id="liveRoomOpenVideoBtn" class="btn small hidden" href="#" target="_blank" rel="noreferrer">Open Video Room</a>
+            <button id="liveRoomVideoStartBtn" class="btn small">Start Camera</button>
+            <button id="liveRoomVideoStopBtn" class="btn small">Stop Camera</button>
+            <button id="liveRoomShareScreenBtn" class="btn small">Share Screen</button>
+            <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
           </div>
-          <iframe id="liveRoomVideoFrame" class="hidden" style="width:100%;min-height:320px;border:1px solid #dbe4f0;border-radius:10px;background:#0b1220;" allow="camera; microphone; fullscreen; display-capture"></iframe>
+          <video id="liveRoomLocalVideo" autoplay muted playsinline style="width:100%;min-height:220px;border:1px solid #dbe4f0;border-radius:10px;background:#0b1220;"></video>
+          <div id="liveRoomRemoteVideoGrid" class="list" style="margin-top:8px;"></div>
           <div id="liveRoomStage" class="item" style="min-height:280px;background:linear-gradient(180deg,#f8fafc,#eef2ff);">
-            <div class="meta">Your in-app classroom is live. Use announcements, chat, whiteboard notes, poll, and hand raise for interactive teaching.</div>
+            <div class="meta">Your own in-app video classroom is live. Camera + screen share + chat + poll + hand raise are available.</div>
             <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
           </div>
-          <div class="meta" style="margin-top:8px;">For external sessions, keep this room open for tools while teaching in your meeting app.</div>
+          <div class="meta" style="margin-top:8px;">No third-party embed is used here.</div>
         </section>
         <section class="item">
           <h3>Class Chat</h3>

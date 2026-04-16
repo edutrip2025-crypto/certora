@@ -877,7 +877,7 @@ def _student_live_room_state(db: Session, sess: LiveClassSession, student_id: in
             "ended_at": sess.ended_at,
             "meeting_mode": sess.meeting_mode,
             "external_meeting_url": sess.external_meeting_url,
-            "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
+            "video_room_url": f"/live-room/{sess.id}",
             "allow_chat": bool(sess.allow_chat),
             "allow_raise_hand": bool(sess.allow_raise_hand),
             "allow_reactions": bool(sess.allow_reactions),
@@ -968,7 +968,7 @@ def student_live_classes(
                 "scheduled_end_at": sess.scheduled_end_at,
                 "meeting_mode": sess.meeting_mode,
                 "external_meeting_url": sess.external_meeting_url,
-                "video_room_url": f"https://meet.jit.si/certora-{sess.id}-{sess.room_code.lower()}",
+                "video_room_url": f"/live-room/{sess.id}",
                 "recurrence_pattern": sess.recurrence_pattern or "none",
                 "recurrence_count": int(sess.recurrence_count or 1),
                 "recurrence_custom_days": list(sess.recurrence_custom_days_json or []),
@@ -1109,7 +1109,7 @@ def student_send_live_message(
     if sess.status in {"ended", "cancelled"}:
         raise HTTPException(status_code=400, detail="This live class has already ended")
     mtype = str(payload.message_type or "chat").strip().lower()
-    if mtype not in {"chat", "reaction"}:
+    if mtype not in {"chat", "reaction", "signal"}:
         raise HTTPException(status_code=400, detail="Invalid message type")
     if mtype == "chat" and not sess.allow_chat:
         raise HTTPException(status_code=400, detail="Chat is disabled for this class")
