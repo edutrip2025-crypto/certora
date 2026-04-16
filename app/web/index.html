@@ -400,39 +400,6 @@
           </div>
         </div>
         <div id="providerLiveStats" class="stats small" style="margin-top:12px;"></div>
-        <section id="providerLiveClassScheduler" class="moderation-toolbar hidden" style="margin-top:14px;">
-          <div class="row between">
-            <h3 style="margin:0;">Create Live Class Schedule</h3>
-            <button id="closeLiveClassSchedulerBtn" class="btn small">Close</button>
-          </div>
-          <p class="muted" style="margin:6px 0 10px;">A dedicated live-course ID is auto-generated when this schedule is created.</p>
-          <div class="row wrap gap-sm">
-            <input id="liveClassTitle" class="search" type="text" placeholder="Live class title" />
-            <input id="liveClassTimezone" class="filter" type="text" value="Asia/Kolkata" placeholder="Timezone" />
-            <input id="liveClassStartAt" class="filter" type="datetime-local" />
-            <input id="liveClassEndAt" class="filter" type="datetime-local" />
-          </div>
-          <div class="row wrap gap-sm" style="margin-top:8px;">
-            <select id="liveClassMode" class="filter">
-              <option value="in_app">In-App Classroom</option>
-              <option value="external">External Link</option>
-            </select>
-            <input id="liveClassExternalUrl" class="search" type="url" placeholder="External meeting URL (if external mode)" />
-            <input id="liveClassMaxParticipants" class="filter" type="number" min="1" max="2000" value="200" placeholder="Max participants" />
-          </div>
-          <label>Description
-            <textarea id="liveClassDescription" rows="2" placeholder="Agenda and class notes"></textarea>
-          </label>
-          <div class="row wrap gap-sm">
-            <label class="checkbox-row"><input id="liveClassAllowChat" type="checkbox" checked /><span>Enable chat</span></label>
-            <label class="checkbox-row"><input id="liveClassAllowRaiseHand" type="checkbox" checked /><span>Enable raise hand</span></label>
-            <label class="checkbox-row"><input id="liveClassAllowReactions" type="checkbox" checked /><span>Enable reactions</span></label>
-          </div>
-          <div class="row wrap gap-sm">
-            <button id="createLiveClassBtn" class="btn primary">Create Live Class</button>
-            <button id="cancelLiveClassSchedulerBtn" class="btn small">Cancel</button>
-          </div>
-        </section>
         <div id="providerLiveClassSessionsList" class="list" style="margin-top:12px;"></div>
       </section>
 
@@ -686,6 +653,75 @@
       </section>
     </section>
 
+    <section id="providerLiveCreateScreen" class="assessment-screen hidden">
+      <div class="assessment-screen-head">
+        <div>
+          <h2>Create Live Class</h2>
+          <p class="muted">Dedicated live-course ID is auto-generated. Use AI assist to draft agenda and activities.</p>
+        </div>
+        <button id="closeLiveClassSchedulerBtn" class="btn small">Close</button>
+      </div>
+      <div class="assessment-screen-grid">
+        <section class="item">
+          <h3>Schedule</h3>
+          <div class="row wrap gap-sm">
+            <input id="liveClassTitle" class="search" type="text" placeholder="Live class title" />
+            <input id="liveClassTimezone" class="filter" type="text" value="Asia/Kolkata" placeholder="Timezone" />
+            <input id="liveClassStartAt" class="filter" type="datetime-local" />
+            <input id="liveClassEndAt" class="filter" type="datetime-local" />
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <select id="liveClassMode" class="filter">
+              <option value="in_app">In-App Classroom</option>
+              <option value="external">External Link</option>
+            </select>
+            <input id="liveClassExternalUrl" class="search" type="url" placeholder="External meeting URL (if external mode)" />
+            <input id="liveClassMaxParticipants" class="filter" type="number" min="1" max="2000" value="200" placeholder="Max participants" />
+          </div>
+          <label>Description
+            <textarea id="liveClassDescription" rows="5" placeholder="Agenda and class notes"></textarea>
+          </label>
+          <div class="row wrap gap-sm">
+            <label class="checkbox-row"><input id="liveClassAllowChat" type="checkbox" checked /><span>Enable chat</span></label>
+            <label class="checkbox-row"><input id="liveClassAllowRaiseHand" type="checkbox" checked /><span>Enable raise hand</span></label>
+            <label class="checkbox-row"><input id="liveClassAllowReactions" type="checkbox" checked /><span>Enable reactions</span></label>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <button id="createLiveClassBtn" class="btn primary">Create Live Class</button>
+            <button id="cancelLiveClassSchedulerBtn" class="btn small">Cancel</button>
+          </div>
+        </section>
+        <section class="item">
+          <h3>AI Assist</h3>
+          <p class="muted">Generate teaching draft content from your title and description.</p>
+          <div class="row wrap gap-sm">
+            <button id="liveClassGenerateAgendaBtn" class="btn small">Generate Agenda</button>
+            <button id="liveClassGeneratePollBtn" class="btn small">Generate Poll Ideas</button>
+            <button id="liveClassGenerateSummaryBtn" class="btn small">Generate Recap Notes</button>
+          </div>
+          <label style="margin-top:10px;">
+            AI Draft Output
+            <textarea id="liveClassAiOutput" rows="15" placeholder="Generated agenda / poll / recap notes will appear here"></textarea>
+          </label>
+          <div class="row wrap gap-sm">
+            <button id="liveClassAppendAiBtn" class="btn small">Append To Description</button>
+            <button id="liveClassReplaceAiBtn" class="btn small">Replace Description</button>
+          </div>
+        </section>
+        <section class="item">
+          <h3>Teaching Toolkit</h3>
+          <ul class="meta" style="margin: 0 0 0 16px;">
+            <li>Interactive whiteboard notes</li>
+            <li>Live poll + vote tally</li>
+            <li>Raise hand moderation</li>
+            <li>Reactions and class chat</li>
+            <li>Live participant list</li>
+          </ul>
+          <div class="meta" style="margin-top:12px;">After creating schedule, use Start Session from Live Classes list at class time.</div>
+        </section>
+      </div>
+    </section>
+
     <section id="liveClassroomScreen" class="assessment-screen hidden">
       <div class="assessment-screen-head">
         <div>
@@ -706,6 +742,17 @@
           <div class="row wrap gap-sm">
             <button id="liveRoomSaveBoardBtn" class="btn small">Save Board</button>
             <button id="liveRoomRaiseHandBtn" class="btn small">Raise Hand</button>
+            <button id="liveRoomPickStudentBtn" class="btn small">Pick Student</button>
+            <button id="liveRoomExportAttendanceBtn" class="btn small">Export Attendance</button>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <span id="liveRoomTimerText" class="badge">Timer: 00:00</span>
+            <button id="liveRoomStartTimerBtn" class="btn small">Start Timer</button>
+            <button id="liveRoomStopTimerBtn" class="btn small">Stop Timer</button>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <input id="liveRoomAiTopicInput" class="search" type="text" placeholder="Topic for AI explainer" />
+            <button id="liveRoomAiExplainBtn" class="btn small">AI Explain</button>
           </div>
           <div id="liveRoomHandsList" class="list" style="margin-top:10px;"></div>
           <div class="item" style="margin-top:10px;">

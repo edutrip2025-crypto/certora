@@ -67,6 +67,8 @@ const state = {
     role: null,
     lastMessageId: 0,
     pollerId: null,
+    classTimerId: null,
+    classTimerStartedAt: 0,
   },
 };
 
@@ -1138,7 +1140,7 @@ const el = {
   openLiveClassSchedulerBtn: $("openLiveClassSchedulerBtn"),
   closeLiveClassSchedulerBtn: $("closeLiveClassSchedulerBtn"),
   cancelLiveClassSchedulerBtn: $("cancelLiveClassSchedulerBtn"),
-  providerLiveClassScheduler: $("providerLiveClassScheduler"),
+  providerLiveCreateScreen: $("providerLiveCreateScreen"),
   providerLiveStats: $("providerLiveStats"),
   refreshProviderLiveClassesBtn: $("refreshProviderLiveClassesBtn"),
   providerLiveClassSessionsList: $("providerLiveClassSessionsList"),
@@ -1154,6 +1156,12 @@ const el = {
   liveClassAllowChat: $("liveClassAllowChat"),
   liveClassAllowRaiseHand: $("liveClassAllowRaiseHand"),
   liveClassAllowReactions: $("liveClassAllowReactions"),
+  liveClassGenerateAgendaBtn: $("liveClassGenerateAgendaBtn"),
+  liveClassGeneratePollBtn: $("liveClassGeneratePollBtn"),
+  liveClassGenerateSummaryBtn: $("liveClassGenerateSummaryBtn"),
+  liveClassAiOutput: $("liveClassAiOutput"),
+  liveClassAppendAiBtn: $("liveClassAppendAiBtn"),
+  liveClassReplaceAiBtn: $("liveClassReplaceAiBtn"),
   refreshStudentLiveClassesBtn: $("refreshStudentLiveClassesBtn"),
   liveClassroomScreen: $("liveClassroomScreen"),
   liveRoomTitle: $("liveRoomTitle"),
@@ -1163,6 +1171,13 @@ const el = {
   liveRoomBoardText: $("liveRoomBoardText"),
   liveRoomSaveBoardBtn: $("liveRoomSaveBoardBtn"),
   liveRoomRaiseHandBtn: $("liveRoomRaiseHandBtn"),
+  liveRoomPickStudentBtn: $("liveRoomPickStudentBtn"),
+  liveRoomExportAttendanceBtn: $("liveRoomExportAttendanceBtn"),
+  liveRoomTimerText: $("liveRoomTimerText"),
+  liveRoomStartTimerBtn: $("liveRoomStartTimerBtn"),
+  liveRoomStopTimerBtn: $("liveRoomStopTimerBtn"),
+  liveRoomAiTopicInput: $("liveRoomAiTopicInput"),
+  liveRoomAiExplainBtn: $("liveRoomAiExplainBtn"),
   liveRoomHandsList: $("liveRoomHandsList"),
   liveRoomPollQuestion: $("liveRoomPollQuestion"),
   liveRoomPollOptions: $("liveRoomPollOptions"),
@@ -2681,8 +2696,8 @@ async function refreshStudentCertifications() {
 }
 
 function providerLiveSchedulerSetVisible(visible) {
-  if (!el.providerLiveClassScheduler) return;
-  el.providerLiveClassScheduler.classList.toggle("hidden", !visible);
+  if (!el.providerLiveCreateScreen) return;
+  el.providerLiveCreateScreen.classList.toggle("hidden", !visible);
 }
 
 function applyProviderLiveModeUi() {
@@ -2692,6 +2707,54 @@ function applyProviderLiveModeUi() {
     el.liveClassExternalUrl.disabled = !external;
     if (!external) el.liveClassExternalUrl.value = "";
   }
+}
+
+function generateLiveClassAiDraft(kind = "agenda") {
+  const title = String(el.liveClassTitle?.value || "Live Session").trim() || "Live Session";
+  const desc = String(el.liveClassDescription?.value || "").trim();
+  const topicSeed = desc || title;
+  const compactTopic = topicSeed.length > 100 ? `${topicSeed.slice(0, 100)}...` : topicSeed;
+  if (kind === "poll") {
+    return [
+      `Poll Pack for "${title}"`,
+      "",
+      "1) Which part needs more explanation?",
+      "Options: Basics / Intermediate / Advanced / Real example",
+      "",
+      `2) How confident are you with "${compactTopic}"?`,
+      "Options: 1-Low / 2 / 3 / 4 / 5-High",
+      "",
+      "3) What should we practice next?",
+      "Options: Quiz / Case study / Hands-on / Discussion",
+    ].join("\n");
+  }
+  if (kind === "summary") {
+    return [
+      `Recap Notes for "${title}"`,
+      "",
+      "- Key concept covered:",
+      "- Common student mistakes observed:",
+      "- Practical use-case discussed:",
+      "- Assignment given:",
+      "- Assessment readiness check:",
+      "- Next class topic:",
+    ].join("\n");
+  }
+  return [
+    `Teaching Agenda for "${title}"`,
+    "",
+    "00:00 - 05:00  Welcome + class objectives",
+    `05:00 - 20:00  Core concept walkthrough: ${compactTopic}`,
+    "20:00 - 30:00  Whiteboard explanation + examples",
+    "30:00 - 40:00  Interactive poll + raise-hand Q&A",
+    "40:00 - 50:00  Practice exercise / mini case",
+    "50:00 - 60:00  Summary + next steps + assessment prep",
+    "",
+    "Teaching prompts:",
+    "- Ask one conceptual question every 10 minutes.",
+    "- Use chat checkpoints to confirm understanding.",
+    "- End with one practical application task.",
+  ].join("\n");
 }
 
 function resetProviderLiveScheduler() {
@@ -2707,6 +2770,7 @@ function resetProviderLiveScheduler() {
   if (el.liveClassAllowChat) el.liveClassAllowChat.checked = true;
   if (el.liveClassAllowRaiseHand) el.liveClassAllowRaiseHand.checked = true;
   if (el.liveClassAllowReactions) el.liveClassAllowReactions.checked = true;
+  if (el.liveClassAiOutput) el.liveClassAiOutput.value = "";
   if (el.createLiveClassBtn) el.createLiveClassBtn.textContent = "Create Live Class";
   applyProviderLiveModeUi();
 }
@@ -2941,6 +3005,11 @@ function stopLiveRoomPolling() {
 
 function clearLiveRoomState() {
   stopLiveRoomPolling();
+  if (state.liveRoom.classTimerId) {
+    clearInterval(state.liveRoom.classTimerId);
+    state.liveRoom.classTimerId = null;
+  }
+  state.liveRoom.classTimerStartedAt = 0;
   state.liveRoom.active = false;
   state.liveRoom.sessionId = null;
   state.liveRoom.role = null;
@@ -2948,6 +3017,7 @@ function clearLiveRoomState() {
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   if (el.liveRoomParticipantsList) el.liveRoomParticipantsList.innerHTML = "";
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
+  if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
   if (el.liveRoomPollPanel) {
     el.liveRoomPollPanel.classList.add("hidden");
     el.liveRoomPollPanel.innerHTML = "";
@@ -3073,6 +3143,12 @@ function applyLiveRoomState(room) {
   if (el.liveRoomPollOptions) el.liveRoomPollOptions.disabled = !isProvider;
   if (el.liveRoomStartPollBtn) el.liveRoomStartPollBtn.classList.toggle("hidden", !isProvider);
   if (el.liveRoomClosePollBtn) el.liveRoomClosePollBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomPickStudentBtn) el.liveRoomPickStudentBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomExportAttendanceBtn) el.liveRoomExportAttendanceBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomStartTimerBtn) el.liveRoomStartTimerBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomStopTimerBtn) el.liveRoomStopTimerBtn.classList.toggle("hidden", !isProvider);
+  if (el.liveRoomAiTopicInput) el.liveRoomAiTopicInput.disabled = !isProvider;
+  if (el.liveRoomAiExplainBtn) el.liveRoomAiExplainBtn.classList.toggle("hidden", !isProvider);
 
   const canRaise = !isProvider && Boolean(session.allow_raise_hand);
   if (el.liveRoomRaiseHandBtn) {
@@ -3170,6 +3246,72 @@ async function sendLiveRoomChatMessage(messageType = "chat", contentRaw = "") {
   });
   if (el.liveRoomChatInput) el.liveRoomChatInput.value = "";
   await refreshLiveRoomMessages();
+}
+
+function formatTimerDuration(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mm = String(Math.floor(total / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
+function startLiveClassTimer() {
+  if (state.liveRoom.classTimerId) return;
+  state.liveRoom.classTimerStartedAt = Date.now();
+  if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
+  state.liveRoom.classTimerId = setInterval(() => {
+    if (!el.liveRoomTimerText || !state.liveRoom.classTimerStartedAt) return;
+    el.liveRoomTimerText.textContent = `Timer: ${formatTimerDuration(Date.now() - state.liveRoom.classTimerStartedAt)}`;
+  }, 1000);
+}
+
+function stopLiveClassTimer() {
+  if (state.liveRoom.classTimerId) {
+    clearInterval(state.liveRoom.classTimerId);
+    state.liveRoom.classTimerId = null;
+  }
+}
+
+function generateLiveTopicExplainer(topicRaw) {
+  const topic = String(topicRaw || "").trim() || "Core concept";
+  return [
+    `AI Explainer: ${topic}`,
+    "",
+    `1) Definition`,
+    `${topic} means the primary principle learners must understand before applying it.`,
+    "",
+    "2) Why it matters",
+    `If ${topic} is clear, students can solve practical scenarios with fewer mistakes.`,
+    "",
+    "3) Example",
+    `Show one real case, then ask students to identify where ${topic} appears.`,
+    "",
+    "4) Quick check question",
+    `Ask: "In your own words, how would you apply ${topic} in real work?"`,
+  ].join("\n");
+}
+
+function exportLiveAttendanceCsv() {
+  const people = Array.from(el.liveRoomParticipantsList?.querySelectorAll(".item") || []);
+  if (!people.length) {
+    toast("No participants to export", "error");
+    return;
+  }
+  const lines = ["name,role,status"];
+  people.forEach((node) => {
+    const txt = node.textContent || "";
+    const row = txt.replace(/\s+/g, " ").trim();
+    lines.push(`"${row.replace(/"/g, '""')}"`);
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `live-attendance-${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(href);
 }
 
 
@@ -5512,20 +5654,6 @@ async function refreshProviderCertifications() {
   );
 }
 
-async function completeLiveClassAction() {
-  const selectedCourseId = Number(el.liveCompletionCourseSelect?.value || 0);
-  const typedCourseId = Number($("liveCourseId")?.value || 0);
-  const courseId = selectedCourseId || typedCourseId;
-  const note = $("liveCompletionNote")?.value?.trim() || "";
-  if (!courseId) {
-    toast("Course ID is required", "error");
-    return;
-  }
-  const out = await api("POST", `/provider/workspace/live-class/${courseId}/complete?note=${encodeURIComponent(note)}`);
-  toast("Live class marked complete. Assessments unlocked.");
-  log("live_class_complete", out);
-}
-
 async function addModuleAction() {
   const courseId = Number($("moduleCourseId")?.value || 0);
   if (!courseId) throw new Error("Course ID is required");
@@ -6526,7 +6654,7 @@ function bindEvents() {
   $("refreshProviderLiveClassesBtn")?.addEventListener("click", () => refreshProviderLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
   $("refreshStudentLiveClassesBtn")?.addEventListener("click", () => refreshStudentLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
   $("openLiveClassSchedulerBtn")?.addEventListener("click", () => {
-    if (el.providerLiveClassScheduler?.classList.contains("hidden")) {
+    if (el.providerLiveCreateScreen?.classList.contains("hidden")) {
       resetProviderLiveScheduler();
       providerLiveSchedulerSetVisible(true);
     } else {
@@ -6545,6 +6673,28 @@ function bindEvents() {
     submitProviderLiveSchedule().catch((err) => toast(err?.message || "Failed to save live class schedule", "error"));
   });
   $("liveClassMode")?.addEventListener("change", () => applyProviderLiveModeUi());
+  $("liveClassGenerateAgendaBtn")?.addEventListener("click", () => {
+    if (el.liveClassAiOutput) el.liveClassAiOutput.value = generateLiveClassAiDraft("agenda");
+  });
+  $("liveClassGeneratePollBtn")?.addEventListener("click", () => {
+    if (el.liveClassAiOutput) el.liveClassAiOutput.value = generateLiveClassAiDraft("poll");
+  });
+  $("liveClassGenerateSummaryBtn")?.addEventListener("click", () => {
+    if (el.liveClassAiOutput) el.liveClassAiOutput.value = generateLiveClassAiDraft("summary");
+  });
+  $("liveClassAppendAiBtn")?.addEventListener("click", () => {
+    const ai = String(el.liveClassAiOutput?.value || "").trim();
+    if (!ai) return;
+    const current = String(el.liveClassDescription?.value || "").trim();
+    el.liveClassDescription.value = current ? `${current}\n\n${ai}` : ai;
+    toast("AI draft appended to description");
+  });
+  $("liveClassReplaceAiBtn")?.addEventListener("click", () => {
+    const ai = String(el.liveClassAiOutput?.value || "").trim();
+    if (!ai) return;
+    el.liveClassDescription.value = ai;
+    toast("Description replaced with AI draft");
+  });
   $("leaveLiveRoomBtn")?.addEventListener("click", () => {
     leaveLiveClassroom().catch(() => toast("Failed to leave room", "error"));
   });
@@ -6604,6 +6754,34 @@ function bindEvents() {
       .then(() => refreshLiveRoomState())
       .then(() => toast("Poll closed"))
       .catch((err) => toast(err?.message || "Failed to close poll", "error"));
+  });
+  $("liveRoomStartTimerBtn")?.addEventListener("click", () => {
+    startLiveClassTimer();
+    toast("Class timer started");
+  });
+  $("liveRoomStopTimerBtn")?.addEventListener("click", () => {
+    stopLiveClassTimer();
+    toast("Class timer stopped");
+  });
+  $("liveRoomAiExplainBtn")?.addEventListener("click", () => {
+    const topic = String(el.liveRoomAiTopicInput?.value || "").trim();
+    if (!topic) return toast("Enter a topic first", "error");
+    const draft = generateLiveTopicExplainer(topic);
+    const existing = String(el.liveRoomBoardText?.value || "").trim();
+    el.liveRoomBoardText.value = existing ? `${existing}\n\n${draft}` : draft;
+    toast("AI explanation added to board. Save board to publish.");
+  });
+  $("liveRoomPickStudentBtn")?.addEventListener("click", () => {
+    const participants = Array.from(el.liveRoomParticipantsList?.querySelectorAll(".item strong") || [])
+      .map((n) => String(n.textContent || "").trim())
+      .filter(Boolean);
+    if (!participants.length) return toast("No participants available", "error");
+    const chosen = participants[Math.floor(Math.random() * participants.length)];
+    toast(`Selected student: ${chosen}`);
+    sendLiveRoomChatMessage("announcement", `Random pick: ${chosen}, please answer.`).catch(() => {});
+  });
+  $("liveRoomExportAttendanceBtn")?.addEventListener("click", () => {
+    exportLiveAttendanceCsv();
   });
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }

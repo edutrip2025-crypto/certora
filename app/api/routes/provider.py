@@ -4,7 +4,8 @@ import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
@@ -57,6 +58,7 @@ from app.services.certificates import ensure_certificate_pdf
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
+_LIVE_SCHEMA_GUARD_DONE = False
 
 
 def _media_paths() -> tuple[Path, Path]:
@@ -211,6 +213,46 @@ def _provider_live_session_or_404(db: Session, provider_id: int, session_id: int
     if not sess or sess.provider_id != provider_id:
         raise HTTPException(status_code=404, detail="Live class session not found")
     return sess
+
+
+def _ensure_live_schema_runtime(db: Session, force: bool = False) -> None:
+    global _LIVE_SCHEMA_GUARD_DONE
+    if _LIVE_SCHEMA_GUARD_DONE and not force:
+        return
+    bind = db.get_bind()
+    dialect = bind.dialect.name
+    try:
+        if dialect == "postgresql":
+            statements = [
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS timezone VARCHAR(80) DEFAULT 'UTC'",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS meeting_mode VARCHAR(20) DEFAULT 'in_app'",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS external_meeting_url VARCHAR(1000)",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'scheduled'",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS scheduled_start_at TIMESTAMPTZ",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS scheduled_end_at TIMESTAMPTZ",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS max_participants INTEGER DEFAULT 200",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_chat BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_raise_hand BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_reactions BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS board_text TEXT",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_key VARCHAR(64)",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_question TEXT",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_options_json JSON DEFAULT '[]'::json",
+                "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_open BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE live_class_messages ADD COLUMN IF NOT EXISTS payload_json JSON DEFAULT '{}'::json",
+            ]
+            for stmt in statements:
+                try:
+                    db.execute(text(stmt))
+                except Exception:
+                    pass
+            db.commit()
+        _LIVE_SCHEMA_GUARD_DONE = True
+    except Exception:
+        # Keep request flow running; route-level handlers will still return clean HTTP errors.
+        db.rollback()
 
 
 def _live_poll_tally(db: Session, sess: LiveClassSession) -> dict:
@@ -700,46 +742,52 @@ def provider_live_classes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
+    _ensure_live_schema_runtime(db)
     provider = _provider_or_404(db, current_user.id)
-    q = select(LiveClassSession).where(LiveClassSession.provider_id == provider.id)
-    if course_id:
-        q = q.where(LiveClassSession.course_id == course_id)
-    rows = db.scalars(q.order_by(LiveClassSession.scheduled_start_at.desc(), LiveClassSession.id.desc())).all()
-    courses = {c.id: c for c in db.scalars(select(Course).where(Course.provider_id == provider.id)).all()}
-    items = []
-    for sess in rows:
-        participant_count = int(
-            db.scalar(
-                select(func.count(LiveClassParticipant.id)).where(
-                    and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)),
-                ),
+    try:
+        q = select(LiveClassSession).where(LiveClassSession.provider_id == provider.id)
+        if course_id:
+            q = q.where(LiveClassSession.course_id == course_id)
+        rows = db.scalars(q.order_by(LiveClassSession.scheduled_start_at.desc(), LiveClassSession.id.desc())).all()
+        courses = {c.id: c for c in db.scalars(select(Course).where(Course.provider_id == provider.id)).all()}
+        items = []
+        for sess in rows:
+            participant_count = int(
+                db.scalar(
+                    select(func.count(LiveClassParticipant.id)).where(
+                        and_(LiveClassParticipant.session_id == sess.id, LiveClassParticipant.is_present.is_(True)),
+                    ),
+                )
+                or 0
             )
-            or 0
-        )
-        items.append(
-            {
-                "session_id": sess.id,
-                "course_id": sess.course_id,
-                "course_title": (courses.get(sess.course_id).title if courses.get(sess.course_id) else None),
-                "course_category": (courses.get(sess.course_id).category if courses.get(sess.course_id) else None),
-                "room_code": sess.room_code,
-                "title": sess.title,
-                "description": sess.description,
-                "timezone": sess.timezone,
-                "status": sess.status,
-                "scheduled_start_at": sess.scheduled_start_at,
-                "scheduled_end_at": sess.scheduled_end_at,
-                "started_at": sess.started_at,
-                "ended_at": sess.ended_at,
-                "meeting_mode": sess.meeting_mode,
-                "external_meeting_url": sess.external_meeting_url,
-                "participant_count": participant_count,
-                "allow_chat": bool(sess.allow_chat),
-                "allow_raise_hand": bool(sess.allow_raise_hand),
-                "allow_reactions": bool(sess.allow_reactions),
-            },
-        )
-    return {"items": items}
+            items.append(
+                {
+                    "session_id": sess.id,
+                    "course_id": sess.course_id,
+                    "course_title": (courses.get(sess.course_id).title if courses.get(sess.course_id) else None),
+                    "course_category": (courses.get(sess.course_id).category if courses.get(sess.course_id) else None),
+                    "room_code": sess.room_code,
+                    "title": sess.title,
+                    "description": sess.description,
+                    "timezone": sess.timezone,
+                    "status": sess.status,
+                    "scheduled_start_at": sess.scheduled_start_at,
+                    "scheduled_end_at": sess.scheduled_end_at,
+                    "started_at": sess.started_at,
+                    "ended_at": sess.ended_at,
+                    "meeting_mode": sess.meeting_mode,
+                    "external_meeting_url": sess.external_meeting_url,
+                    "participant_count": participant_count,
+                    "allow_chat": bool(sess.allow_chat),
+                    "allow_raise_hand": bool(sess.allow_raise_hand),
+                    "allow_reactions": bool(sess.allow_reactions),
+                },
+            )
+        return {"items": items}
+    except Exception as exc:
+        db.rollback()
+        _ensure_live_schema_runtime(db, force=True)
+        raise HTTPException(status_code=500, detail=f"Unable to load live classes: {exc}")
 
 
 @router.post("/workspace/live-classes", status_code=status.HTTP_201_CREATED)
@@ -748,6 +796,7 @@ def create_live_class_schedule(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
+    _ensure_live_schema_runtime(db)
     provider = _provider_or_404(db, current_user.id)
     schedule_title = payload.title.strip()
     if payload.course_id:
@@ -776,45 +825,50 @@ def create_live_class_schedule(
         raise HTTPException(status_code=400, detail="meeting_mode must be in_app or external")
     if meeting_mode == "external" and not str(payload.external_meeting_url or "").strip():
         raise HTTPException(status_code=400, detail="external_meeting_url is required for external mode")
-    sess = LiveClassSession(
-        course_id=course.id,
-        provider_id=provider.id,
-        room_code=uuid4().hex[:10].upper(),
-        title=schedule_title,
-        description=(payload.description or "").strip() or None,
-        timezone=(payload.timezone or "UTC").strip() or "UTC",
-        meeting_mode=meeting_mode,
-        external_meeting_url=(payload.external_meeting_url or "").strip() or None,
-        status="scheduled",
-        scheduled_start_at=payload.scheduled_start_at,
-        scheduled_end_at=payload.scheduled_end_at,
-        max_participants=int(payload.max_participants),
-        allow_chat=bool(payload.allow_chat),
-        allow_raise_hand=bool(payload.allow_raise_hand),
-        allow_reactions=bool(payload.allow_reactions),
-    )
-    db.add(sess)
-    db.flush()
-    db.add(
-        LiveClassMessage(
-            session_id=sess.id,
-            user_id=current_user.id,
-            actor_name=current_user.full_name,
-            actor_role="provider",
-            message_type="system",
-            content=f"Live class '{sess.title}' scheduled.",
-            payload_json={},
-        ),
-    )
-    db.commit()
-    return {
-        "created": True,
-        "session_id": sess.id,
-        "room_code": sess.room_code,
-        "course_id": course.id,
-        "course_title": course.title,
-        "course_auto_created": bool(payload.course_id is None),
-    }
+    try:
+        sess = LiveClassSession(
+            course_id=course.id,
+            provider_id=provider.id,
+            room_code=uuid4().hex[:10].upper(),
+            title=schedule_title,
+            description=(payload.description or "").strip() or None,
+            timezone=(payload.timezone or "UTC").strip() or "UTC",
+            meeting_mode=meeting_mode,
+            external_meeting_url=(payload.external_meeting_url or "").strip() or None,
+            status="scheduled",
+            scheduled_start_at=payload.scheduled_start_at,
+            scheduled_end_at=payload.scheduled_end_at,
+            max_participants=int(payload.max_participants),
+            allow_chat=bool(payload.allow_chat),
+            allow_raise_hand=bool(payload.allow_raise_hand),
+            allow_reactions=bool(payload.allow_reactions),
+        )
+        db.add(sess)
+        db.flush()
+        db.add(
+            LiveClassMessage(
+                session_id=sess.id,
+                user_id=current_user.id,
+                actor_name=current_user.full_name,
+                actor_role="provider",
+                message_type="system",
+                content=f"Live class '{sess.title}' scheduled.",
+                payload_json={},
+            ),
+        )
+        db.commit()
+        return {
+            "created": True,
+            "session_id": sess.id,
+            "room_code": sess.room_code,
+            "course_id": course.id,
+            "course_title": course.title,
+            "course_auto_created": bool(payload.course_id is None),
+        }
+    except SQLAlchemyError as exc:
+        db.rollback()
+        _ensure_live_schema_runtime(db, force=True)
+        raise HTTPException(status_code=500, detail=f"Unable to schedule live class: {exc}")
 
 
 @router.patch("/workspace/live-classes/{session_id}")
