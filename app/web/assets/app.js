@@ -4976,6 +4976,7 @@ function bindEvents() {
     try {
       state.authLoginInFlight = true;
       let loggedIn = false;
+      let breakglassErrorMessage = "";
       try {
         await signInWithEmailAndPassword(state.auth, email, rawPassword);
         loggedIn = true;
@@ -4997,7 +4998,19 @@ function bindEvents() {
                 await signInWithCustomToken(state.auth, out.custom_token);
                 loggedIn = true;
               }
-            } catch {}
+            } catch (breakglassErr) {
+              breakglassErrorMessage = String(breakglassErr?.message || breakglassErr || "").trim();
+            }
+          }
+          if (!loggedIn && email === "admin@certora.in") {
+            if (breakglassErrorMessage) {
+              throw new Error(
+                `Admin break-glass login failed. ${breakglassErrorMessage}`,
+              );
+            }
+            throw new Error(
+              "Admin break-glass login failed. Verify latest deployment and ADMIN_RECOVERY_KEY env variable.",
+            );
           }
           if (!loggedIn) throw primaryErr;
         } else {
