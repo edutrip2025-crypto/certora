@@ -758,10 +758,15 @@
               <span id="liveRoomSignalStatus" class="status-pill status-in_review">Realtime: fallback</span>
               <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
             </div>
-            <button id="leaveLiveRoomBtn" class="btn small">Leave</button>
+            <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room"><span class="ico">⏻</span><span class="lbl">Leave</span></button>
           </div>
         </div>
         <video id="liveRoomStageVideo" autoplay playsinline class="live-stage-video"></video>
+        <div id="liveRoomStagePlaceholder" class="live-stage-placeholder hidden">
+          <div class="icon">📷</div>
+          <div class="title">Camera is turned off</div>
+          <div class="sub">Video will appear once camera/screen is active.</div>
+        </div>
         <div id="liveRoomFocusTile" class="live-focus-tile hidden">
           <video id="liveRoomFocusVideo" autoplay playsinline class="live-focus-video"></video>
           <div id="liveRoomFocusLabel" class="live-video-label">Active speaker</div>
@@ -778,22 +783,22 @@
           </div>
         </div>
         <div class="live-control-dock">
-          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn">Tools</button>
-          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn">Chat</button>
-          <button id="liveRoomReactBtn" class="btn small live-dock-btn">React</button>
-          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn">Fullscreen</button>
-          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn">Camera</button>
-          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn">Mic</button>
-          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn">Share</button>
+          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools"><span class="ico">🛠</span><span class="lbl">Tools</span></button>
+          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat"><span class="ico">💬</span><span class="lbl">Chat</span></button>
+          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions"><span class="ico">😀</span><span class="lbl">React</span></button>
+          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen"><span class="ico">⛶</span><span class="lbl">Fullscreen</span></button>
+          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera"><span class="ico">📷</span><span class="lbl">Camera</span></button>
+          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone"><span class="ico">🎤</span><span class="lbl">Mic</span></button>
+          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen"><span class="ico">🖥</span><span class="lbl">Share</span></button>
           <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
         </div>
         <aside id="liveRoomToolsPanel" class="live-drawer live-drawer-left hidden">
           <h3>Tools</h3>
           <div class="row wrap gap-sm" style="margin-bottom:8px;">
-            <button id="liveRoomVideoStopBtn" class="btn small">Stop Camera</button>
-            <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
-            <button id="liveRoomStartRecordingBtn" class="btn small">Start Recording</button>
-            <button id="liveRoomStopRecordingBtn" class="btn small">Stop Recording</button>
+            <button id="liveRoomVideoStopBtn" class="btn small live-icon-btn"><span class="ico">🚫</span><span class="lbl">Stop Camera</span></button>
+            <button id="liveRoomStopShareBtn" class="btn small live-icon-btn"><span class="ico">⛔</span><span class="lbl">Stop Share</span></button>
+            <button id="liveRoomStartRecordingBtn" class="btn small live-icon-btn"><span class="ico">⏺</span><span class="lbl">Start Recording</span></button>
+            <button id="liveRoomStopRecordingBtn" class="btn small live-icon-btn"><span class="ico">⏹</span><span class="lbl">Stop Recording</span></button>
           </div>
           <label>Whiteboard Notes
             <textarea id="liveRoomBoardText" rows="6" placeholder="Write key concepts, formulas, and reminders"></textarea>

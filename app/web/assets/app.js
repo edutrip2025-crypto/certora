@@ -1210,6 +1210,7 @@ const el = {
   liveRoomSignalStatus: $("liveRoomSignalStatus"),
   liveRoomStageShell: $("liveRoomStageShell"),
   liveRoomStageVideo: $("liveRoomStageVideo"),
+  liveRoomStagePlaceholder: $("liveRoomStagePlaceholder"),
   liveRoomFocusTile: $("liveRoomFocusTile"),
   liveRoomFocusVideo: $("liveRoomFocusVideo"),
   liveRoomFocusLabel: $("liveRoomFocusLabel"),
@@ -3375,6 +3376,25 @@ function setLiveDrawerState(drawer, open) {
   if (el.liveRoomReactionMenu) el.liveRoomReactionMenu.classList.toggle("hidden", !state.liveRoom.reactionOpen);
 }
 
+function setIconButtonLabel(button, icon, label) {
+  if (!button) return;
+  button.innerHTML = `<span class="ico">${icon}</span><span class="lbl">${escapeHtmlAttr(label)}</span>`;
+}
+
+function refreshLiveControlButtonStates() {
+  const rtc = liveRtcState();
+  const camOn = Boolean(rtc.localStream?.getVideoTracks?.().some((t) => t.readyState === "live" && t.enabled));
+  const screenOn = Boolean(rtc.screenStream?.getVideoTracks?.().some((t) => t.readyState === "live"));
+  if (el.liveRoomVideoStartBtn) {
+    el.liveRoomVideoStartBtn.classList.toggle("is-active", camOn);
+    setIconButtonLabel(el.liveRoomVideoStartBtn, camOn ? "📷" : "📷", camOn ? "Camera On" : "Camera");
+  }
+  if (el.liveRoomShareScreenBtn) {
+    el.liveRoomShareScreenBtn.classList.toggle("is-active", screenOn);
+    setIconButtonLabel(el.liveRoomShareScreenBtn, "🖥", screenOn ? "Sharing" : "Share");
+  }
+}
+
 function toggleLiveDrawer(drawer) {
   if (drawer === "tools") setLiveDrawerState("tools", !state.liveRoom.toolsOpen);
   if (drawer === "chat") setLiveDrawerState("chat", !state.liveRoom.chatOpen);
@@ -3430,6 +3450,7 @@ function updateLiveStageAndFocusVideo() {
     stageLabel = selfId ? "You" : "Live stage";
   }
   if (el.liveRoomStageVideo) el.liveRoomStageVideo.srcObject = stageStream || null;
+  if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
     if (stageLabel) {
@@ -3736,6 +3757,7 @@ async function startLiveCamera() {
   replaceLiveOutboundVideoTrack(videoTrack);
   setLiveMicMuted(Boolean(rtc.micMuted));
   attachLocalVideoPreview();
+  refreshLiveControlButtonStates();
   await sendLiveSignal("presence", { media: "camera" }).catch(() => {});
   await syncLiveRtcPeersFromRoom().catch(() => {});
   await renegotiateAllLivePeers().catch(() => {});
@@ -3760,6 +3782,7 @@ async function stopLiveCamera() {
   rtc.outboundVideoTrack = null;
   Object.keys(rtc.peers || {}).forEach((peerId) => closeLivePeerConnection(Number(peerId)));
   attachLocalVideoPreview();
+  refreshLiveControlButtonStates();
 }
 
 function setLiveMicMuted(muted) {
@@ -3771,7 +3794,11 @@ function setLiveMicMuted(muted) {
       track.enabled = !rtc.micMuted;
     });
   });
-  if (el.liveRoomToggleMicBtn) el.liveRoomToggleMicBtn.textContent = rtc.micMuted ? "Unmute Mic" : "Mute Mic";
+  if (el.liveRoomToggleMicBtn) {
+    setIconButtonLabel(el.liveRoomToggleMicBtn, rtc.micMuted ? "🔇" : "🎤", rtc.micMuted ? "Unmute" : "Mic");
+    el.liveRoomToggleMicBtn.classList.toggle("is-muted", Boolean(rtc.micMuted));
+    el.liveRoomToggleMicBtn.classList.toggle("is-active", !rtc.micMuted);
+  }
   attachLocalVideoPreview();
 }
 
@@ -3780,8 +3807,13 @@ function setLiveHostMuted(muted) {
   if (state.liveRoom.hostMuted) setLiveMicMuted(true);
   if (el.liveRoomToggleMicBtn) {
     el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
-    if (state.liveRoom.hostMuted) el.liveRoomToggleMicBtn.textContent = "Muted by Host";
-    else el.liveRoomToggleMicBtn.textContent = liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic";
+    if (state.liveRoom.hostMuted) {
+      setIconButtonLabel(el.liveRoomToggleMicBtn, "🔇", "Host Muted");
+      el.liveRoomToggleMicBtn.classList.add("is-muted");
+      el.liveRoomToggleMicBtn.classList.remove("is-active");
+    } else {
+      setLiveMicMuted(liveRtcState().micMuted);
+    }
   }
 }
 
@@ -3803,6 +3835,7 @@ async function startLiveScreenShare() {
   rtc.localStream.addTrack(screenTrack);
   replaceLiveOutboundVideoTrack(screenTrack);
   attachLocalVideoPreview();
+  refreshLiveControlButtonStates();
   screenTrack.onended = () => {
     stopLiveScreenShare().catch(() => {});
   };
@@ -3823,6 +3856,7 @@ async function stopLiveScreenShare() {
   if (cameraVideo) rtc.localStream.addTrack(cameraVideo);
   replaceLiveOutboundVideoTrack(cameraVideo || null);
   attachLocalVideoPreview();
+  refreshLiveControlButtonStates();
   await sendLiveSignal("presence", { media: "camera" }).catch(() => {});
   await renegotiateAllLivePeers().catch(() => {});
 }
@@ -4008,6 +4042,7 @@ function clearLiveRoomState() {
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
   if (el.liveRoomRemoteVideoGrid) el.liveRoomRemoteVideoGrid.innerHTML = "";
   if (el.liveRoomStageVideo) el.liveRoomStageVideo.srcObject = null;
+  if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.remove("hidden");
   if (el.liveRoomFocusVideo) el.liveRoomFocusVideo.srcObject = null;
   if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.add("hidden");
   attachLocalVideoPreview();
@@ -4016,6 +4051,7 @@ function clearLiveRoomState() {
   setLiveDrawerState("tools", false);
   setLiveDrawerState("chat", false);
   setLiveDrawerState("reaction", false);
+  refreshLiveControlButtonStates();
   if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
   if (el.liveRoomPollPanel) {
     el.liveRoomPollPanel.classList.add("hidden");
@@ -4208,9 +4244,13 @@ function applyLiveRoomState(room) {
   if (el.liveRoomVideoStopBtn) el.liveRoomVideoStopBtn.disabled = false;
   if (el.liveRoomToggleMicBtn) {
     el.liveRoomToggleMicBtn.disabled = state.liveRoom.hostMuted;
-    el.liveRoomToggleMicBtn.textContent = state.liveRoom.hostMuted
-      ? "Muted by Host"
-      : (liveRtcState().micMuted ? "Unmute Mic" : "Mute Mic");
+    if (state.liveRoom.hostMuted) {
+      setIconButtonLabel(el.liveRoomToggleMicBtn, "🔇", "Host Muted");
+      el.liveRoomToggleMicBtn.classList.add("is-muted");
+      el.liveRoomToggleMicBtn.classList.remove("is-active");
+    } else {
+      setLiveMicMuted(liveRtcState().micMuted);
+    }
   }
   if (el.liveRoomShareScreenBtn) el.liveRoomShareScreenBtn.disabled = false;
   if (el.liveRoomStopShareBtn) el.liveRoomStopShareBtn.disabled = false;
@@ -4225,6 +4265,7 @@ function applyLiveRoomState(room) {
 
   renderLiveRoomParticipants(room);
   renderLivePollPanel(room);
+  refreshLiveControlButtonStates();
   syncLiveRtcPeersFromRoom(room).catch(() => {});
 }
 
@@ -4290,6 +4331,7 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   setLiveDrawerState("tools", false);
   setLiveDrawerState("chat", false);
   setLiveDrawerState("reaction", false);
+  refreshLiveControlButtonStates();
   if (initialState) applyLiveRoomState(initialState);
   await refreshLiveRoom();
   openLiveSignalSocket().catch(() => {});
