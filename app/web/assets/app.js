@@ -3389,10 +3389,14 @@ function setIconButtonLabel(button, icon, label) {
 
 function setVideoElementStream(videoEl, stream, options = {}) {
   if (!videoEl) return;
-  // Keep live-room video orientation explicit and never mirrored.
-  videoEl.style.transform = "scaleX(1)";
-  videoEl.style.webkitTransform = "scaleX(1)";
+  const mirror = Boolean(options.mirror);
+  // Meet-style rendering: mirror only local self-view; keep sent/remote feeds unmirrored.
+  videoEl.style.transform = mirror ? "scaleX(-1)" : "scaleX(1)";
+  videoEl.style.webkitTransform = mirror ? "scaleX(-1)" : "scaleX(1)";
+  videoEl.style.transformOrigin = "center center";
+  videoEl.style.backfaceVisibility = "hidden";
   videoEl.style.objectFit = "cover";
+  videoEl.style.objectPosition = "center center";
   videoEl.playsInline = true;
   if (Object.prototype.hasOwnProperty.call(options, "muted")) {
     videoEl.muted = Boolean(options.muted);
@@ -3405,10 +3409,12 @@ function setVideoElementStream(videoEl, stream, options = {}) {
 
 function preferredCameraVideoConstraints() {
   return {
-    width: { ideal: 1280, max: 1920 },
-    height: { ideal: 720, max: 1080 },
+    width: { ideal: 1920, max: 1920 },
+    height: { ideal: 1080, max: 1080 },
+    aspectRatio: { ideal: 1.7777777778 },
     frameRate: { ideal: 30, max: 30 },
     facingMode: "user",
+    resizeMode: "crop-and-scale",
   };
 }
 
@@ -3450,6 +3456,32 @@ async function tuneCapturedVideoTrack(videoTrack) {
   } catch {}
   try {
     await videoTrack.applyConstraints(preferredCameraVideoConstraints());
+  } catch {}
+  try {
+    const caps = videoTrack.getCapabilities?.() || {};
+    const advanced = [];
+    if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) advanced.push({ focusMode: "continuous" });
+    if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes("continuous")) advanced.push({ exposureMode: "continuous" });
+    if (Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
+    if (advanced.length) await videoTrack.applyConstraints({ advanced });
+  } catch {}
+}
+
+function tuneVideoSenderQuality(sender) {
+  if (!sender || sender.track?.kind !== "video") return;
+  try {
+    if (typeof sender.getParameters !== "function" || typeof sender.setParameters !== "function") return;
+    const params = sender.getParameters() || {};
+    const encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
+    params.encodings = encodings.map((encoding) => ({
+      ...encoding,
+      maxBitrate: Math.max(Number(encoding.maxBitrate || 0), 2500000),
+      maxFramerate: Math.min(30, Number(encoding.maxFramerate || 30)),
+      scaleResolutionDownBy: 1,
+      priority: encoding.priority || "high",
+    }));
+    params.degradationPreference = "maintain-resolution";
+    sender.setParameters(params).catch(() => {});
   } catch {}
 }
 
@@ -3502,7 +3534,7 @@ function updateLiveStageAndFocusVideo() {
   state.liveRoom.focusPeerId = activePeer || "";
   const focusStream = activePeer ? streamForPeer(activePeer) : null;
   if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.toggle("hidden", !activePeer || !focusStream);
-  setVideoElementStream(el.liveRoomFocusVideo, focusStream, { muted: true });
+  setVideoElementStream(el.liveRoomFocusVideo, focusStream, { muted: true, mirror: false });
   if (el.liveRoomFocusLabel) el.liveRoomFocusLabel.textContent = activePeer ? liveParticipantLabel(activePeer) : "Active speaker";
 
   let stageStream = null;
@@ -3524,7 +3556,7 @@ function updateLiveStageAndFocusVideo() {
     stageLabel = selfId ? "You" : "Live stage";
   }
   const isLocalStage = Boolean(stageStream && stageStream === liveRtcState().localStream);
-  setVideoElementStream(el.liveRoomStageVideo, stageStream, { muted: isLocalStage });
+  setVideoElementStream(el.liveRoomStageVideo, stageStream, { muted: isLocalStage, mirror: isLocalStage });
   if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageStream));
   if (el.liveRoomMeta) {
     const base = el.liveRoomMeta.textContent || "";
@@ -3620,14 +3652,14 @@ function renderLiveRemoteVideos() {
   entries.forEach(([peerId, stream]) => {
     const video = el.liveRoomRemoteVideoGrid.querySelector(`[data-live-remote-peer="${peerId}"] video`);
     if (!video) return;
-    setVideoElementStream(video, stream, { muted: true });
+    setVideoElementStream(video, stream, { muted: true, mirror: false });
   });
   updateLiveStageAndFocusVideo();
 }
 
 function attachLocalVideoPreview() {
   if (!el.liveRoomLocalVideo) return;
-  setVideoElementStream(el.liveRoomLocalVideo, liveRtcState().localStream, { muted: true });
+  setVideoElementStream(el.liveRoomLocalVideo, liveRtcState().localStream, { muted: true, mirror: true });
   el.liveRoomLocalVideo.classList.toggle("live-video-muted", Boolean(liveRtcState().micMuted));
   updateLiveStageAndFocusVideo();
 }
@@ -3637,7 +3669,13 @@ function replaceLiveOutboundVideoTrack(newVideoTrack) {
   rtc.outboundVideoTrack = newVideoTrack || null;
   Object.values(rtc.peers || {}).forEach((pc) => {
     const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-    if (sender && newVideoTrack) sender.replaceTrack(newVideoTrack).catch(() => {});
+    if (sender && newVideoTrack) {
+      sender.replaceTrack(newVideoTrack)
+        .then(() => {
+          tuneVideoSenderQuality(sender);
+        })
+        .catch(() => {});
+    }
   });
 }
 
@@ -3647,7 +3685,10 @@ function attachTracksToPeer(pc) {
   if (stream) {
     stream.getTracks().forEach((track) => {
       const hasSender = pc.getSenders().some((s) => s.track && s.track.id === track.id);
-      if (!hasSender) pc.addTrack(track, stream);
+      if (!hasSender) {
+        const sender = pc.addTrack(track, stream);
+        tuneVideoSenderQuality(sender);
+      }
     });
   } else {
     const hasVideo = pc.getTransceivers().some((t) => t.receiver?.track?.kind === "video");

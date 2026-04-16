@@ -355,6 +355,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: #000;
   object-fit: cover;
   transform: scaleX(1);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  object-position: center center;
 }
 .live-stage-placeholder {
   position: absolute;
@@ -394,9 +397,13 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .live-focus-video {
   width: 100%;
   min-height: 130px;
+  aspect-ratio: 16 / 9;
   background: #0b1220;
   object-fit: cover;
   transform: scaleX(1);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  object-position: center center;
 }
 .live-popover {
   position: absolute;
@@ -570,11 +577,15 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .live-video-el {
   width: 100%;
   min-height: 180px;
+  aspect-ratio: 16 / 9;
   border: 1px solid #dbe4f0;
   border-radius: 10px;
   background: #0b1220;
   object-fit: cover;
   transform: scaleX(1);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  object-position: center center;
 }
 .live-video-grid {
   display: grid;
