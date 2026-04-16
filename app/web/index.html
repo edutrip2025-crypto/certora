@@ -404,7 +404,10 @@
             <button id="closeLiveClassSchedulerBtn" class="btn small">Close</button>
           </div>
           <div class="row wrap gap-sm">
-            <input id="liveClassCourseId" type="number" class="filter" placeholder="Course ID" />
+            <select id="liveClassCourseSelect" class="search">
+              <option value="">Select Course</option>
+            </select>
+            <input id="liveClassCourseId" type="number" class="filter" placeholder="Or Course ID" />
             <input id="liveClassTitle" class="search" type="text" placeholder="Class Title" />
             <input id="liveClassTimezone" class="filter" type="text" value="Asia/Kolkata" placeholder="Timezone" />
             <input id="liveClassStartAt" class="filter" type="datetime-local" />
@@ -434,6 +437,9 @@
         <div id="providerLiveClassSessionsList" class="list" style="margin-top:10px;"></div>
         <h3 style="margin-top:14px;">Class Completion</h3>
         <div class="row wrap gap-sm">
+          <select id="liveCompletionCourseSelect" class="search">
+            <option value="">Select Course</option>
+          </select>
           <input id="liveCourseId" type="number" class="filter" placeholder="Course ID" />
           <input id="liveCompletionNote" class="search" type="text" placeholder="Completion note (optional)" />
           <button id="completeLiveClassBtn" class="btn">Complete Live Class</button>

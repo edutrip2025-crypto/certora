@@ -1142,6 +1142,7 @@ const el = {
   refreshProviderLiveClassesBtn: $("refreshProviderLiveClassesBtn"),
   providerLiveClassSessionsList: $("providerLiveClassSessionsList"),
   createLiveClassBtn: $("createLiveClassBtn"),
+  liveClassCourseSelect: $("liveClassCourseSelect"),
   liveClassCourseId: $("liveClassCourseId"),
   liveClassTitle: $("liveClassTitle"),
   liveClassDescription: $("liveClassDescription"),
@@ -1154,6 +1155,7 @@ const el = {
   liveClassAllowChat: $("liveClassAllowChat"),
   liveClassAllowRaiseHand: $("liveClassAllowRaiseHand"),
   liveClassAllowReactions: $("liveClassAllowReactions"),
+  liveCompletionCourseSelect: $("liveCompletionCourseSelect"),
   refreshStudentLiveClassesBtn: $("refreshStudentLiveClassesBtn"),
   liveClassroomScreen: $("liveClassroomScreen"),
   liveRoomTitle: $("liveRoomTitle"),
@@ -2680,6 +2682,25 @@ async function refreshStudentCertifications() {
   renderList(el.studentCertificatesTabList, certItems, certRenderer, "No certificates issued yet.");
 }
 
+function renderProviderCourseSelectors() {
+  const options = (state.providerCourses || []).map((c) => ({
+    value: String(c.id),
+    label: `${c.title} (#${c.id})`,
+  }));
+  const applySelect = (node, preferred = "") => {
+    if (!node) return;
+    const previous = String(preferred || node.value || "");
+    node.innerHTML = `<option value="">Select Course</option>${options
+      .map((opt) => `<option value="${opt.value}">${escapeHtmlAttr(opt.label)}</option>`)
+      .join("")}`;
+    if (previous && options.some((opt) => opt.value === previous)) {
+      node.value = previous;
+    }
+  };
+  applySelect(el.liveClassCourseSelect, el.liveClassCourseId?.value || "");
+  applySelect(el.liveCompletionCourseSelect, $("liveCourseId")?.value || "");
+}
+
 function providerLiveSchedulerSetVisible(visible) {
   if (!el.providerLiveClassScheduler) return;
   el.providerLiveClassScheduler.classList.toggle("hidden", !visible);
@@ -2696,6 +2717,7 @@ function applyProviderLiveModeUi() {
 
 function resetProviderLiveScheduler() {
   state.providerLiveEditSessionId = null;
+  if (el.liveClassCourseSelect) el.liveClassCourseSelect.value = "";
   if (el.liveClassCourseId) el.liveClassCourseId.value = "";
   if (el.liveClassTitle) el.liveClassTitle.value = "";
   if (el.liveClassDescription) el.liveClassDescription.value = "";
@@ -2715,6 +2737,7 @@ function resetProviderLiveScheduler() {
 function fillProviderLiveScheduler(session) {
   if (!session) return;
   state.providerLiveEditSessionId = Number(session.session_id || 0);
+  if (el.liveClassCourseSelect) el.liveClassCourseSelect.value = String(session.course_id || "");
   if (el.liveClassCourseId) el.liveClassCourseId.value = String(session.course_id || "");
   if (el.liveClassTitle) el.liveClassTitle.value = session.title || "";
   if (el.liveClassDescription) el.liveClassDescription.value = session.description || "";
@@ -2816,7 +2839,9 @@ async function refreshProviderLiveClasses() {
 }
 
 async function submitProviderLiveSchedule() {
-  const courseId = Number(el.liveClassCourseId?.value || 0);
+  const selectedCourseId = Number(el.liveClassCourseSelect?.value || 0);
+  const typedCourseId = Number(el.liveClassCourseId?.value || 0);
+  const courseId = selectedCourseId || typedCourseId;
   const title = String(el.liveClassTitle?.value || "").trim();
   const startIso = toIsoFromLocalDatetime(el.liveClassStartAt?.value || "");
   const endIsoRaw = toIsoFromLocalDatetime(el.liveClassEndAt?.value || "");
@@ -3172,6 +3197,7 @@ async function sendLiveRoomChatMessage(messageType = "chat", contentRaw = "") {
 async function refreshProviderContent() {
   const items = await api("GET", "/provider/workspace/content/courses");
   state.providerCourses = items || [];
+  renderProviderCourseSelectors();
   renderList(
     el.providerCoursesList,
     state.providerCourses,
@@ -5509,7 +5535,9 @@ async function refreshProviderCertifications() {
 }
 
 async function completeLiveClassAction() {
-  const courseId = Number($("liveCourseId")?.value || 0);
+  const selectedCourseId = Number(el.liveCompletionCourseSelect?.value || 0);
+  const typedCourseId = Number($("liveCourseId")?.value || 0);
+  const courseId = selectedCourseId || typedCourseId;
   const note = $("liveCompletionNote")?.value?.trim() || "";
   if (!courseId) {
     toast("Course ID is required", "error");
@@ -6520,6 +6548,12 @@ function bindEvents() {
   $("refreshProviderCertsBtn")?.addEventListener("click", () => refreshProviderCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderLiveClassesBtn")?.addEventListener("click", () => refreshProviderLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
   $("refreshStudentLiveClassesBtn")?.addEventListener("click", () => refreshStudentLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));
+  $("liveClassCourseSelect")?.addEventListener("change", () => {
+    if (el.liveClassCourseId) el.liveClassCourseId.value = el.liveClassCourseSelect?.value || "";
+  });
+  $("liveCompletionCourseSelect")?.addEventListener("change", () => {
+    if ($("liveCourseId")) $("liveCourseId").value = el.liveCompletionCourseSelect?.value || "";
+  });
   $("openLiveClassSchedulerBtn")?.addEventListener("click", () => {
     if (el.providerLiveClassScheduler?.classList.contains("hidden")) {
       resetProviderLiveScheduler();

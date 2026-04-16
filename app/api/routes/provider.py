@@ -749,8 +749,10 @@ def create_live_class_schedule(
 ):
     provider = _provider_or_404(db, current_user.id)
     course = db.get(Course, payload.course_id)
-    if not course or course.provider_id != provider.id:
-        raise HTTPException(status_code=404, detail="Course not found")
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found. Select a valid course from your provider workspace.")
+    if course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="You can only schedule classes for your own courses.")
     if payload.scheduled_end_at and payload.scheduled_end_at <= payload.scheduled_start_at:
         raise HTTPException(status_code=400, detail="scheduled_end_at must be after scheduled_start_at")
     meeting_mode = str(payload.meeting_mode or "in_app").strip().lower()
@@ -1102,8 +1104,10 @@ def complete_live_class(
 ):
     provider = _provider_or_404(db, current_user.id)
     course = db.get(Course, course_id)
-    if not course or course.provider_id != provider.id:
-        raise HTTPException(status_code=404, detail="Course not found")
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found. Select a valid course from your provider workspace.")
+    if course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="You can only complete classes for your own courses.")
     db.add(LiveClassCompletion(course_id=course.id, provider_id=provider.id, note=note))
     enrollments = list(db.scalars(select(Enrollment).where(Enrollment.course_id == course.id)).all())
     for enr in enrollments:
