@@ -433,6 +433,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.72);
   backdrop-filter: blur(8px);
+  transition: transform .28s ease, opacity .22s ease;
+}
+.live-control-dock.is-hidden {
+  transform: translate(-50%, calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
 }
 .live-dock-count {
   position: absolute;

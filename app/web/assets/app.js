@@ -94,6 +94,9 @@ const state = {
     qaItems: [],
     boardServerText: "",
     boardDraftDirty: false,
+    controlDockIdleTimer: null,
+    controlDockPointerInside: false,
+    controlDockVisible: true,
     screenShareInFlight: false,
     recording: {
       mediaRecorder: null,
@@ -1216,6 +1219,7 @@ const el = {
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
   liveRoomSignalStatus: $("liveRoomSignalStatus"),
   liveRoomStageShell: $("liveRoomStageShell"),
+  liveRoomControlDock: $("liveRoomControlDock"),
   liveRoomStageVideo: $("liveRoomStageVideo"),
   liveRoomStagePlaceholder: $("liveRoomStagePlaceholder"),
   liveRoomFocusTile: $("liveRoomFocusTile"),
@@ -3463,6 +3467,31 @@ function setLiveSidePanel(kind = "", open = true) {
   if (el.liveRoomQaPanel) el.liveRoomQaPanel.classList.toggle("hidden", next !== "qa");
 }
 
+function clearLiveControlDockIdleTimer() {
+  if (state.liveRoom.controlDockIdleTimer) {
+    clearTimeout(state.liveRoom.controlDockIdleTimer);
+    state.liveRoom.controlDockIdleTimer = null;
+  }
+}
+
+function setLiveControlDockVisibility(visible) {
+  state.liveRoom.controlDockVisible = Boolean(visible);
+  if (el.liveRoomControlDock) el.liveRoomControlDock.classList.toggle("is-hidden", !state.liveRoom.controlDockVisible);
+}
+
+function scheduleLiveControlDockAutoHide() {
+  clearLiveControlDockIdleTimer();
+  if (!state.liveRoom.active) return;
+  state.liveRoom.controlDockIdleTimer = setTimeout(() => {
+    if (!state.liveRoom.controlDockPointerInside) setLiveControlDockVisibility(false);
+  }, 3000);
+}
+
+function pokeLiveControlDock() {
+  setLiveControlDockVisibility(true);
+  scheduleLiveControlDockAutoHide();
+}
+
 function normalizeSharedPanelKind(kind) {
   const k = String(kind || "").toLowerCase();
   if (k === "poll") return "poll";
@@ -4335,6 +4364,9 @@ function stopLiveRoomPolling() {
 }
 
 function clearLiveRoomState() {
+  clearLiveControlDockIdleTimer();
+  state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.controlDockVisible = true;
   closeLiveSignalSocket();
   try { stopLiveRecording().catch(() => {}); } catch {}
   stopLiveSpeakerMonitor();
@@ -4366,6 +4398,8 @@ function clearLiveRoomState() {
   state.liveRoom.qaItems = [];
   state.liveRoom.boardServerText = "";
   state.liveRoom.boardDraftDirty = false;
+  state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.controlDockVisible = true;
   state.liveRoom.screenShareInFlight = false;
   state.liveRoom.recording = {
     mediaRecorder: null,
@@ -4410,6 +4444,7 @@ function clearLiveRoomState() {
     el.liveRoomPollPanel.classList.add("hidden");
     el.liveRoomPollPanel.innerHTML = "";
   }
+  setLiveControlDockVisibility(true);
   setLiveSidePanel("", false);
   renderLiveQaList();
 }
@@ -4709,6 +4744,8 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.qaItems = [];
   state.liveRoom.boardServerText = "";
   state.liveRoom.boardDraftDirty = false;
+  state.liveRoom.controlDockPointerInside = false;
+  state.liveRoom.controlDockVisible = true;
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
@@ -4721,6 +4758,8 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   setLiveDrawerState("chat", false);
   setLiveDrawerState("reaction", false);
   setLiveDrawerState("participants", false);
+  setLiveControlDockVisibility(true);
+  scheduleLiveControlDockAutoHide();
   setLiveSidePanel("", false);
   renderLiveQaList();
   refreshLiveControlButtonStates();
@@ -7468,6 +7507,33 @@ function bindEvents() {
   initializeLiveIconButtons();
   window.addEventListener("resize", () => {
     if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
+  });
+  el.liveRoomStageShell?.addEventListener("mousemove", () => {
+    pokeLiveControlDock();
+  });
+  el.liveRoomStageShell?.addEventListener("pointermove", () => {
+    pokeLiveControlDock();
+  });
+  el.liveRoomStageShell?.addEventListener("touchstart", () => {
+    pokeLiveControlDock();
+  }, { passive: true });
+  el.liveRoomControlDock?.addEventListener("mouseenter", () => {
+    state.liveRoom.controlDockPointerInside = true;
+    setLiveControlDockVisibility(true);
+    clearLiveControlDockIdleTimer();
+  });
+  el.liveRoomControlDock?.addEventListener("mouseleave", () => {
+    state.liveRoom.controlDockPointerInside = false;
+    scheduleLiveControlDockAutoHide();
+  });
+  el.liveRoomControlDock?.addEventListener("focusin", () => {
+    state.liveRoom.controlDockPointerInside = true;
+    setLiveControlDockVisibility(true);
+    clearLiveControlDockIdleTimer();
+  });
+  el.liveRoomControlDock?.addEventListener("focusout", () => {
+    state.liveRoom.controlDockPointerInside = false;
+    scheduleLiveControlDockAutoHide();
   });
   el.showSignupBtn?.addEventListener("click", () => showAuthMode("signup"));
   el.showLoginBtn?.addEventListener("click", () => showAuthMode("login"));
