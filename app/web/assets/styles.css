@@ -190,6 +190,93 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .stat { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 14px; }
 .stat .k { font-size: .78rem; color: #64748b; }
 .stat .v { font-size: 1.25rem; font-weight: 800; margin-top: 4px; }
+.admin-glimpse-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.glimpse-overview {
+  display: grid;
+  gap: 10px;
+}
+.glimpse-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.glimpse-kpi {
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 9px 10px;
+}
+.glimpse-kpi .k {
+  font-size: .73rem;
+  color: #64748b;
+}
+.glimpse-kpi .v {
+  margin-top: 2px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.glimpse-bars {
+  display: grid;
+  gap: 8px;
+}
+.glimpse-bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 44px;
+  gap: 10px;
+  align-items: center;
+}
+.glimpse-bar-row .label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .82rem;
+  color: #334155;
+}
+.glimpse-bar-row .bar {
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid #dbe4f0;
+  background: #eef2ff;
+  overflow: hidden;
+}
+.glimpse-bar-row .fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2563eb, #14b8a6);
+}
+.glimpse-list {
+  margin-top: 6px;
+}
+.glimpse-list .item {
+  padding: 10px 11px;
+}
+.glimpse-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.glimpse-progress {
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 999px;
+  border: 1px solid #dbe4f0;
+  background: #eef2ff;
+  overflow: hidden;
+}
+.glimpse-progress > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0ea5e9, #2563eb);
+}
 .stat.analytics {
   display: grid;
   grid-template-columns: 42px 1fr;
@@ -910,6 +997,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   .auth-hero { padding: 8px 0; max-width: none; }
   .auth-card { justify-self: stretch; max-width: none; }
   .admin-layout { grid-template-columns: 1fr; }
+  .admin-glimpse-grid { grid-template-columns: 1fr; }
   .sidebar { position: static; border-right: none; border-bottom: 1px solid #eef2f7; padding: 86px 0 10px; }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }

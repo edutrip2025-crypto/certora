@@ -68,6 +68,7 @@
           <div class="settings-menu hidden">
             <span class="badge js-session-badge">Not signed in</span>
             <span class="badge js-user-uid-badge hidden">UID: -</span>
+            <button class="btn small js-change-password-btn" type="button">Change Password</button>
             <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
             <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
             <button class="btn ghost js-logout-btn" disabled>Logout</button>
@@ -505,6 +506,7 @@
           <div class="settings-menu hidden">
             <span class="badge js-session-badge">Not signed in</span>
             <span class="badge js-user-uid-badge hidden">UID: -</span>
+            <button class="btn small js-change-password-btn" type="button">Change Password</button>
             <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
             <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
             <button class="btn ghost js-logout-btn" disabled>Logout</button>
@@ -631,6 +633,7 @@
           <div class="settings-menu hidden">
             <span class="badge js-session-badge">Not signed in</span>
             <span class="badge js-user-uid-badge hidden">UID: -</span>
+            <button class="btn small js-change-password-btn" type="button">Change Password</button>
             <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
             <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
             <button class="btn small js-collapse-workspace-btn">Collapse Workspace</button>
@@ -646,20 +649,23 @@
         </div>
         <h3>Analytics</h3>
         <div id="analyticsGrid" class="stats"></div>
-        <section class="moderation-toolbar" style="margin-top:16px;">
-          <div class="row between">
-            <h3 style="margin:0;">Flagged Proctor Sessions</h3>
-            <div class="meta">Recent flagged/manual-review sessions with triggered rule summary</div>
+        <section class="admin-glimpse-grid">
+          <div class="moderation-toolbar" style="margin-top:0;">
+            <div class="row between">
+              <h3 style="margin:0;">Proctoring Snapshot</h3>
+              <div class="meta">Live signal overview</div>
+            </div>
+            <div id="adminProctorOverview" class="glimpse-overview"></div>
+            <div id="adminProctorSessionsList" class="list glimpse-list"></div>
           </div>
-          <div id="adminProctorSessionsList" class="list"></div>
-        </section>
-        <section class="moderation-toolbar" style="margin-top:20px;">
-          <div class="row between">
-            <h3 style="margin:0;">Saved training reviews</h3>
-            <button id="refreshTrainingReviewsBtn" class="btn small">Refresh</button>
+          <div class="moderation-toolbar" style="margin-top:0;">
+            <div class="row between">
+              <h3 style="margin:0;">Model Feedback Snapshot</h3>
+              <button id="refreshTrainingReviewsBtn" class="btn small">Refresh</button>
+            </div>
+            <div id="adminTrainingOverview" class="glimpse-overview"></div>
+            <div id="adminTrainingReviewsList" class="list glimpse-list" style="margin-top:4px;"></div>
           </div>
-          <div class="meta" style="margin-top:4px;">Every Pass/Fail label reviewers saved for proctor model tuning (assessment preview and student attempts), newest first.</div>
-          <div id="adminTrainingReviewsList" class="list" style="margin-top:10px;"></div>
         </section>
       </section>
 

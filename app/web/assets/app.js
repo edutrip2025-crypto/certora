@@ -1,9 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
+  EmailAuthProvider,
   getAuth,
   GoogleAuthProvider,
   browserLocalPersistence,
   createUserWithEmailAndPassword,
+  reauthenticateWithCredential,
   sendPasswordResetEmail,
   signInWithCustomToken,
   signInWithEmailAndPassword,
@@ -11,6 +13,7 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
+  updatePassword,
   updateProfile,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 
@@ -88,6 +91,18 @@ function formatAuthError(err, fallback) {
   }
   if (code === "auth/invalid-credential") {
     return "Invalid email/password. Use Forgot Password to reset this account.";
+  }
+  if (code === "auth/wrong-password") {
+    return "Current password is incorrect.";
+  }
+  if (code === "auth/weak-password") {
+    return "New password is too weak. Use at least 8 characters.";
+  }
+  if (code === "auth/requires-recent-login") {
+    return "Session is old. Login again and retry password change.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "Too many attempts. Wait a bit and try again.";
   }
   if (code === "auth/email-already-in-use") {
     return "Email already exists. Use Login, or continue Signup with the same existing password.";
@@ -982,6 +997,7 @@ const el = {
   settingsToggles: Array.from(document.querySelectorAll(".js-settings-toggle")),
   settingsMenus: Array.from(document.querySelectorAll(".settings-menu")),
   collapseWorkspaceBtns: Array.from(document.querySelectorAll(".js-collapse-workspace-btn")),
+  changePasswordBtns: Array.from(document.querySelectorAll(".js-change-password-btn")),
   adminRecoveryBtns: Array.from(document.querySelectorAll(".js-admin-recovery-btn")),
   adminPasswordBtns: Array.from(document.querySelectorAll(".js-admin-password-btn")),
   sessionBadges: Array.from(document.querySelectorAll(".js-session-badge")),
@@ -997,7 +1013,9 @@ const el = {
   nonAdminUpdateRoleBtn: $("nonAdminUpdateRoleBtn"),
   adminView: $("adminView"),
   analyticsGrid: $("analyticsGrid"),
+  adminProctorOverview: $("adminProctorOverview"),
   adminProctorSessionsList: $("adminProctorSessionsList"),
+  adminTrainingOverview: $("adminTrainingOverview"),
   adminTrainingReviewsList: $("adminTrainingReviewsList"),
   refreshTrainingReviewsBtn: $("refreshTrainingReviewsBtn"),
   moderationSummary: $("moderationSummary"),
@@ -1285,6 +1303,41 @@ async function runAdminSetUserPasswordFlow() {
   }
 }
 
+async function runSelfPasswordChangeFlow() {
+  if (!ensureAuthReady()) return;
+  const user = state.auth?.currentUser;
+  if (!user?.email) {
+    toast("No signed-in email user found.", "error");
+    return;
+  }
+  const currentPassword = window.prompt("Current password");
+  if (!currentPassword) return;
+  const newPassword = window.prompt("New password (min 8 chars)");
+  if (!newPassword || newPassword.length < 8) {
+    toast("New password must be at least 8 characters.", "error");
+    return;
+  }
+  const confirmPassword = window.prompt("Confirm new password");
+  if (!confirmPassword) return;
+  if (newPassword !== confirmPassword) {
+    toast("Password confirmation does not match.", "error");
+    return;
+  }
+  if (newPassword === currentPassword) {
+    toast("New password must be different from current password.", "error");
+    return;
+  }
+  try {
+    const credential = EmailAuthProvider.credential(user.email, String(currentPassword));
+    await reauthenticateWithCredential(user, credential);
+    await updatePassword(user, String(newPassword));
+    toast("Password changed successfully.");
+  } catch (err) {
+    toast(formatAuthError(err, "Password change failed"), "error");
+    log("self_change_password_error", String(err));
+  }
+}
+
 function setBadge(node, value) {
   if (!node) return;
   const v = Number(value || 0);
@@ -1482,7 +1535,11 @@ async function maybeUnlockAssessmentFromPlayback() {
     await api("POST", `/student/courses/${courseId}/complete`);
     if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
     if (el.scvProgressText) el.scvProgressText.textContent = "100%";
-    await refreshStudentAssessmentPanel(courseId, true);
+    await refreshStudentAssessmentPanel(courseId, {
+      examEligible: true,
+      hasRecordedLesson: true,
+      progressPct: 100,
+    });
     toast("Assessment unlocked");
     refreshStudentDashboard().catch(() => {});
   } catch {
@@ -2079,59 +2136,105 @@ async function refreshAnalytics() {
   });
 }
 
+function decisionTone(value) {
+  const v = String(value || "").toLowerCase();
+  if (v.includes("fail") || v.includes("flag")) return "status-open";
+  if (v.includes("review")) return "status-in_review";
+  return "status-resolved";
+}
+
+function normalizeDecision(value) {
+  const v = String(value || "").trim().toLowerCase();
+  if (!v) return "unknown";
+  if (v.includes("fail") || v.includes("flag")) return "fail";
+  if (v.includes("review")) return "manual_review";
+  if (v.includes("pass") || v.includes("clean")) return "pass";
+  return v;
+}
+
+function renderGlimpseOverview(target, kpis, bars) {
+  if (!target) return;
+  const total = Math.max(1, Number(bars?.reduce((sum, row) => sum + Number(row?.value || 0), 0) || 0));
+  const kpiMarkup = (kpis || []).map((item) => `
+    <div class="glimpse-kpi">
+      <div class="k">${item.label}</div>
+      <div class="v">${item.value}</div>
+    </div>
+  `).join("");
+  const barsMarkup = (bars || []).map((item) => {
+    const value = Number(item.value || 0);
+    const pct = Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+    return `
+      <div class="glimpse-bar-row">
+        <div>
+          <div class="label"><span>${item.label}</span><span>${value}</span></div>
+          <div class="bar"><div class="fill" style="width:${pct}%;"></div></div>
+        </div>
+        <div class="meta">${pct}%</div>
+      </div>
+    `;
+  }).join("");
+  target.innerHTML = `
+    <div class="glimpse-kpis">${kpiMarkup || '<div class="glimpse-kpi"><div class="k">No data</div><div class="v">-</div></div>'}</div>
+    <div class="glimpse-bars">${barsMarkup || '<div class="meta">No chart data.</div>'}</div>
+  `;
+}
+
 async function refreshAdminProctorSessions() {
-  const out = await api("GET", "/proctoring/admin/sessions?flagged_only=true&page=1&page_size=12");
+  const out = await api("GET", "/proctoring/admin/sessions?flagged_only=true&page=1&page_size=24");
   const items = out.items || [];
-  const evals = await Promise.all(
-    items.map(async (item) => {
-      try {
-        const detail = await api("GET", `/proctoring/admin/sessions/${item.session_id}/evaluation`);
-        return { session: item, detail };
-      } catch {
-        return { session: item, detail: null };
-      }
-    }),
+  const decisionCounts = { pass: 0, fail: 0, manual_review: 0, unknown: 0 };
+  const reviewCounts = { pending: 0, reviewed: 0 };
+  let totalWarnings = 0;
+  let totalRisk = 0;
+  items.forEach((row) => {
+    const decision = normalizeDecision(row.ai_decision);
+    decisionCounts[decision] = (decisionCounts[decision] || 0) + 1;
+    if (String(row.admin_review_status || "").toLowerCase() === "pending") reviewCounts.pending += 1;
+    else reviewCounts.reviewed += 1;
+    totalWarnings += Number(row.warning_count || 0);
+    const riskProb = Number(row.ai_probability);
+    totalRisk += Number.isFinite(riskProb) ? (riskProb * 100) : 0;
+  });
+  renderGlimpseOverview(
+    el.adminProctorOverview,
+    [
+      { label: "Flagged Sessions", value: items.length },
+      { label: "Pending Review", value: reviewCounts.pending },
+      { label: "Avg Warnings", value: items.length ? (totalWarnings / items.length).toFixed(1) : "0.0" },
+      { label: "Avg Model Risk", value: items.length ? `${(totalRisk / items.length).toFixed(1)}%` : "0.0%" },
+      { label: "Manual Review", value: decisionCounts.manual_review || 0 },
+      { label: "Fail Decisions", value: decisionCounts.fail || 0 },
+    ],
+    [
+      { label: "Pass", value: decisionCounts.pass || 0 },
+      { label: "Fail", value: decisionCounts.fail || 0 },
+      { label: "Manual Review", value: decisionCounts.manual_review || 0 },
+      { label: "Unknown", value: decisionCounts.unknown || 0 },
+    ],
   );
   renderList(
     el.adminProctorSessionsList,
-    evals,
-    ({ session, detail }) => {
-      const ai = detail?.ai_evaluation || {};
-      const counts = detail?.event_type_counts || {};
-      const recent = detail?.recent_events || [];
-      const timeline = detail?.timeline || [];
-      const chips = Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6)
-        .map(([name, count]) => `<span class="chip">${formatEventTypeLabel(name)}: ${count}</span>`)
-        .join("");
-      const maxTimelineScore = Math.max(1, ...timeline.map((t) => Number(t.score || 0)));
-      const timelineMarkup = timeline.length
-        ? `<div style="display:flex;align-items:flex-end;gap:4px;height:54px;margin-top:8px;padding:6px 8px;border:1px solid #dbe4f0;border-radius:10px;background:#f8fbff;">${
-            timeline.map((bucket) => {
-              const score = Number(bucket.score || 0);
-              const h = Math.max(8, Math.round((score / maxTimelineScore) * 42));
-              const color = Number(bucket.critical || 0) > 0 ? "#dc2626" : Number(bucket.warning || 0) > 0 ? "#f59e0b" : "#93c5fd";
-              const title = `Slot ${Number(bucket.index) + 1}: critical ${bucket.critical}, warning ${bucket.warning}, info ${bucket.info}`;
-              return `<div title="${title}" style="flex:1;height:${h}px;border-radius:6px 6px 2px 2px;background:${color};opacity:${score > 0 ? 0.95 : 0.35};"></div>`;
-            }).join("")
-          }</div>`
-        : '<div class="meta" style="margin-top:8px;">No timeline available.</div>';
-      const recentMarkup = recent
-        .slice(0, 4)
-        .map((ev) => `<div class="meta"><span class="status-pill ${severityTone(ev.severity)}">${String(ev.severity || "info")}</span> ${formatEventTypeLabel(ev.event_type)}${ev?.details?.reason ? ` - ${ev.details.reason}` : ""}</div>`)
-        .join("");
-      const prob = ai.final_probability != null ? `${(Number(ai.final_probability) * 100).toFixed(1)}%` : "-";
+    items.slice(0, 6),
+    (session) => {
+      const decision = normalizeDecision(session.ai_decision);
+      const actor = escapeHtmlAttr(session.actor_name || session.actor_email || session.actor_user_id || "Unknown");
+      const reviewStatus = escapeHtmlAttr(session.admin_review_status || "pending");
+      const prob = Number(session.ai_probability);
+      const riskPct = Number.isFinite(prob)
+        ? Math.max(0, Math.min(100, Math.round(prob * 100)))
+        : Math.max(4, Math.min(100, Math.round((Number(session.warning_count || 0) * 14) + (Number(session.events_count || 0) * 3))));
       return `
-        <div><strong>Session #${session.session_id}</strong> <span class="status-pill ${severityTone(ai.decision || session.ai_decision)}">${String(ai.decision || session.ai_decision || "unknown")}</span></div>
-        <div class="meta">User: ${session.actor_name || session.actor_email || session.actor_user_id} | Warnings: ${session.warning_count} | Events: ${session.events_count} | Evidence: ${session.evidence_count}</div>
-        <div class="meta">Risk: ${prob} | Event Signal: ${ai.event_signal_score != null ? (Number(ai.event_signal_score) * 100).toFixed(1) + "%" : "-"} | Model: ${ai.model_used || "n/a"} | Review: ${session.admin_review_status || "pending"}</div>
-        <div class="chips" style="margin-top:8px;">${chips || '<span class="chip">No event counts</span>'}</div>
-        ${timelineMarkup}
-        <div style="margin-top:8px;">${recentMarkup || '<div class="meta">No recent events recorded.</div>'}</div>
+        <div class="glimpse-item-head">
+          <strong>Session #${session.session_id}</strong>
+          <span class="status-pill ${decisionTone(decision)}">${escapeHtmlAttr(decision)}</span>
+        </div>
+        <div class="meta">${actor} | ${formatTime(session.started_at)}</div>
+        <div class="glimpse-progress"><span style="width:${riskPct}%;"></span></div>
+        <div class="meta">Risk ${riskPct}% | Warnings ${Number(session.warning_count || 0)} | Events ${Number(session.events_count || 0)} | Review ${reviewStatus}</div>
       `;
     },
-    "No flagged proctor sessions.",
+    "No flagged sessions.",
   );
 }
 
@@ -2146,28 +2249,52 @@ function escapeHtmlAttr(s) {
 async function refreshAdminTrainingReviews() {
   const out = await api("GET", "/proctoring/admin/training-reviews?page=1&page_size=100");
   const items = out.items || [];
+  const correct = items.filter((row) => String(row.feedback_label || "").toLowerCase() === "correct").length;
+  const incorrect = items.filter((row) => String(row.feedback_label || "").toLowerCase() === "incorrect").length;
+  const preview = items.filter((row) => String(row.context || "").toLowerCase() === "preview").length;
+  const attempt = items.length - preview;
+  const modelRiskValues = items
+    .map((row) => Number(row.model_probability))
+    .filter((v) => Number.isFinite(v))
+    .map((v) => v * 100);
+  const avgModelRisk = modelRiskValues.length
+    ? `${(modelRiskValues.reduce((a, b) => a + b, 0) / modelRiskValues.length).toFixed(1)}%`
+    : "0.0%";
+  renderGlimpseOverview(
+    el.adminTrainingOverview,
+    [
+      { label: "Total Labels", value: items.length },
+      { label: "Model Correct", value: correct },
+      { label: "Model Wrong", value: incorrect },
+      { label: "Preview Labels", value: preview },
+      { label: "Attempt Labels", value: attempt },
+      { label: "Avg Model Risk", value: avgModelRisk },
+    ],
+    [
+      { label: "Correct", value: correct },
+      { label: "Incorrect", value: incorrect },
+      { label: "Preview", value: preview },
+      { label: "Attempts", value: attempt },
+    ],
+  );
   renderList(
     el.adminTrainingReviewsList,
-    items,
+    items.slice(0, 6),
     (row) => {
-      const verdict = row.feedback_label === "correct" ? "Pass (model correct)" : "Fail (model wrong)";
+      const verdict = row.feedback_label === "correct" ? "Model Correct" : "Model Wrong";
       const pillCls = row.feedback_label === "correct" ? "status-resolved" : "status-open";
-      const ctx = row.context === "preview" ? "Preview proctor session" : "Student attempt";
-      const pass = row.final_result_passed;
-      const passTxt = pass === null || pass === undefined ? "n/a" : pass ? "exam marked pass" : "exam marked fail";
+      const ctx = row.context === "preview" ? "Preview" : "Student Attempt";
       const prob =
         typeof row.model_probability === "number" && Number.isFinite(row.model_probability)
           ? `${(Number(row.model_probability) * 100).toFixed(1)}%`
           : "-";
-      const commentBlock = row.comment
-        ? `<div style="margin-top:8px;"><strong>Comment</strong><div class="meta">${escapeHtmlAttr(row.comment)}</div></div>`
-        : '<div class="meta" style="margin-top:8px;">No comment.</div>';
       return `
-        <div><strong>#${row.id}</strong> <span class="status-pill ${pillCls}">${verdict}</span> <span class="meta">${ctx}</span></div>
-        <div class="meta">${formatTime(row.created_at)} | Reviewer: ${escapeHtmlAttr(row.actor_name || "-")} (${escapeHtmlAttr(row.actor_email || "-")})</div>
-        <div class="meta">Proctor session: ${row.session_id ?? "-"} | Attempt: ${row.attempt_id ?? "-"} | Exam ID: ${row.exam_id ?? "-"} | Mode: ${escapeHtmlAttr(row.session_mode || "-")}</div>
-        <div class="meta">Model at save: ${escapeHtmlAttr(row.model_decision || "-")} | Model risk: ${prob} | Exam outcome: ${passTxt}</div>
-        ${commentBlock}
+        <div class="glimpse-item-head">
+          <strong>#${row.id}</strong>
+          <span class="status-pill ${pillCls}">${verdict}</span>
+        </div>
+        <div class="meta">${formatTime(row.created_at)} | ${ctx}</div>
+        <div class="meta">Reviewer: ${escapeHtmlAttr(row.actor_name || "-")} | Risk: ${prob} | Model: ${escapeHtmlAttr(row.model_decision || "-")}</div>
       `;
     },
     "No training reviews saved yet.",
@@ -2395,6 +2522,7 @@ async function refreshStudentDashboard() {
               <div style="height:100%;width:${Math.max(0, Math.min(100, Number(c.progress_pct || 0)))}%;background:linear-gradient(90deg,#2563eb,#0ea5e9);"></div>
             </div>
             <div class="meta" style="margin-top:4px;">${Number(c.progress_pct || 0).toFixed(0)}% completed</div>
+            <div class="meta" style="margin-top:4px;">Assessment: ${c.exam_eligible ? "Available" : "Locked until course completion"}</div>
           </div>
           <div class="actions"><button class="btn small" data-student-view-course="${c.course_id}">View Course</button></div>
         </div>
@@ -4416,7 +4544,11 @@ async function openStudentCourseViewer(courseId) {
   if (videoShell) videoShell.classList.toggle("hidden", !hasRecordedLesson);
   if (tooltip) tooltip.classList.add("hidden");
   el.studentCourseViewer?.classList.remove("hidden");
-  await refreshStudentAssessmentPanel(courseId, Boolean(detail.exam_eligible && hasRecordedLesson));
+  await refreshStudentAssessmentPanel(courseId, {
+    examEligible: Boolean(detail.exam_eligible),
+    hasRecordedLesson,
+    progressPct: Number(detail.progress_pct || 0),
+  });
   const applyMarkers = () => {
     renderTimelineMarkers(
       timeline,
@@ -4438,10 +4570,47 @@ async function openStudentCourseViewer(courseId) {
   }
 }
 
-async function refreshStudentAssessmentPanel(courseId, examEligible) {
+async function refreshStudentAssessmentPanel(courseId, options = {}) {
   if (!el.scvAssessmentPanel) return;
+  let examEligible = Boolean(options.examEligible);
+  const hasRecordedLesson = Boolean(options.hasRecordedLesson);
+  const progressPct = Number(options.progressPct || 0);
+
+  if (!examEligible && progressPct >= 100) {
+    try {
+      await api("POST", `/student/courses/${courseId}/complete`);
+      examEligible = true;
+      if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
+      if (el.scvProgressText) el.scvProgressText.textContent = "100%";
+    } catch {}
+  }
+
   if (!examEligible) {
-    el.scvAssessmentPanel.innerHTML = `<span id="scvAssessmentStatus" class="meta">Watch the full video to unlock assessment.</span>`;
+    const canManualUnlock = progressPct >= 100 || !hasRecordedLesson;
+    el.scvAssessmentPanel.innerHTML = `
+      <span id="scvAssessmentStatus" class="meta">${
+        hasRecordedLesson
+          ? "Watch the full video to unlock assessment."
+          : "Complete this course to unlock assessment."
+      }</span>
+      ${canManualUnlock ? '<button class="btn small" id="scvUnlockAssessmentBtn">Unlock Assessment</button>' : ""}
+    `;
+    $("scvUnlockAssessmentBtn")?.addEventListener("click", async () => {
+      try {
+        await api("POST", `/student/courses/${courseId}/complete`);
+        if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
+        if (el.scvProgressText) el.scvProgressText.textContent = "100%";
+        await refreshStudentAssessmentPanel(courseId, {
+          examEligible: true,
+          hasRecordedLesson,
+          progressPct: 100,
+        });
+        refreshStudentDashboard().catch(() => {});
+        toast("Assessment unlocked");
+      } catch (err) {
+        toast(err?.message || "Failed to unlock assessment", "error");
+      }
+    });
     return;
   }
   const out = await api("POST", `/student/courses/${courseId}/assessment-intent?ready=true`);
@@ -5229,6 +5398,11 @@ function bindEvents() {
   el.adminRecoveryBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       runAdminRecoveryFlow().catch(() => {});
+    });
+  });
+  el.changePasswordBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      runSelfPasswordChangeFlow().catch(() => {});
     });
   });
   el.adminPasswordBtns.forEach((btn) => {
