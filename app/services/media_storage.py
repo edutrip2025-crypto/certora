@@ -100,6 +100,13 @@ def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> s
         return value
     if value.startswith("/media/"):
         # Return relative path so browser always uses current origin/protocol.
+        # If local media file is missing (common after cloud deploy), suppress broken URL.
+        settings = get_settings()
+        media_root = Path(settings.resolved_media_dir)
+        rel = value.removeprefix("/media/").lstrip("/")
+        local_file = media_root / rel
+        if not local_file.exists():
+            return None
         return value
     if value.startswith("s3://"):
         settings = get_settings()

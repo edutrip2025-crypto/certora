@@ -794,7 +794,8 @@ def provider_live_classes(
             _ensure_live_schema_runtime(db, force=True)
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=f"Unable to load live classes: {exc}")
+        # Fail-safe for production bootstrap issues: keep workspace usable.
+        return {"items": [], "degraded": True, "error": f"live_classes_unavailable: {exc}"}
 
 
 @router.post("/workspace/live-classes", status_code=status.HTTP_201_CREATED)
