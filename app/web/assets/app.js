@@ -4953,7 +4953,7 @@ async function refreshProviderContent() {
             <div class="meta">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
             <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}</div>
             <div class="actions">
-              ${firstLesson?.recorded_video_url ? `<button class="btn small" data-view-course="${c.id}">View Class</button>` : ""}
+              <button class="btn small" data-view-course="${c.id}">View Course</button>
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
               ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
               ${canDeleteCourseFromUi() ? `<button class="btn small danger" data-delete-course="${c.id}">Delete Course</button>` : ""}
@@ -6760,7 +6760,6 @@ function openCourseViewer(courseId) {
   if (!course) return toast("Course not found", "error");
   const lesson = findPrimaryLesson(course);
   const liveLessons = findLiveLessons(course);
-  if (!lesson?.recorded_video_url && !liveLessons.length) return toast("No recorded or live lesson found for this course", "error");
 
   const video = $("pcvVideo");
   if (video && lesson?.recorded_video_url) {

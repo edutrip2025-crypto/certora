@@ -87,15 +87,26 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setLineWidth(1)
     c.roundRect(48, 48, page_width - 96, page_height - 96, 14, stroke=1, fill=0)
 
-    # Header band
-    c.setFillColor(colors.HexColor("#0f172a"))
-    c.roundRect(64, page_height - 110, page_width - 128, 54, 12, fill=1, stroke=0)
+    # Header branding (no background bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-      c.drawImage(str(logo_path), 82, page_height - 100, width=108, height=32, mask="auto", preserveAspectRatio=True)
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 22)
-    c.drawRightString(page_width - 82, page_height - 78, "CERTORA CERTIFICATION")
+        logo_w = 190
+        logo_h = 44
+        logo_x = (page_width - logo_w) / 2
+        logo_y = page_height - 104
+        c.drawImage(
+            str(logo_path),
+            logo_x,
+            logo_y,
+            width=logo_w,
+            height=logo_h,
+            mask="auto",
+            preserveAspectRatio=True,
+            anchor="c",
+        )
+    c.setFillColor(colors.HexColor("#0f172a"))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(page_width / 2, page_height - 118, "CERTORA CERTIFICATION")
 
     # Main title
     c.setFillColor(colors.HexColor("#8a6a1f"))
