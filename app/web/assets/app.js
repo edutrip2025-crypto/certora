@@ -3893,7 +3893,7 @@ function renderLiveRemoteVideos() {
 
 function attachLocalVideoPreview() {
   if (!el.liveRoomLocalVideo) return;
-  setVideoElementStream(el.liveRoomLocalVideo, liveRtcState().localStream, { muted: true, mirror: true });
+  setVideoElementStream(el.liveRoomLocalVideo, liveRtcState().localStream, { muted: true, mirror: false });
   el.liveRoomLocalVideo.classList.toggle("live-video-muted", Boolean(liveRtcState().micMuted));
   updateLiveStageAndFocusVideo();
 }
