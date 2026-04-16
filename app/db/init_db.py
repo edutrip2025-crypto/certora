@@ -45,6 +45,91 @@ def _migrate_proctor_training_feedback_nullable_attempt_id(conn) -> None:
     conn.execute(text("PRAGMA foreign_keys=ON"))
 
 
+def _sqlite_add_column_if_missing(conn, table: str, column: str, ddl_suffix: str) -> None:
+    rows = conn.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")).fetchall()
+    if not rows:
+        return
+    cols = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+    names = {row[1] for row in cols}
+    if column in names:
+        return
+    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_suffix}"))
+
+
+def _migrate_live_class_schema_sqlite(conn) -> None:
+    # live_class_sessions incremental columns
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "timezone", "TEXT DEFAULT 'UTC'")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "meeting_mode", "TEXT DEFAULT 'in_app'")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "external_meeting_url", "TEXT")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "status", "TEXT DEFAULT 'scheduled'")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "scheduled_start_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "scheduled_end_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "started_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "ended_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "max_participants", "INTEGER DEFAULT 200")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "allow_chat", "BOOLEAN DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "allow_raise_hand", "BOOLEAN DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "allow_reactions", "BOOLEAN DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "board_text", "TEXT")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_key", "TEXT")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_question", "TEXT")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_options_json", "JSON DEFAULT '[]'")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "active_poll_open", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    _sqlite_add_column_if_missing(conn, "live_class_sessions", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+
+    # live_class_participants incremental columns
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "actor_role", "TEXT DEFAULT 'student'")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "display_name", "TEXT")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "is_present", "BOOLEAN DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "raised_hand", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "joined_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "left_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "live_class_participants", "last_seen_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+
+    # live_class_messages payload field
+    _sqlite_add_column_if_missing(conn, "live_class_messages", "payload_json", "JSON DEFAULT '{}'")
+
+
+def _migrate_live_class_schema_postgres(conn) -> None:
+    # `IF NOT EXISTS` keeps this idempotent across deploys.
+    statements = [
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS timezone VARCHAR(80) DEFAULT 'UTC'",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS meeting_mode VARCHAR(20) DEFAULT 'in_app'",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS external_meeting_url VARCHAR(1000)",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'scheduled'",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS scheduled_start_at TIMESTAMPTZ",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS scheduled_end_at TIMESTAMPTZ",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS max_participants INTEGER DEFAULT 200",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_chat BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_raise_hand BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS allow_reactions BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS board_text TEXT",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_key VARCHAR(64)",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_question TEXT",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_options_json JSON DEFAULT '[]'::json",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS active_poll_open BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE live_class_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS actor_role VARCHAR(20) DEFAULT 'student'",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS display_name VARCHAR(200)",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS is_present BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS raised_hand BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ",
+        "ALTER TABLE live_class_participants ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE live_class_messages ADD COLUMN IF NOT EXISTS payload_json JSON DEFAULT '{}'::json",
+    ]
+    for stmt in statements:
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            # Keep startup resilient even on partially-migrated datasets.
+            pass
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
@@ -69,12 +154,14 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE exam_attempts ADD COLUMN assigned_question_ids JSON"))
 
             _migrate_proctor_training_feedback_nullable_attempt_id(conn)
+            _migrate_live_class_schema_sqlite(conn)
     elif engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             try:
                 conn.execute(text("ALTER TABLE proctor_training_feedback ALTER COLUMN attempt_id DROP NOT NULL"))
             except Exception:
                 pass
+            _migrate_live_class_schema_postgres(conn)
 
     # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()
