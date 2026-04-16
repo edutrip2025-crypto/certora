@@ -80,6 +80,14 @@ const state = {
     selectedParticipantId: 0,
     accessStatus: "admitted",
     hostMuted: false,
+    stagePeerId: "",
+    focusPeerId: "",
+    speakerMonitorId: null,
+    speakerScores: {},
+    peerAudioContexts: {},
+    toolsOpen: false,
+    chatOpen: false,
+    reactionOpen: false,
     recording: {
       mediaRecorder: null,
       chunks: [],
@@ -1200,6 +1208,18 @@ const el = {
   liveRoomMeta: $("liveRoomMeta"),
   liveRoomPresenceBadge: $("liveRoomPresenceBadge"),
   liveRoomSignalStatus: $("liveRoomSignalStatus"),
+  liveRoomStageShell: $("liveRoomStageShell"),
+  liveRoomStageVideo: $("liveRoomStageVideo"),
+  liveRoomFocusTile: $("liveRoomFocusTile"),
+  liveRoomFocusVideo: $("liveRoomFocusVideo"),
+  liveRoomFocusLabel: $("liveRoomFocusLabel"),
+  liveRoomToggleToolsBtn: $("liveRoomToggleToolsBtn"),
+  liveRoomToggleChatBtn: $("liveRoomToggleChatBtn"),
+  liveRoomReactBtn: $("liveRoomReactBtn"),
+  liveRoomReactionMenu: $("liveRoomReactionMenu"),
+  liveRoomFullscreenBtn: $("liveRoomFullscreenBtn"),
+  liveRoomToolsPanel: $("liveRoomToolsPanel"),
+  liveRoomChatPanel: $("liveRoomChatPanel"),
   liveRoomWaitingOverlay: $("liveRoomWaitingOverlay"),
   liveRoomWaitingText: $("liveRoomWaitingText"),
   liveRoomVideoStartBtn: $("liveRoomVideoStartBtn"),
@@ -3346,6 +3366,146 @@ function shouldInitiateLiveOffer(selfUserId, peerUserId) {
   return selfId > peerId;
 }
 
+function setLiveDrawerState(drawer, open) {
+  if (drawer === "tools") state.liveRoom.toolsOpen = Boolean(open);
+  if (drawer === "chat") state.liveRoom.chatOpen = Boolean(open);
+  if (drawer === "reaction") state.liveRoom.reactionOpen = Boolean(open);
+  if (el.liveRoomToolsPanel) el.liveRoomToolsPanel.classList.toggle("hidden", !state.liveRoom.toolsOpen);
+  if (el.liveRoomChatPanel) el.liveRoomChatPanel.classList.toggle("hidden", !state.liveRoom.chatOpen);
+  if (el.liveRoomReactionMenu) el.liveRoomReactionMenu.classList.toggle("hidden", !state.liveRoom.reactionOpen);
+}
+
+function toggleLiveDrawer(drawer) {
+  if (drawer === "tools") setLiveDrawerState("tools", !state.liveRoom.toolsOpen);
+  if (drawer === "chat") setLiveDrawerState("chat", !state.liveRoom.chatOpen);
+  if (drawer === "reaction") setLiveDrawerState("reaction", !state.liveRoom.reactionOpen);
+}
+
+function streamForPeer(peerId) {
+  return liveRtcState().remoteStreams[livePeerKey(peerId)] || null;
+}
+
+function pickProviderPeerId() {
+  const entries = Object.values(state.liveRoom.participantMap || {});
+  const provider = entries.find((p) => String(p.actor_role || "").toLowerCase() === "provider" && Number(p.user_id || 0) !== currentLiveUserId());
+  return provider ? String(Number(provider.user_id || 0)) : "";
+}
+
+function pickLastJoinedRemotePeerId() {
+  const entries = Object.values(state.liveRoom.participantMap || {})
+    .filter((p) => Number(p.user_id || 0) !== currentLiveUserId() && streamForPeer(p.user_id))
+    .sort((a, b) => {
+      const ta = new Date(a.joined_at || 0).getTime();
+      const tb = new Date(b.joined_at || 0).getTime();
+      return tb - ta;
+    });
+  return entries.length ? String(Number(entries[0].user_id || 0)) : "";
+}
+
+function updateLiveStageAndFocusVideo() {
+  const selfId = currentLiveUserId();
+  const providerPeer = pickProviderPeerId();
+  const activePeer = state.liveRoom.focusPeerId || pickLastJoinedRemotePeerId();
+  state.liveRoom.focusPeerId = activePeer || "";
+  if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.toggle("hidden", !activePeer || !streamForPeer(activePeer));
+  if (el.liveRoomFocusVideo) el.liveRoomFocusVideo.srcObject = activePeer ? streamForPeer(activePeer) : null;
+  if (el.liveRoomFocusLabel) el.liveRoomFocusLabel.textContent = activePeer ? liveParticipantLabel(activePeer) : "Active speaker";
+
+  let stageStream = null;
+  let stageLabel = "";
+  if (state.liveRoom.role === "student") {
+    const preferred = providerPeer || activePeer;
+    stageStream = preferred ? streamForPeer(preferred) : null;
+    stageLabel = preferred ? liveParticipantLabel(preferred) : "Live stage";
+  } else {
+    stageStream = liveRtcState().localStream || null;
+    stageLabel = "You";
+  }
+  if (!stageStream && activePeer) {
+    stageStream = streamForPeer(activePeer);
+    stageLabel = liveParticipantLabel(activePeer);
+  }
+  if (!stageStream && liveRtcState().localStream) {
+    stageStream = liveRtcState().localStream;
+    stageLabel = selfId ? "You" : "Live stage";
+  }
+  if (el.liveRoomStageVideo) el.liveRoomStageVideo.srcObject = stageStream || null;
+  if (el.liveRoomMeta) {
+    const base = el.liveRoomMeta.textContent || "";
+    if (stageLabel) {
+      const noSpeaker = base.replace(/\s\|\sSpeaker:.*$/i, "");
+      el.liveRoomMeta.textContent = `${noSpeaker} | Speaker: ${stageLabel}`;
+    }
+  }
+}
+
+function setupLiveAudioAnalyzer(peerUserId, stream) {
+  const rtc = liveRtcState();
+  const key = livePeerKey(peerUserId);
+  if (!stream) return;
+  const audioTrack = stream.getAudioTracks()[0];
+  if (!audioTrack) return;
+  if (rtc.peerAudioContexts[key]) return;
+  try {
+    const ac = new AudioContext();
+    const source = ac.createMediaStreamSource(stream);
+    const analyser = ac.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    rtc.peerAudioContexts[key] = { ac, analyser };
+  } catch {}
+}
+
+function teardownLiveAudioAnalyzer(peerUserId) {
+  const rtc = liveRtcState();
+  const key = livePeerKey(peerUserId);
+  const ref = rtc.peerAudioContexts[key];
+  if (!ref) return;
+  try { ref.ac.close(); } catch {}
+  delete rtc.peerAudioContexts[key];
+  delete state.liveRoom.speakerScores[key];
+}
+
+function computeAnalyserLevel(analyser) {
+  const arr = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(arr);
+  let sum = 0;
+  for (let i = 0; i < arr.length; i += 1) {
+    const d = (arr[i] - 128) / 128;
+    sum += d * d;
+  }
+  return Math.sqrt(sum / arr.length);
+}
+
+function startLiveSpeakerMonitor() {
+  if (state.liveRoom.speakerMonitorId) return;
+  state.liveRoom.speakerMonitorId = setInterval(() => {
+    const rtc = liveRtcState();
+    let bestPeer = "";
+    let bestScore = 0.02;
+    Object.entries(rtc.peerAudioContexts || {}).forEach(([key, ref]) => {
+      if (!ref?.analyser) return;
+      const level = computeAnalyserLevel(ref.analyser);
+      const smooth = (state.liveRoom.speakerScores[key] || 0) * 0.65 + level * 0.35;
+      state.liveRoom.speakerScores[key] = smooth;
+      if (smooth > bestScore) {
+        bestScore = smooth;
+        bestPeer = key;
+      }
+    });
+    if (bestPeer) state.liveRoom.focusPeerId = bestPeer;
+    else if (!state.liveRoom.focusPeerId) state.liveRoom.focusPeerId = pickLastJoinedRemotePeerId();
+    updateLiveStageAndFocusVideo();
+  }, 700);
+}
+
+function stopLiveSpeakerMonitor() {
+  if (state.liveRoom.speakerMonitorId) {
+    clearInterval(state.liveRoom.speakerMonitorId);
+    state.liveRoom.speakerMonitorId = null;
+  }
+}
+
 function renderLiveRemoteVideos() {
   if (!el.liveRoomRemoteVideoGrid) return;
   const rtc = liveRtcState();
@@ -3366,12 +3526,14 @@ function renderLiveRemoteVideos() {
     if (!video) return;
     video.srcObject = stream;
   });
+  updateLiveStageAndFocusVideo();
 }
 
 function attachLocalVideoPreview() {
   if (!el.liveRoomLocalVideo) return;
   el.liveRoomLocalVideo.srcObject = liveRtcState().localStream || null;
   el.liveRoomLocalVideo.classList.toggle("live-video-muted", Boolean(liveRtcState().micMuted));
+  updateLiveStageAndFocusVideo();
 }
 
 function replaceLiveOutboundVideoTrack(newVideoTrack) {
@@ -3523,6 +3685,8 @@ function closeLivePeerConnection(peerUserId) {
   }
   delete rtc.peers[key];
   delete rtc.remoteStreams[key];
+  teardownLiveAudioAnalyzer(peerUserId);
+  if (state.liveRoom.focusPeerId === key) state.liveRoom.focusPeerId = pickLastJoinedRemotePeerId();
   renderLiveRemoteVideos();
 }
 
@@ -3542,6 +3706,8 @@ function createLivePeerConnection(peerUserId) {
     const stream = event.streams?.[0];
     if (!stream) return;
     rtc.remoteStreams[key] = stream;
+    setupLiveAudioAnalyzer(peerUserId, stream);
+    if (!state.liveRoom.focusPeerId) state.liveRoom.focusPeerId = key;
     renderLiveRemoteVideos();
   };
   pc.onconnectionstatechange = () => {
@@ -3791,6 +3957,7 @@ function stopLiveRoomPolling() {
 function clearLiveRoomState() {
   closeLiveSignalSocket();
   try { stopLiveRecording().catch(() => {}); } catch {}
+  stopLiveSpeakerMonitor();
   stopLiveRoomPolling();
   if (state.liveRoom.classTimerId) {
     clearInterval(state.liveRoom.classTimerId);
@@ -3807,6 +3974,12 @@ function clearLiveRoomState() {
   state.liveRoom.selectedParticipantId = 0;
   state.liveRoom.accessStatus = "admitted";
   state.liveRoom.hostMuted = false;
+  state.liveRoom.stagePeerId = "";
+  state.liveRoom.focusPeerId = "";
+  state.liveRoom.speakerScores = {};
+  state.liveRoom.toolsOpen = false;
+  state.liveRoom.chatOpen = false;
+  state.liveRoom.reactionOpen = false;
   state.liveRoom.recording = {
     mediaRecorder: null,
     chunks: [],
@@ -3819,6 +3992,7 @@ function clearLiveRoomState() {
   stopTracks(rtc.cameraStream);
   stopTracks(rtc.localStream);
   Object.keys(rtc.peers || {}).forEach((peerId) => closeLivePeerConnection(Number(peerId)));
+  Object.keys(rtc.peerAudioContexts || {}).forEach((peerId) => teardownLiveAudioAnalyzer(Number(peerId)));
   rtc.peers = {};
   rtc.remoteStreams = {};
   rtc.signalSeenIds = {};
@@ -3828,13 +4002,20 @@ function clearLiveRoomState() {
   rtc.screenStream = null;
   rtc.outboundVideoTrack = null;
   rtc.micMuted = false;
+  rtc.peerAudioContexts = {};
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   if (el.liveRoomParticipantsList) el.liveRoomParticipantsList.innerHTML = "";
   if (el.liveRoomHandsList) el.liveRoomHandsList.innerHTML = "";
   if (el.liveRoomRemoteVideoGrid) el.liveRoomRemoteVideoGrid.innerHTML = "";
+  if (el.liveRoomStageVideo) el.liveRoomStageVideo.srcObject = null;
+  if (el.liveRoomFocusVideo) el.liveRoomFocusVideo.srcObject = null;
+  if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.add("hidden");
   attachLocalVideoPreview();
   setLiveRecordingUi(false);
   setLiveWaitingOverlay("admitted", {});
+  setLiveDrawerState("tools", false);
+  setLiveDrawerState("chat", false);
+  setLiveDrawerState("reaction", false);
   if (el.liveRoomTimerText) el.liveRoomTimerText.textContent = "Timer: 00:00";
   if (el.liveRoomPollPanel) {
     el.liveRoomPollPanel.classList.add("hidden");
@@ -3892,7 +4073,7 @@ function renderLiveRoomParticipants(room) {
         <span><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></span>
         <span class="actions">
           ${p.raised_hand ? "<span class='badge'>Hand Raised</span>" : "<span class='meta'>Active</span>"}
-          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" data-live-mute="${Number(p.user_id || 0)}">Mute</button><button class="btn small danger" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
+          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" title="Mute ${escapeHtmlAttr(p.display_name || "user")}" data-live-mute="${Number(p.user_id || 0)}">🔇</button><button class="btn small danger" title="Remove ${escapeHtmlAttr(p.display_name || "user")}" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
         </span>
       </div>
     `,
@@ -4092,6 +4273,12 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   state.liveRoom.selectedParticipantId = 0;
   state.liveRoom.accessStatus = "admitted";
   state.liveRoom.hostMuted = false;
+  state.liveRoom.stagePeerId = "";
+  state.liveRoom.focusPeerId = "";
+  state.liveRoom.speakerScores = {};
+  state.liveRoom.toolsOpen = false;
+  state.liveRoom.chatOpen = false;
+  state.liveRoom.reactionOpen = false;
   if (el.liveRoomChatList) el.liveRoomChatList.innerHTML = "";
   renderLiveRemoteVideos();
   attachLocalVideoPreview();
@@ -4099,9 +4286,14 @@ async function openLiveClassroom(sessionId, role, initialState = null) {
   setLiveRecordingUi(false);
   setLiveWaitingOverlay("admitted", {});
   if (el.liveClassroomScreen) el.liveClassroomScreen.classList.remove("hidden");
+  el.liveRoomStageShell?.requestFullscreen?.().catch(() => {});
+  setLiveDrawerState("tools", false);
+  setLiveDrawerState("chat", false);
+  setLiveDrawerState("reaction", false);
   if (initialState) applyLiveRoomState(initialState);
   await refreshLiveRoom();
   openLiveSignalSocket().catch(() => {});
+  startLiveSpeakerMonitor();
   startLiveRoomPolling();
 }
 
@@ -4123,6 +4315,7 @@ async function leaveLiveClassroom() {
   }
   clearLiveRoomState();
   if (el.liveClassroomScreen) el.liveClassroomScreen.classList.add("hidden");
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   if (role === "provider") {
     refreshProviderLiveClasses().catch(() => {});
   } else {
@@ -7602,6 +7795,24 @@ function bindEvents() {
   $("leaveLiveRoomBtn")?.addEventListener("click", () => {
     leaveLiveClassroom().catch(() => toast("Failed to leave room", "error"));
   });
+  $("liveRoomToggleToolsBtn")?.addEventListener("click", () => {
+    toggleLiveDrawer("tools");
+  });
+  $("liveRoomToggleChatBtn")?.addEventListener("click", () => {
+    toggleLiveDrawer("chat");
+  });
+  $("liveRoomReactBtn")?.addEventListener("click", () => {
+    toggleLiveDrawer("reaction");
+  });
+  $("liveRoomFullscreenBtn")?.addEventListener("click", () => {
+    const target = el.liveRoomStageShell || el.liveClassroomScreen;
+    if (!target) return;
+    if (!document.fullscreenElement) {
+      target.requestFullscreen?.().catch(() => {});
+      return;
+    }
+    document.exitFullscreen?.().catch(() => {});
+  });
   $("liveRoomVideoStartBtn")?.addEventListener("click", () => {
     startLiveCamera()
       .then(() => toast("Camera started"))
@@ -7639,7 +7850,14 @@ function bindEvents() {
       const reaction = String(btn.dataset.liveReaction || "").trim();
       if (!reaction) return;
       sendLiveRoomChatMessage("reaction", reaction).catch((err) => toast(err?.message || "Failed to send reaction", "error"));
+      setLiveDrawerState("reaction", false);
     });
+  });
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const insideReaction = target.closest("#liveRoomReactionMenu") || target.closest("#liveRoomReactBtn");
+    if (!insideReaction && state.liveRoom.reactionOpen) setLiveDrawerState("reaction", false);
   });
   $("liveRoomSaveBoardBtn")?.addEventListener("click", () => {
     const sessionId = Number(state.liveRoom.sessionId || 0);

@@ -333,6 +333,74 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-radius: 10px;
   background: #0b1220;
 }
+.live-stage-shell {
+  position: relative;
+  width: 100%;
+  min-height: min(86vh, 860px);
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 10%, #1f2937 0, #0b1220 55%, #020617 100%);
+}
+.live-stage-topbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 8;
+}
+.live-stage-video {
+  width: 100%;
+  height: min(86vh, 860px);
+  background: #000;
+  object-fit: cover;
+}
+.live-focus-tile {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: min(230px, 28vw);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+  z-index: 7;
+}
+.live-focus-video {
+  width: 100%;
+  min-height: 130px;
+  background: #0b1220;
+  object-fit: cover;
+}
+.live-popover {
+  position: absolute;
+  top: 60px;
+  left: 12px;
+  z-index: 10;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
+}
+.live-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #dbe4f0;
+  z-index: 9;
+  padding: 12px;
+  overflow: auto;
+}
+.live-drawer-left {
+  left: 0;
+  border-right: 1px solid #dbe4f0;
+}
+.live-drawer-right {
+  right: 0;
+  border-left: 1px solid #dbe4f0;
+}
 .live-video-el {
   width: 100%;
   min-height: 180px;
@@ -387,6 +455,14 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-radius: 16px;
   padding: 20px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+@media (max-width: 900px) {
+  .live-stage-video {
+    height: 72vh;
+  }
+  .live-focus-tile {
+    width: min(190px, 42vw);
+  }
 }
 .course-card {
   display: grid;

@@ -753,9 +753,43 @@
           <button id="leaveLiveRoomBtn" class="btn small">Leave Room</button>
         </div>
       </div>
-      <div class="assessment-screen-grid">
-        <section class="item">
-          <h3>Teaching Tools</h3>
+      <div class="live-stage-shell" id="liveRoomStageShell">
+        <div class="live-stage-topbar">
+          <div class="row wrap gap-sm">
+            <button id="liveRoomToggleToolsBtn" class="btn small">Tools</button>
+            <button id="liveRoomToggleChatBtn" class="btn small">Chat</button>
+            <button id="liveRoomReactBtn" class="btn small">React</button>
+            <button id="liveRoomFullscreenBtn" class="btn small">Fullscreen</button>
+            <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
+          </div>
+        </div>
+        <video id="liveRoomStageVideo" autoplay playsinline class="live-stage-video"></video>
+        <div id="liveRoomFocusTile" class="live-focus-tile hidden">
+          <video id="liveRoomFocusVideo" autoplay playsinline class="live-focus-video"></video>
+          <div id="liveRoomFocusLabel" class="live-video-label">Active speaker</div>
+        </div>
+        <video id="liveRoomLocalVideo" autoplay muted playsinline class="hidden"></video>
+        <div id="liveRoomRemoteVideoGrid" class="hidden"></div>
+        <div id="liveRoomReactionMenu" class="live-popover hidden">
+          <div class="row wrap gap-sm">
+            <button class="btn small" data-live-reaction="👍">👍</button>
+            <button class="btn small" data-live-reaction="👏">👏</button>
+            <button class="btn small" data-live-reaction="🔥">🔥</button>
+            <button class="btn small" data-live-reaction="✅">✅</button>
+            <button class="btn small" data-live-reaction="🎉">🎉</button>
+          </div>
+        </div>
+        <aside id="liveRoomToolsPanel" class="live-drawer live-drawer-left hidden">
+          <h3>Tools</h3>
+          <div class="row wrap gap-sm" style="margin-bottom:8px;">
+            <button id="liveRoomVideoStartBtn" class="btn small">Start Camera</button>
+            <button id="liveRoomVideoStopBtn" class="btn small">Stop Camera</button>
+            <button id="liveRoomToggleMicBtn" class="btn small">Mute Mic</button>
+            <button id="liveRoomShareScreenBtn" class="btn small">Share Screen</button>
+            <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
+            <button id="liveRoomStartRecordingBtn" class="btn small">Start Recording</button>
+            <button id="liveRoomStopRecordingBtn" class="btn small">Stop Recording</button>
+          </div>
           <label>Whiteboard Notes
             <textarea id="liveRoomBoardText" rows="6" placeholder="Write key concepts, formulas, and reminders"></textarea>
           </label>
@@ -794,40 +828,6 @@
               <button id="liveRoomClosePollBtn" class="btn small">Close Poll</button>
             </div>
           </div>
-        </section>
-        <section class="item">
-          <h3>Live Stage</h3>
-          <div class="row wrap gap-sm" style="margin-bottom:8px;">
-            <button id="liveRoomVideoStartBtn" class="btn small">Start Camera</button>
-            <button id="liveRoomVideoStopBtn" class="btn small">Stop Camera</button>
-            <button id="liveRoomToggleMicBtn" class="btn small">Mute Mic</button>
-            <button id="liveRoomShareScreenBtn" class="btn small">Share Screen</button>
-            <button id="liveRoomStopShareBtn" class="btn small">Stop Share</button>
-            <button id="liveRoomStartRecordingBtn" class="btn small">Start Recording</button>
-            <button id="liveRoomStopRecordingBtn" class="btn small">Stop Recording</button>
-            <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
-          </div>
-          <video id="liveRoomLocalVideo" autoplay muted playsinline class="live-local-video live-video-el"></video>
-          <div id="liveRoomRemoteVideoGrid" class="live-video-grid" style="margin-top:8px;"></div>
-          <div id="liveRoomStage" class="item" style="min-height:280px;background:linear-gradient(180deg,#f8fafc,#eef2ff);">
-            <div class="meta">Your own in-app video classroom is live. Camera + screen share + chat + poll + hand raise are available.</div>
-            <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
-          </div>
-          <div class="meta" style="margin-top:8px;">No third-party embed is used here.</div>
-        </section>
-        <section class="item">
-          <h3>Class Chat</h3>
-          <div id="liveRoomChatList" class="list" style="max-height:320px;overflow:auto;"></div>
-          <div class="row wrap gap-sm" style="margin-top:10px;">
-            <input id="liveRoomChatInput" class="search" type="text" placeholder="Type message" />
-            <button id="liveRoomSendChatBtn" class="btn small">Send</button>
-          </div>
-          <div class="row wrap gap-sm" style="margin-top:10px;">
-            <button class="btn small" data-live-reaction="Thumbs Up">Thumbs Up</button>
-            <button class="btn small" data-live-reaction="Clap">Clap</button>
-            <button class="btn small" data-live-reaction="Great">Great</button>
-            <button class="btn small" data-live-reaction="Done">Done</button>
-          </div>
           <h4 style="margin:12px 0 6px;">Participants</h4>
           <div id="liveRoomParticipantsList" class="list" style="max-height:180px;overflow:auto;"></div>
           <div class="item" style="margin-top:10px;">
@@ -839,7 +839,16 @@
             </div>
             <div class="meta">Select a participant below, then assign breakout room.</div>
           </div>
-        </section>
+          <div id="liveRoomPollPanel" class="item hidden" style="margin-top:10px;"></div>
+        </aside>
+        <aside id="liveRoomChatPanel" class="live-drawer live-drawer-right hidden">
+          <h3>Class Chat</h3>
+          <div id="liveRoomChatList" class="list" style="max-height:320px;overflow:auto;"></div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <input id="liveRoomChatInput" class="search" type="text" placeholder="Type message" />
+            <button id="liveRoomSendChatBtn" class="btn small">Send</button>
+          </div>
+        </aside>
       </div>
       <div id="liveRoomWaitingOverlay" class="live-waiting-overlay hidden">
         <div class="live-waiting-card">
