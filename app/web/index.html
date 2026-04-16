@@ -758,7 +758,7 @@
               <span id="liveRoomSignalStatus" class="status-pill status-in_review">Realtime: fallback</span>
               <span id="liveRoomPresenceBadge" class="badge">Participants: 0</span>
             </div>
-            <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room"><span class="ico">⏻</span><span class="lbl">Leave</span></button>
+            <button id="leaveLiveRoomBtn" class="btn small live-icon-btn" title="Leave room" aria-label="Leave room"><span class="ico">⏻</span><span class="lbl">Leave</span></button>
           </div>
         </div>
         <video id="liveRoomStageVideo" autoplay playsinline class="live-stage-video"></video>
@@ -783,13 +783,13 @@
           </div>
         </div>
         <div class="live-control-dock">
-          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools"><span class="ico">🛠</span><span class="lbl">Tools</span></button>
-          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat"><span class="ico">💬</span><span class="lbl">Chat</span></button>
-          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions"><span class="ico">😀</span><span class="lbl">React</span></button>
-          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen"><span class="ico">⛶</span><span class="lbl">Fullscreen</span></button>
-          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera"><span class="ico">📷</span><span class="lbl">Camera</span></button>
-          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone"><span class="ico">🎤</span><span class="lbl">Mic</span></button>
-          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen"><span class="ico">🖥</span><span class="lbl">Share</span></button>
+          <button id="liveRoomToggleToolsBtn" class="btn small live-dock-btn live-icon-btn" title="Tools" data-tip="Tools" aria-label="Tools"><span class="ico">🛠</span><span class="lbl">Tools</span></button>
+          <button id="liveRoomToggleChatBtn" class="btn small live-dock-btn live-icon-btn" title="Chat" data-tip="Chat" aria-label="Chat"><span class="ico">💬</span><span class="lbl">Chat</span></button>
+          <button id="liveRoomReactBtn" class="btn small live-dock-btn live-icon-btn" title="Reactions" data-tip="Reactions" aria-label="Reactions"><span class="ico">😀</span><span class="lbl">React</span></button>
+          <button id="liveRoomFullscreenBtn" class="btn small live-dock-btn live-icon-btn" title="Fullscreen" data-tip="Fullscreen" aria-label="Fullscreen"><span class="ico">⛶</span><span class="lbl">Fullscreen</span></button>
+          <button id="liveRoomVideoStartBtn" class="btn small live-dock-btn live-icon-btn" title="Camera" data-tip="Camera" aria-label="Camera"><span class="ico">📷</span><span class="lbl">Camera</span></button>
+          <button id="liveRoomToggleMicBtn" class="btn small live-dock-btn live-icon-btn" title="Microphone" data-tip="Mic" aria-label="Microphone"><span class="ico">🎤</span><span class="lbl">Mic</span></button>
+          <button id="liveRoomShareScreenBtn" class="btn small live-dock-btn live-icon-btn" title="Share screen" data-tip="Share screen" aria-label="Share screen"><span class="ico">🖥</span><span class="lbl">Share</span></button>
           <span id="liveRoomRecordingBadge" class="status-pill status-in_review hidden">Recording...</span>
         </div>
         <aside id="liveRoomToolsPanel" class="live-drawer live-drawer-left hidden">

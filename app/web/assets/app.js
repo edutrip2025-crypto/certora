@@ -3378,6 +3378,11 @@ function setLiveDrawerState(drawer, open) {
 
 function setIconButtonLabel(button, icon, label) {
   if (!button) return;
+  if (label) {
+    button.setAttribute("title", label);
+    button.setAttribute("aria-label", label);
+    button.dataset.tip = label;
+  }
   button.innerHTML = `<span class="ico">${icon}</span><span class="lbl">${escapeHtmlAttr(label)}</span>`;
 }
 
