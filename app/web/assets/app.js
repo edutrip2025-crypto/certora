@@ -2794,7 +2794,6 @@ async function refreshStudentCertifications() {
       <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
       <div class="actions">
         ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
-        <a class="btn small" href="${c.verification_link}" target="_blank" rel="noreferrer">Verify</a>
       </div>
     </div>
   `;
@@ -6574,7 +6573,6 @@ function showAssessmentPreviewResult(reason = "completed") {
               <div class="meta">Certificate ID: ${result.certificate.certificate_id}</div>
               <div class="actions" style="margin-top:8px;">
                 ${result.certificate.download_url ? `<a class="btn small" href="${result.certificate.download_url}" target="_blank" rel="noreferrer">Download Certificate</a>` : ""}
-                <a class="btn small" href="${result.certificate.verification_link}" target="_blank" rel="noreferrer">Verify Certificate</a>
               </div>
             </div>
           ` : ""}
@@ -7281,8 +7279,7 @@ async function refreshProviderCertifications() {
       <div><strong>${c.certificate_id}</strong> - ${c.course_name}</div>
       <div class='meta'>Student: ${c.student_name} | Issued: ${formatTime(c.issued_at)}</div>
       <div class='actions'>
-        <a class='btn small' href='${c.download_url}' target='_blank'>Download/Share</a>
-        <a class='btn small' href='${c.verification_url}' target='_blank'>Verify</a>
+        ${c.download_url ? `<a class='btn small' href='${c.download_url}' target='_blank'>Download/Share</a>` : "<span class='meta'>PDF preparing...</span>"}
       </div>
     `,
     "No certificates issued yet.",

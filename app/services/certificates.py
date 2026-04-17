@@ -3,10 +3,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
+    from reportlab.graphics import renderPDF
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.graphics.shapes import Drawing
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.pdfgen import canvas
 except ImportError:  # pragma: no cover - runtime dependency safety
+    renderPDF = None
+    QrCodeWidget = None
+    Drawing = None
     colors = None
     A4 = None
     landscape = None
@@ -44,6 +50,11 @@ def _absolute_url(path_or_url: str | None) -> str | None:
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
         return path_or_url
     return f"{get_settings().app_base_url.rstrip('/')}{path_or_url}"
+
+
+def certificate_verification_url(certificate: Certificate) -> str:
+    base = get_settings().app_base_url.rstrip("/")
+    return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -87,13 +98,13 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setLineWidth(1)
     c.roundRect(48, 48, page_width - 96, page_height - 96, 14, stroke=1, fill=0)
 
-    # Header branding (no background bar)
+    # Header branding (no top bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-        logo_w = 190
-        logo_h = 44
+        logo_w = 210
+        logo_h = 52
         logo_x = (page_width - logo_w) / 2
-        logo_y = page_height - 104
+        logo_y = page_height - 112
         c.drawImage(
             str(logo_path),
             logo_x,
@@ -104,92 +115,105 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
             preserveAspectRatio=True,
             anchor="c",
         )
-    c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(page_width / 2, page_height - 118, "CERTORA CERTIFICATION")
 
     # Main title
     c.setFillColor(colors.HexColor("#8a6a1f"))
     c.setFont("Times-Bold", 30)
-    c.drawCentredString(page_width / 2, page_height - 160, "Certificate of Achievement")
+    c.drawCentredString(page_width / 2, page_height - 166, "Certificate of Achievement")
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 13)
-    c.drawCentredString(page_width / 2, page_height - 192, "This certifies that")
+    c.drawCentredString(page_width / 2, page_height - 196, "This certifies that")
 
     c.setFillColor(colors.HexColor("#111827"))
     c.setFont("Times-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height - 235, student.full_name)
+    c.drawCentredString(page_width / 2, page_height - 238, student.full_name)
 
     c.setStrokeColor(colors.HexColor("#caa14d"))
     c.setLineWidth(1.2)
-    c.line(page_width / 2 - 210, page_height - 247, page_width / 2 + 210, page_height - 247)
+    c.line(page_width / 2 - 210, page_height - 250, page_width / 2 + 210, page_height - 250)
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 13)
-    c.drawCentredString(page_width / 2, page_height - 278, "has successfully completed the course and passed the final assessment")
+    c.drawCentredString(page_width / 2, page_height - 280, "has successfully completed the course and passed the final assessment")
 
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 22)
-    c.drawCentredString(page_width / 2, page_height - 320, course.title)
+    c.drawCentredString(page_width / 2, page_height - 322, course.title)
 
     c.setFillColor(colors.HexColor("#334155"))
     c.setFont("Helvetica", 12)
-    c.drawCentredString(
-        page_width / 2,
-        page_height - 350,
-        f"Issued by {provider.display_name} through Certora",
-    )
+    c.drawCentredString(page_width / 2, page_height - 352, f"Issued by {provider.display_name} through Certora")
 
-    # Center badge
-    badge_x = page_width / 2 - 72
-    badge_y = page_height - 455
-    c.setFillColor(colors.HexColor("#f5e3a6"))
-    c.circle(page_width / 2, badge_y + 38, 36, fill=1, stroke=0)
+    # Pass/result block (no circle)
+    score_y = page_height - 436
+    c.setFillColor(colors.HexColor("#f9f4e6"))
+    c.roundRect(page_width / 2 - 156, score_y - 18, 312, 64, 12, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor("#d6b35d"))
+    c.setLineWidth(1)
+    c.roundRect(page_width / 2 - 156, score_y - 18, 312, 64, 12, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
-    c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(page_width / 2, badge_y + 34, "PASS")
-    c.setFillColor(colors.HexColor("#111827"))
-    c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(page_width / 2, badge_y + 16, f"{float(result.percentage or 0):.2f}%")
+    c.setFont("Helvetica-Bold", 13)
+    c.drawCentredString(page_width / 2, score_y + 28, "PASS")
+    c.setFillColor(colors.HexColor("#0f172a"))
+    c.setFont("Helvetica-Bold", 24)
+    c.drawCentredString(page_width / 2, score_y + 6, f"{float(result.percentage or 0):.2f}%")
 
-    # Footer metadata
+    # Footer metadata (trimmed)
     issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
-    verification_url = f"{get_settings().app_base_url.rstrip('/')}/certificates/verify/{certificate.certificate_id}"
-    left_x = 86
-    right_x = page_width - 280
-    footer_y = 118
-
     c.setFillColor(colors.HexColor("#1f2937"))
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(left_x, footer_y + 36, "Certificate ID")
-    c.drawString(left_x, footer_y + 10, "Issued On")
-    c.drawString(right_x, footer_y + 36, "Verification URL")
-    c.drawString(right_x, footer_y + 10, "Status")
-
+    c.drawString(86, 154, "Certificate ID")
+    c.drawString(86, 128, "Issued On")
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 10)
-    c.drawString(left_x + 98, footer_y + 36, certificate.certificate_id)
-    c.drawString(left_x + 98, footer_y + 10, issued_on)
-    c.drawString(right_x + 102, footer_y + 10, "ACTIVE")
+    c.drawString(186, 154, certificate.certificate_id)
+    c.drawString(186, 128, issued_on)
 
-    text = c.beginText()
-    text.setTextOrigin(right_x + 102, footer_y + 42)
-    text.setFont("Helvetica", 8.5)
-    text.setFillColor(colors.HexColor("#475569"))
-    verification_line = verification_url
-    max_chars = 54
-    for i in range(0, len(verification_line), max_chars):
-        text.textLine(verification_line[i:i + max_chars])
-    c.drawText(text)
+    # QR-only verification block
+    verification_url = certificate_verification_url(certificate)
+    qr_size = 96
+    qr_x = page_width - 178
+    qr_y = 78
+    c.setFillColor(colors.HexColor("#1f2937"))
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(qr_x - 20, qr_y + qr_size + 18, "For verification, scan QR")
+    if QrCodeWidget and Drawing and renderPDF:
+        qr_widget = QrCodeWidget(verification_url)
+        bounds = qr_widget.getBounds()
+        qr_w = bounds[2] - bounds[0]
+        qr_h = bounds[3] - bounds[1]
+        drawing = Drawing(qr_size, qr_size, transform=[qr_size / qr_w, 0, 0, qr_size / qr_h, 0, 0])
+        drawing.add(qr_widget)
+        renderPDF.draw(drawing, c, qr_x, qr_y)
+    c.setStrokeColor(colors.HexColor("#cbd5e1"))
+    c.setLineWidth(1)
+    c.rect(qr_x - 6, qr_y - 6, qr_size + 12, qr_size + 12, stroke=1, fill=0)
 
-    # Signature line
+    # Signature + digital seal
+    sig_x1 = page_width / 2 - 182
+    sig_x2 = page_width / 2 + 40
+    sig_y = 104
     c.setStrokeColor(colors.HexColor("#94a3b8"))
     c.setLineWidth(1)
-    c.line(page_width / 2 - 150, 92, page_width / 2 + 150, 92)
+    c.line(sig_x1, sig_y, sig_x2, sig_y)
+    c.setFillColor(colors.HexColor("#0f172a"))
+    c.setFont("Times-Italic", 24)
+    c.drawString(sig_x1 + 8, sig_y + 6, "Certora")
     c.setFillColor(colors.HexColor("#475569"))
-    c.setFont("Helvetica", 10)
-    c.drawCentredString(page_width / 2, 76, "Authorized Digital Certificate • Certora")
+    c.setFont("Helvetica", 9)
+    c.drawString(sig_x1, sig_y - 14, "Authorized Digital Signatory")
+
+    seal_x = page_width / 2 + 158
+    seal_y = sig_y + 2
+    c.setStrokeColor(colors.HexColor("#b91c1c"))
+    c.setFillColor(colors.HexColor("#fef2f2"))
+    c.setLineWidth(1.6)
+    c.circle(seal_x, seal_y, 34, stroke=1, fill=1)
+    c.setFillColor(colors.HexColor("#b91c1c"))
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(seal_x, seal_y + 6, "CERTORA")
+    c.drawCentredString(seal_x, seal_y - 6, "DIGITAL SEAL")
 
     c.showPage()
     c.save()
@@ -258,13 +282,12 @@ def issue_certificate(db: Session, result: Result) -> Certificate:
 
 
 def certificate_payload(db: Session, certificate: Certificate) -> dict:
-    settings = get_settings()
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
     student = db.get(User, certificate.student_id)
     result = db.get(Result, certificate.result_id)
     pdf_url = resolve_media_url(certificate.pdf_url) or _absolute_url(certificate.pdf_url)
-    verification_link = f"{settings.app_base_url.rstrip('/')}/certificates/verify/{certificate.certificate_id}"
+    verification_link = certificate_verification_url(certificate)
     return {
         "certificate_id": certificate.certificate_id,
         "result_id": certificate.result_id,
@@ -279,6 +302,6 @@ def certificate_payload(db: Session, certificate: Certificate) -> dict:
         "status": certificate.status,
         "issued_at": certificate.issued_at,
         "pdf_url": pdf_url,
-        "download_url": pdf_url or verification_link,
+        "download_url": pdf_url,
         "verification_link": verification_link,
     }

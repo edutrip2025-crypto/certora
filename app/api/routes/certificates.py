@@ -32,9 +32,16 @@ def generate_certificate(
 
 
 @router.get("/verify/{certificate_id}")
-def verify_certificate(certificate_id: str, request: Request, db: Session = Depends(get_db)):
+def verify_certificate(
+    certificate_id: str,
+    request: Request,
+    vt: str | None = None,
+    db: Session = Depends(get_db),
+):
     cert = db.scalar(select(Certificate).where(Certificate.certificate_id == certificate_id))
     if not cert or cert.status != CertificateStatus.ACTIVE:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    if not vt or vt != cert.verification_token:
         raise HTTPException(status_code=404, detail="Certificate not found")
     try:
         ensure_certificate_pdf(db, cert)

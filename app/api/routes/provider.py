@@ -56,7 +56,7 @@ from app.schemas import (
     ProviderProfileOut,
 )
 from app.live_ws import signal_manager
-from app.services.certificates import ensure_certificate_pdf
+from app.services.certificates import certificate_verification_url, ensure_certificate_pdf
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
@@ -1665,7 +1665,6 @@ def provider_certifications(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    settings = get_settings()
     rows = db.execute(
         select(Certificate, Course, User)
         .join(Course, Course.id == Certificate.course_id)
@@ -1692,9 +1691,9 @@ def provider_certifications(
             "download_url": (
                 resolve_media_url(cert.pdf_url)
                 if resolve_media_url(cert.pdf_url)
-                else f"{settings.app_base_url}/certificates/verify/{cert.certificate_id}"
+                else None
             ),
-            "verification_url": f"{settings.app_base_url}/certificates/verify/{cert.certificate_id}",
+            "verification_url": certificate_verification_url(cert),
         }
         for cert, course, student in rows
     ]
