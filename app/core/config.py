@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     firebase_messaging_sender_id: str = ""
     firebase_app_id: str = ""
     firebase_measurement_id: str = ""
-    object_storage_backend: str = "auto"  # auto | s3 | firebase | local
+    object_storage_backend: str = "s3"  # s3 | firebase | local | auto
     aws_region: str = ""
     aws_s3_bucket_name: str = ""
     aws_access_key_id: str = ""
