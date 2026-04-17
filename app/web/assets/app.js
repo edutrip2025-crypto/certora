@@ -24,9 +24,6 @@ const state = {
   authLoginFallbackTimer: null,
   authProgressTimer: null,
   authProgressVisible: false,
-  preferAuthView: false,
-  publicCoursesLoaded: false,
-  publicCourseThumbCache: {},
   authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
@@ -1070,12 +1067,6 @@ const el = {
   userUidBadges: Array.from(document.querySelectorAll(".js-user-uid-badge")),
   logoutBtns: Array.from(document.querySelectorAll(".js-logout-btn")),
   authView: $("authView"),
-  websiteView: $("websiteView"),
-  websiteSignInBtn: $("websiteSignInBtn"),
-  websiteHeroSignInBtn: $("websiteHeroSignInBtn"),
-  websiteGetStartedBtn: $("websiteGetStartedBtn"),
-  websiteCourseGrid: $("websiteCourseGrid"),
-  backToWebsiteBtn: $("backToWebsiteBtn"),
   studentView: $("studentView"),
   providerView: $("providerView"),
   nonAdminView: $("nonAdminView"),
@@ -1387,15 +1378,14 @@ function showView(mode) {
     clearLiveRoomState();
     el.liveClassroomScreen?.classList.add("hidden");
   }
-  [el.websiteView, el.authView, el.adminView, el.providerView, el.studentView, el.nonAdminView].forEach((n) => n && n.classList.add("hidden"));
-  if (mode === "website") el.websiteView?.classList.remove("hidden");
+  [el.authView, el.adminView, el.providerView, el.studentView, el.nonAdminView].forEach((n) => n && n.classList.add("hidden"));
   if (mode === "auth") el.authView?.classList.remove("hidden");
   if (mode === "admin") el.adminView?.classList.remove("hidden");
   if (mode === "provider") el.providerView?.classList.remove("hidden");
   if (mode === "student") el.studentView?.classList.remove("hidden");
   if (mode === "non-admin") el.nonAdminView?.classList.remove("hidden");
-  el.workspaceBrand?.classList.toggle("hidden", mode === "auth" || mode === "website");
-  if (mode === "auth" || mode === "website") {
+  el.workspaceBrand?.classList.toggle("hidden", mode === "auth");
+  if (mode === "auth") {
     hideAuthProgress();
     el.workspaceExpandFab?.classList.add("hidden");
   } else {
@@ -1409,110 +1399,6 @@ function showAuthMode(mode = "login") {
   const loginMode = mode !== "signup";
   el.loginCard?.classList.toggle("hidden", !loginMode);
   el.signupCard?.classList.toggle("hidden", loginMode);
-}
-
-function openAuthFromWebsite(mode = "login") {
-  state.preferAuthView = true;
-  showView("auth");
-  showAuthMode(mode);
-}
-
-function openWebsiteLanding() {
-  state.preferAuthView = false;
-  showView("website");
-}
-
-function looksLikeVideoUrl(value) {
-  const src = String(value || "").toLowerCase();
-  return (
-    src.includes(".mp4")
-    || src.includes(".webm")
-    || src.includes(".mov")
-    || src.includes(".m4v")
-    || src.includes("video")
-  );
-}
-
-function resolvePublicCourseThumbnail(course) {
-  const fallback = "/assets/certora_logo.png";
-  const raw = String(course?.thumbnail_url || "").trim();
-  if (!raw) return Promise.resolve(fallback);
-  if (!looksLikeVideoUrl(raw)) return Promise.resolve(raw);
-  if (state.publicCourseThumbCache[raw]) return Promise.resolve(state.publicCourseThumbCache[raw]);
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "metadata";
-    let done = false;
-    const finish = (src) => {
-      if (done) return;
-      done = true;
-      state.publicCourseThumbCache[raw] = src;
-      resolve(src);
-    };
-    const fail = () => finish(fallback);
-    const timer = setTimeout(fail, 3500);
-    video.addEventListener("error", fail, { once: true });
-    video.addEventListener("loadeddata", () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 360;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return fail();
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        clearTimeout(timer);
-        finish(canvas.toDataURL("image/jpeg", 0.82));
-      } catch {
-        fail();
-      }
-    }, { once: true });
-    video.src = raw;
-    try {
-      video.load();
-    } catch {
-      fail();
-    }
-  });
-}
-
-async function renderWebsiteCourses() {
-  if (!el.websiteCourseGrid) return;
-  try {
-    const courses = await api("GET", "/courses/public", null, false);
-    if (!Array.isArray(courses) || !courses.length) {
-      el.websiteCourseGrid.innerHTML = "<div class='meta'>No published courses available yet.</div>";
-      return;
-    }
-    const cards = await Promise.all(
-      courses.slice(0, 18).map(async (course) => {
-        const thumb = await resolvePublicCourseThumbnail(course);
-        const title = escapeHtmlAttr(String(course.title || "Course"));
-        const category = escapeHtmlAttr(String(course.category || "General"));
-        const desc = escapeHtmlAttr(String(course.description || "").slice(0, 120));
-        return `
-          <article class="site-course-card">
-            <img class="site-course-thumb" src="${thumb}" alt="${title}" />
-            <div class="site-course-body">
-              <div class="site-course-title">${title}</div>
-              <div class="site-course-meta">${category}</div>
-              <div class="site-course-meta">${desc}</div>
-              <button class="btn small website-enroll-btn" data-course-id="${Number(course.id)}">Sign in to enroll</button>
-            </div>
-          </article>
-        `;
-      }),
-    );
-    el.websiteCourseGrid.innerHTML = cards.join("");
-    el.websiteCourseGrid.querySelectorAll(".website-enroll-btn").forEach((btn) => {
-      btn.addEventListener("click", () => openAuthFromWebsite("login"));
-    });
-  } catch (err) {
-    el.websiteCourseGrid.innerHTML = "<div class='meta'>Unable to load courses right now.</div>";
-    log("website_courses_error", String(err));
-  }
 }
 
 function renderNonAdminRoleFix(context = null) {
@@ -7603,12 +7489,8 @@ async function initFirebase() {
       el.logoutBtns.forEach((b) => {
         b.disabled = true;
       });
-      if (state.preferAuthView) {
-        showView("auth");
-        showAuthMode("login");
-      } else {
-        showView("website");
-      }
+      showView("auth");
+      showAuthMode("login");
       return;
     }
     try {
@@ -7737,10 +7619,6 @@ function bindEvents() {
   });
   el.showSignupBtn?.addEventListener("click", () => showAuthMode("signup"));
   el.showLoginBtn?.addEventListener("click", () => showAuthMode("login"));
-  el.websiteSignInBtn?.addEventListener("click", () => openAuthFromWebsite("login"));
-  el.websiteHeroSignInBtn?.addEventListener("click", () => openAuthFromWebsite("login"));
-  el.websiteGetStartedBtn?.addEventListener("click", () => openAuthFromWebsite("signup"));
-  el.backToWebsiteBtn?.addEventListener("click", () => openWebsiteLanding());
 
   $("loginBtn")?.addEventListener("click", async () => {
     if (!ensureAuthReady()) return;
@@ -8761,8 +8639,7 @@ function bindEvents() {
   }
   bindEvents();
   showAuthMode("login");
-  openWebsiteLanding();
-  await renderWebsiteCourses();
+  showView("auth");
   try {
     await initFirebase();
   } catch (err) {

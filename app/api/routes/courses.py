@@ -79,25 +79,8 @@ def list_courses(db: Session = Depends(get_db), user: User = Depends(get_current
 
 @router.get("/public", response_model=list[CourseOut])
 def public_courses(db: Session = Depends(get_db)):
-    courses = list(db.scalars(select(Course).where(Course.is_published.is_(True))).all())
-    for course in courses:
-        if (course.thumbnail_url or "").strip():
-            continue
-        first_lesson_video = db.scalar(
-            select(Lesson.recorded_video_url)
-            .join(CourseModule, CourseModule.id == Lesson.module_id)
-            .where(
-                CourseModule.course_id == course.id,
-                Lesson.recorded_video_url.is_not(None),
-                Lesson.recorded_video_url != "",
-            )
-            .order_by(Lesson.position.asc(), Lesson.id.asc())
-            .limit(1),
-        )
-        if first_lesson_video:
-            # Frontend will render first frame as thumbnail when URL is a video source.
-            course.thumbnail_url = first_lesson_video
-    return courses
+    courses = db.scalars(select(Course).where(Course.is_published.is_(True))).all()
+    return list(courses)
 
 
 @router.post("/{course_id}/modules")
