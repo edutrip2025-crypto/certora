@@ -1678,9 +1678,8 @@ def provider_certifications(
             prev_url = cert.pdf_url
             ensure_certificate_pdf(db, cert, force_regenerate=True)
             dirty = dirty or (cert.pdf_url != prev_url)
-        except RuntimeError:
-            # Keep provider certificate list available even if PDF generation/storage is temporarily unavailable.
-            continue
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=f"Certificate refresh failed: {exc}") from exc
     if dirty:
         db.commit()
     return [
