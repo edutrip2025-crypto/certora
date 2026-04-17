@@ -114,6 +114,14 @@ def _trim_to_width(c: canvas.Canvas, text: str, *, font_name: str, font_size: fl
     return (out + suffix) if out else suffix
 
 
+def _has_current_template_pdf(certificate: Certificate) -> bool:
+    url = str(certificate.pdf_url or "")
+    if not url:
+        return False
+    marker = f"/{CERTIFICATE_TEMPLATE_VERSION}/"
+    return marker in url or f"{CERTIFICATE_TEMPLATE_VERSION}/" in url
+
+
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
@@ -372,6 +380,18 @@ def certificate_payload(
     mask_identity: bool = False,
     verification_base_url: str | None = None,
 ) -> dict:
+    if not _has_current_template_pdf(certificate):
+        try:
+            ensure_certificate_pdf(
+                db,
+                certificate,
+                force_regenerate=True,
+                verification_base_url=verification_base_url,
+            )
+            db.flush()
+        except RuntimeError:
+            # Return payload with existing file/link if regeneration is temporarily unavailable.
+            pass
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
     student = db.get(User, certificate.student_id)
