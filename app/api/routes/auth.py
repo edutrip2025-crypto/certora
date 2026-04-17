@@ -1,4 +1,5 @@
 import hmac
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -61,6 +62,17 @@ def _safe_int(value) -> int | None:
         return None
 
 
+def _firebase_local_email(firebase_uid: str, suffix: int | None = None) -> str:
+    uid = str(firebase_uid or "").strip().lower()
+    # Keep local-part email safe and deterministic across providers.
+    safe_uid = re.sub(r"[^a-z0-9._+-]+", "_", uid).strip("._+-")
+    if not safe_uid:
+        safe_uid = "firebase_user"
+    if suffix and suffix > 0:
+        safe_uid = f"{safe_uid}.{suffix}"
+    return f"{safe_uid}@firebase.local"
+
+
 def _find_user_for_identity(
     db: Session,
     *,
@@ -76,8 +88,18 @@ def _find_user_for_identity(
         by_email = db.scalar(_normalized_user_query(email_norm))
         if by_email:
             return by_email
-    local_email = f"{firebase_uid}@firebase.local".strip().lower()
-    return db.scalar(_normalized_user_query(local_email))
+    # Prefer sanitized deterministic firebase-local email.
+    local_email = _firebase_local_email(firebase_uid)
+    by_local = db.scalar(_normalized_user_query(local_email))
+    if by_local:
+        return by_local
+    # Backward compatibility for any previously stored legacy uid-based email.
+    legacy_email = f"{str(firebase_uid or '').strip().lower()}@firebase.local"
+    if legacy_email != local_email:
+        by_legacy = db.scalar(_normalized_user_query(legacy_email))
+        if by_legacy:
+            return by_legacy
+    return None
 
 
 def _resolve_non_admin_role(
@@ -199,7 +221,7 @@ def me_context(
             _safe_sync_claims(firebase_uid, current_user, ApprovalStatus.APPROVED)
         else:
             current_user = User(
-                email=email_norm or f"{firebase_uid}@firebase.local",
+                email=email_norm or _firebase_local_email(firebase_uid),
                 full_name=fallback_name,
                 password_hash="firebase",
                 role=desired_role,
@@ -281,7 +303,9 @@ def register_role(
         firebase_uid=firebase_uid,
     )
 
-    target_email = email_norm or (current_user.email if current_user else f"{firebase_uid}@firebase.local")
+    target_email = email_norm or (current_user.email if current_user else _firebase_local_email(firebase_uid))
+    if not email_norm and (not target_email or target_email.endswith("@firebase.local")):
+        target_email = _firebase_local_email(firebase_uid)
 
     if not current_user:
         current_user = User(
@@ -322,7 +346,7 @@ def register_role(
         if not recovered:
             # Last resort: create a deterministic local-email user for this Firebase UID.
             recovered = User(
-                email=f"{firebase_uid}@firebase.local".strip().lower(),
+                email=_firebase_local_email(firebase_uid),
                 full_name=payload.full_name or fallback_name,
                 password_hash="firebase",
                 role=payload.role,
@@ -356,11 +380,7 @@ def register_role(
                 # and keep retrying with a suffix to avoid uniqueness races.
                 created = None
                 for idx in range(6):
-                    probe_email = (
-                        f"{firebase_uid}@firebase.local".strip().lower()
-                        if idx == 0
-                        else f"{firebase_uid}.{idx}@firebase.local".strip().lower()
-                    )
+                    probe_email = _firebase_local_email(firebase_uid, idx if idx > 0 else None)
                     created = db.scalar(_normalized_user_query(probe_email))
                     if created:
                         break
