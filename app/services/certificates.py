@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v13"
+CERTIFICATE_TEMPLATE_VERSION = "v14"
 
 
 def _font_size_to_fit(
@@ -180,7 +180,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 12)
-    c.drawCentredString(page_width / 2, page_height - 172, "This certifies that")
+    c.drawCentredString(page_width / 2, page_height - 198, "This certifies that")
 
     student_name = (student.full_name or "").strip()
     name_font = _font_size_to_fit(
@@ -193,15 +193,15 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     )
     c.setFillColor(colors.HexColor("#111827"))
     c.setFont("Times-Bold", name_font)
-    c.drawCentredString(page_width / 2, page_height - 208, student_name)
+    c.drawCentredString(page_width / 2, page_height - 232, student_name)
 
     c.setStrokeColor(colors.HexColor("#caa14d"))
     c.setLineWidth(1.2)
-    c.line(page_width / 2 - 225, page_height - 224, page_width / 2 + 225, page_height - 224)
+    c.line(page_width / 2 - 225, page_height - 246, page_width / 2 + 225, page_height - 246)
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 12)
-    c.drawCentredString(page_width / 2, page_height - 248, "has successfully completed the course and passed the final assessment")
+    c.drawCentredString(page_width / 2, page_height - 270, "has successfully completed the course and passed the final assessment")
 
     course_title = _trim_to_width(
         c,
@@ -212,11 +212,11 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     )
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 21)
-    c.drawCentredString(page_width / 2, page_height - 284, course_title)
+    c.drawCentredString(page_width / 2, page_height - 304, course_title)
 
     c.setFillColor(colors.HexColor("#334155"))
     c.setFont("Helvetica", 11.5)
-    c.drawCentredString(page_width / 2, page_height - 312, f"Issued by {provider.display_name} through Certora")
+    c.drawCentredString(page_width / 2, page_height - 332, f"Issued by {provider.display_name} through Certora")
 
     # Pass/result block (aligned card)
     score_y = page_height - 380
