@@ -330,6 +330,7 @@ def register_role(
             )
             db.add(recovered)
             db.flush()
+
         recovered.full_name = payload.full_name or fallback_name
         recovered.role = payload.role
         recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
@@ -342,6 +343,8 @@ def register_role(
             db.commit()
         except IntegrityError:
             db.rollback()
+            # Final idempotent fallback: if the row now exists due a concurrent request,
+            # return that row instead of failing signup.
             recovered = _find_user_for_identity(
                 db,
                 claim_user_id=claim_user_id,
@@ -349,19 +352,19 @@ def register_role(
                 firebase_uid=firebase_uid,
             )
             if not recovered:
+                # Keep previous behavior/message for truly unrecoverable states.
                 raise HTTPException(
                     status_code=500,
                     detail="Account profile setup failed. Please retry login once.",
                 )
             recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
-            if not recovered_approval:
-                recovered_approval = UserApproval(user_id=recovered.id)
-                db.add(recovered_approval)
-            recovered.full_name = payload.full_name or fallback_name
-            recovered.role = payload.role
-            recovered_approval.status = ApprovalStatus.APPROVED
-            recovered_approval.rejection_reason = None
-            db.commit()
+            if recovered_approval and recovered_approval.status != ApprovalStatus.APPROVED:
+                recovered_approval.status = ApprovalStatus.APPROVED
+                recovered_approval.rejection_reason = None
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
         current_user = recovered
         approval = recovered_approval
 
