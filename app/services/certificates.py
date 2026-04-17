@@ -60,6 +60,13 @@ def certificate_verification_url(certificate: Certificate) -> str:
     return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
 
 
+def safe_certificate_verification_url(certificate: Certificate) -> str | None:
+    try:
+        return certificate_verification_url(certificate)
+    except Exception:
+        return None
+
+
 def _masked_name(value: str) -> str:
     text = (value or "").strip()
     if len(text) <= 6:
@@ -311,7 +318,7 @@ def certificate_payload(db: Session, certificate: Certificate) -> dict:
     student = db.get(User, certificate.student_id)
     result = db.get(Result, certificate.result_id)
     pdf_url = resolve_media_url(certificate.pdf_url) or _absolute_url(certificate.pdf_url)
-    verification_link = certificate_verification_url(certificate)
+    verification_link = safe_certificate_verification_url(certificate)
     return {
         "certificate_id": certificate.certificate_id,
         "result_id": certificate.result_id,

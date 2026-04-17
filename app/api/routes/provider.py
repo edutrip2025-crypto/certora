@@ -56,7 +56,7 @@ from app.schemas import (
     ProviderProfileOut,
 )
 from app.live_ws import signal_manager
-from app.services.certificates import certificate_verification_url, ensure_certificate_pdf
+from app.services.certificates import ensure_certificate_pdf, safe_certificate_verification_url
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
@@ -1693,7 +1693,7 @@ def provider_certifications(
                 if resolve_media_url(cert.pdf_url)
                 else None
             ),
-            "verification_url": certificate_verification_url(cert),
+            "verification_url": safe_certificate_verification_url(cert),
         }
         for cert, course, student in rows
     ]
