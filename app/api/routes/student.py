@@ -335,7 +335,8 @@ def student_certificates(
             raise HTTPException(status_code=503, detail=f"Certificate refresh failed: {exc}") from exc
     if dirty:
         db.commit()
-    return [certificate_payload(db, cert) for cert in items]
+    base_url = _public_request_base_url(request)
+    return [certificate_payload(db, cert, verification_base_url=base_url) for cert in items]
 
 
 @router.post("/enroll", response_model=EnrollmentOut)
@@ -611,7 +612,7 @@ def submit_attempt(
             cert = issue_certificate(db, result, verification_base_url=_public_request_base_url(request))
             db.commit()
             db.refresh(cert)
-            certificate = certificate_payload(db, cert)
+            certificate = certificate_payload(db, cert, verification_base_url=_public_request_base_url(request))
         except Exception:
             # Keep result submission successful even if certificate generation/storage is unavailable.
             db.rollback()
@@ -692,7 +693,11 @@ def get_result(
         "training_feedback_status": latest_feedback.feedback_label if latest_feedback else None,
         "training_feedback_comment": latest_feedback.comment if latest_feedback else None,
         "training_feedback_count": feedback_count,
-        "certificate": certificate_payload(db, cert) if cert else None,
+        "certificate": (
+            certificate_payload(db, cert, verification_base_url=_public_request_base_url(request))
+            if cert
+            else None
+        ),
     }
 
 

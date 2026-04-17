@@ -57,9 +57,9 @@ def certificate_verification_url(certificate: Certificate, *, base_url: str | No
     return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
 
 
-def safe_certificate_verification_url(certificate: Certificate) -> str | None:
+def safe_certificate_verification_url(certificate: Certificate, *, base_url: str | None = None) -> str | None:
     try:
-        return certificate_verification_url(certificate)
+        return certificate_verification_url(certificate, base_url=base_url)
     except Exception:
         return None
 
@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v9"
+CERTIFICATE_TEMPLATE_VERSION = "v10"
 
 
 def _font_size_to_fit(
@@ -160,7 +160,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     if logo_path.exists():
         logo_w = 270
         logo_h = 66
-        logo_x = 50
+        logo_x = (page_width - logo_w) / 2
         logo_y = page_height - 118
         c.drawImage(
             str(logo_path),
@@ -365,13 +365,19 @@ def issue_certificate(db: Session, result: Result, *, verification_base_url: str
         return cert
 
 
-def certificate_payload(db: Session, certificate: Certificate, *, mask_identity: bool = False) -> dict:
+def certificate_payload(
+    db: Session,
+    certificate: Certificate,
+    *,
+    mask_identity: bool = False,
+    verification_base_url: str | None = None,
+) -> dict:
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
     student = db.get(User, certificate.student_id)
     result = db.get(Result, certificate.result_id)
     pdf_url = resolve_media_url(certificate.pdf_url) or _absolute_url(certificate.pdf_url)
-    verification_link = safe_certificate_verification_url(certificate)
+    verification_link = safe_certificate_verification_url(certificate, base_url=verification_base_url)
     return {
         "certificate_id": certificate.certificate_id,
         "result_id": certificate.result_id,

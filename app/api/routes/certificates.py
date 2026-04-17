@@ -37,7 +37,7 @@ def generate_certificate(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     db.commit()
     db.refresh(cert)
-    return certificate_payload(db, cert)
+    return certificate_payload(db, cert, verification_base_url=_public_request_base_url(request))
 
 
 @router.get("/verify/{certificate_id}")
@@ -71,7 +71,12 @@ def verify_certificate(
     )
     db.commit()
     db.refresh(cert)
-    return certificate_payload(db, cert, mask_identity=True)
+    return certificate_payload(
+        db,
+        cert,
+        mask_identity=True,
+        verification_base_url=_public_request_base_url(request),
+    )
 
 
 @router.post("/{certificate_id}/revoke")

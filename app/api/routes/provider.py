@@ -1707,7 +1707,10 @@ def provider_certifications(
                 if resolve_media_url(cert.pdf_url)
                 else None
             ),
-            "verification_url": safe_certificate_verification_url(cert),
+            "verification_url": safe_certificate_verification_url(
+                cert,
+                base_url=_public_request_base_url(request),
+            ),
         }
         for cert, course, student in rows
     ]
