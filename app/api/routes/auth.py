@@ -20,6 +20,7 @@ from app.services.firebase_auth import (
     set_firebase_password_by_email,
     verify_firebase_token,
 )
+from app.services.identity_verification import verify_identity_via_api
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
@@ -200,6 +201,16 @@ def _upsert_identity_verification(
         id_number=id_number,
         country_code=country_code,
     )
+    verification = verify_identity_via_api(
+        id_type=v_type,
+        id_number=v_number,
+        country_code=v_country,
+        role=role.value,
+    )
+    if not verification.verified:
+        detail = verification.message or "Identity verification failed."
+        status_code = 503 if ("unavailable" in detail or "not configured" in detail or "http_error=5" in detail) else 400
+        raise HTTPException(status_code=status_code, detail=detail)
     if not existing_identity:
         existing_identity = UserIdentityVerification(user_id=user_id)
         db.add(existing_identity)
@@ -207,7 +218,7 @@ def _upsert_identity_verification(
     existing_identity.id_number = v_number
     existing_identity.country_code = v_country
     existing_identity.document_url = (document_url or "").strip() or None
-    existing_identity.status = ApprovalStatus.PENDING
+    existing_identity.status = ApprovalStatus.APPROVED
     existing_identity.reviewed_by_admin_id = None
     existing_identity.reviewed_at = None
 

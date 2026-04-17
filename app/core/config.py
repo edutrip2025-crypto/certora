@@ -37,6 +37,22 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_sender: str = "noreply@certora.in"
     admin_emails: str = "admin@certora.in,admin@certora.com"
+    identity_verify_enforce: bool = True
+    identity_verify_timeout_seconds: int = 15
+    identity_verify_api_key: str = ""
+    identity_verify_api_key_header: str = "x-api-key"
+    identity_verify_bearer_token: str = ""
+    identity_verify_extra_headers_json: str = ""
+    identity_verify_aadhaar_url: str = ""
+    identity_verify_pan_url: str = ""
+    identity_verify_cin_url: str = ""
+    identity_verify_gst_url: str = ""
+    identity_verify_passport_url: str = ""
+    identity_verify_national_id_url: str = ""
+    identity_verify_driving_license_url: str = ""
+    identity_verify_voter_id_url: str = ""
+    identity_verify_tax_id_url: str = ""
+    identity_verify_other_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 

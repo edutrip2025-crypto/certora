@@ -57,6 +57,7 @@ from app.schemas import (
 )
 from app.live_ws import signal_manager
 from app.services.certificates import ensure_certificate_pdf, safe_certificate_verification_url
+from app.services.identity_verification import verify_identity_via_api
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
@@ -120,6 +121,16 @@ def _normalize_business_registration(
         raise HTTPException(status_code=400, detail="Business GSTIN format is invalid.")
     if t == "cin" and not re.fullmatch(r"[A-Z0-9]{21}", n):
         raise HTTPException(status_code=400, detail="Business CIN format is invalid.")
+    verification = verify_identity_via_api(
+        id_type=t,
+        id_number=n,
+        country_code=c,
+        role=UserRole.PROVIDER.value,
+    )
+    if not verification.verified:
+        detail = verification.message or "Business registration verification failed."
+        status_code = 503 if ("unavailable" in detail or "not configured" in detail or "http_error=5" in detail) else 400
+        raise HTTPException(status_code=status_code, detail=detail)
     return t, n, c
 
 
