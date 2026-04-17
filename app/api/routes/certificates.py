@@ -10,9 +10,18 @@ from app.services.certificates import certificate_payload, ensure_certificate_pd
 router = APIRouter(prefix="/certificates", tags=["certificates"])
 
 
+def _public_request_base_url(request: Request) -> str:
+    xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    xf_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    proto = xf_proto or request.url.scheme
+    host = xf_host or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
+
+
 @router.post("/generate/{result_id}")
 def generate_certificate(
     result_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.PROVIDER)),
 ):
@@ -23,7 +32,7 @@ def generate_certificate(
         raise HTTPException(status_code=400, detail="Result is not pass eligible")
 
     try:
-        cert = issue_certificate(db, result)
+        cert = issue_certificate(db, result, verification_base_url=_public_request_base_url(request))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     db.commit()
@@ -44,7 +53,12 @@ def verify_certificate(
     if not vt or vt != cert.verification_token:
         raise HTTPException(status_code=404, detail="Certificate not found")
     try:
-        ensure_certificate_pdf(db, cert, force_regenerate=True)
+        ensure_certificate_pdf(
+            db,
+            cert,
+            force_regenerate=True,
+            verification_base_url=_public_request_base_url(request),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

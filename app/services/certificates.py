@@ -52,8 +52,8 @@ def _absolute_url(path_or_url: str | None) -> str | None:
     return f"{get_settings().app_base_url.rstrip('/')}{path_or_url}"
 
 
-def certificate_verification_url(certificate: Certificate) -> str:
-    base = get_settings().app_base_url.rstrip("/")
+def certificate_verification_url(certificate: Certificate, *, base_url: str | None = None) -> str:
+    base = (base_url or get_settings().app_base_url).rstrip("/")
     return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
 
 
@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v6"
+CERTIFICATE_TEMPLATE_VERSION = "v7"
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -97,7 +97,7 @@ def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
     }
 
 
-def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
+def render_certificate_pdf(db: Session, certificate: Certificate, *, verification_base_url: str | None = None) -> str:
     _ensure_pdf_engine()
     ctx = _load_certificate_context(db, certificate)
     course: Course = ctx["course"]
@@ -194,7 +194,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     # Footer metadata (trimmed; details move under QR)
     issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
     # QR-only verification block
-    verification_url = certificate_verification_url(certificate)
+    verification_url = certificate_verification_url(certificate, base_url=verification_base_url)
     qr_size = 66
     qr_x = page_width - 188
     qr_y = 98
@@ -245,23 +245,34 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     )
 
 
-def ensure_certificate_pdf(db: Session, certificate: Certificate, *, force_regenerate: bool = False) -> Certificate:
+def ensure_certificate_pdf(
+    db: Session,
+    certificate: Certificate,
+    *,
+    force_regenerate: bool = False,
+    verification_base_url: str | None = None,
+) -> Certificate:
     if certificate.pdf_url and not force_regenerate:
         if certificate.pdf_url.startswith("http://") or certificate.pdf_url.startswith("https://"):
             return certificate
         existing_path = Path(get_settings().resolved_media_dir) / certificate.pdf_url.replace("/media/", "", 1)
         if existing_path.exists():
             return certificate
-    certificate.pdf_url = render_certificate_pdf(db, certificate)
+    certificate.pdf_url = render_certificate_pdf(db, certificate, verification_base_url=verification_base_url)
     db.flush()
     return certificate
 
 
-def issue_certificate(db: Session, result: Result) -> Certificate:
+def issue_certificate(db: Session, result: Result, *, verification_base_url: str | None = None) -> Certificate:
     existing = db.scalar(select(Certificate).where(Certificate.result_id == result.id))
     if existing:
         try:
-            return ensure_certificate_pdf(db, existing, force_regenerate=True)
+            return ensure_certificate_pdf(
+                db,
+                existing,
+                force_regenerate=True,
+                verification_base_url=verification_base_url,
+            )
         except RuntimeError:
             # Keep existing certificate row usable even if PDF engine/storage is temporarily unavailable.
             return existing
@@ -293,7 +304,7 @@ def issue_certificate(db: Session, result: Result) -> Certificate:
     db.add(cert)
     db.flush()
     try:
-        return ensure_certificate_pdf(db, cert)
+        return ensure_certificate_pdf(db, cert, verification_base_url=verification_base_url)
     except RuntimeError:
         # Preserve issued certificate row; PDF can be generated lazily later.
         return cert

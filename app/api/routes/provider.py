@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import and_, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -61,6 +61,14 @@ from app.services.media_storage import resolve_media_url, upload_file_to_cloud_s
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
+
+
+def _public_request_base_url(request: Request) -> str:
+    xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    xf_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    proto = xf_proto or request.url.scheme
+    host = xf_host or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
 
 
 def _media_paths() -> tuple[Path, Path]:
@@ -1661,6 +1669,7 @@ def mark_notification_read(
 
 @router.get("/workspace/certifications")
 def provider_certifications(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
@@ -1676,7 +1685,12 @@ def provider_certifications(
     for cert, _, _ in rows:
         try:
             prev_url = cert.pdf_url
-            ensure_certificate_pdf(db, cert, force_regenerate=True)
+            ensure_certificate_pdf(
+                db,
+                cert,
+                force_regenerate=True,
+                verification_base_url=_public_request_base_url(request),
+            )
             dirty = dirty or (cert.pdf_url != prev_url)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=f"Certificate refresh failed: {exc}") from exc

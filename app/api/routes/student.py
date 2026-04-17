@@ -60,6 +60,14 @@ from app.services.media_storage import resolve_media_url
 router = APIRouter(prefix="/student", tags=["student"])
 
 
+def _public_request_base_url(request: Request) -> str:
+    xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    xf_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    proto = xf_proto or request.url.scheme
+    host = xf_host or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
+
+
 def _latest_training_feedback(db: Session, attempt_id: int) -> tuple[ProctorTrainingFeedback | None, int]:
     count = int(
         db.scalar(
@@ -301,6 +309,7 @@ def join_live_lesson(
 
 @router.get("/certificates")
 def student_certificates(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
@@ -315,7 +324,12 @@ def student_certificates(
     for cert in items:
         try:
             prev_url = cert.pdf_url
-            ensure_certificate_pdf(db, cert, force_regenerate=True)
+            ensure_certificate_pdf(
+                db,
+                cert,
+                force_regenerate=True,
+                verification_base_url=_public_request_base_url(request),
+            )
             dirty = dirty or (cert.pdf_url != prev_url)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=f"Certificate refresh failed: {exc}") from exc
@@ -538,6 +552,7 @@ def log_attempt_event(
 @router.post("/attempts/{attempt_id}/submit", response_model=ResultOut)
 def submit_attempt(
     attempt_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
@@ -593,7 +608,7 @@ def submit_attempt(
     certificate = None
     if passed and exam.certificate_enabled:
         try:
-            cert = issue_certificate(db, result)
+            cert = issue_certificate(db, result, verification_base_url=_public_request_base_url(request))
             db.commit()
             db.refresh(cert)
             certificate = certificate_payload(db, cert)
@@ -628,6 +643,7 @@ def submit_attempt(
 @router.get("/attempts/{attempt_id}/result", response_model=ResultOut)
 def get_result(
     attempt_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
@@ -648,7 +664,12 @@ def get_result(
     latest_feedback, feedback_count = _latest_training_feedback(db, result.attempt_id)
     cert = db.scalar(select(Certificate).where(Certificate.result_id == result.id))
     if cert:
-        ensure_certificate_pdf(db, cert, force_regenerate=True)
+        ensure_certificate_pdf(
+            db,
+            cert,
+            force_regenerate=True,
+            verification_base_url=_public_request_base_url(request),
+        )
         db.commit()
     return {
         "id": result.id,
