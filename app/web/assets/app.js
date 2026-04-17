@@ -3529,7 +3529,7 @@ function liveUiIcon(name) {
   if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
   if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
   if (name === "fullscreen") return base("<path d='M4 9V4h5M15 4h5v5M4 15v5h5M20 15v5h-5'/>", 2.2);
-  if (name === "fullscreen-exit") return base("<path d='M9 4H4v5M15 4h5v5M9 20H4v-5M20 20h-5v-5'/>", 2.2);
+  if (name === "fullscreen-exit") return base("<path d='M9 9V4H4M15 9V4h5M9 15v5H4M15 15v5h5'/>", 2.2);
   if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
   if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
   if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
