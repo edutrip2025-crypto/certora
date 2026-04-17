@@ -54,7 +54,17 @@ def _absolute_url(path_or_url: str | None) -> str | None:
 
 def certificate_verification_url(certificate: Certificate) -> str:
     base = get_settings().app_base_url.rstrip("/")
+    lower = base.lower()
+    if "localhost" in lower or "127.0.0.1" in lower:
+        raise RuntimeError("Certificate verification base URL must be public, not localhost.")
     return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
+
+
+def _masked_name(value: str) -> str:
+    text = (value or "").strip()
+    if len(text) <= 6:
+        return text
+    return f"{text[:3]}...{text[-3:]}"
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -145,39 +155,32 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setFont("Helvetica", 12)
     c.drawCentredString(page_width / 2, page_height - 352, f"Issued by {provider.display_name} through Certora")
 
-    # Pass/result block (no circle)
-    score_y = page_height - 436
+    # Pass/result block (aligned card)
+    score_y = page_height - 430
     c.setFillColor(colors.HexColor("#f9f4e6"))
-    c.roundRect(page_width / 2 - 156, score_y - 18, 312, 64, 12, fill=1, stroke=0)
+    c.roundRect(page_width / 2 - 164, score_y - 20, 328, 70, 12, fill=1, stroke=0)
     c.setStrokeColor(colors.HexColor("#d6b35d"))
     c.setLineWidth(1)
-    c.roundRect(page_width / 2 - 156, score_y - 18, 312, 64, 12, fill=0, stroke=1)
+    c.roundRect(page_width / 2 - 164, score_y - 20, 328, 70, 12, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
     c.setFont("Helvetica-Bold", 13)
-    c.drawCentredString(page_width / 2, score_y + 28, "PASS")
+    c.drawCentredString(page_width / 2, score_y + 30, "PASS")
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 24)
-    c.drawCentredString(page_width / 2, score_y + 6, f"{float(result.percentage or 0):.2f}%")
+    c.setFont("Helvetica-Bold", 26)
+    c.drawCentredString(page_width / 2, score_y + 5, f"{float(result.percentage or 0):.2f}%")
 
-    # Footer metadata (trimmed)
+    # Footer metadata (trimmed; details move under QR)
     issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
-    c.setFillColor(colors.HexColor("#1f2937"))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(86, 154, "Certificate ID")
-    c.drawString(86, 128, "Issued On")
-    c.setFillColor(colors.HexColor("#475569"))
-    c.setFont("Helvetica", 10)
-    c.drawString(186, 154, certificate.certificate_id)
-    c.drawString(186, 128, issued_on)
+    masked_name = _masked_name(student.full_name)
 
     # QR-only verification block
     verification_url = certificate_verification_url(certificate)
-    qr_size = 96
-    qr_x = page_width - 178
-    qr_y = 78
+    qr_size = 72
+    qr_x = page_width - 154
+    qr_y = 112
     c.setFillColor(colors.HexColor("#1f2937"))
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(qr_x - 20, qr_y + qr_size + 18, "For verification, scan QR")
+    c.drawString(qr_x - 28, qr_y + qr_size + 16, "For verification, scan QR")
     if QrCodeWidget and Drawing and renderPDF:
         qr_widget = QrCodeWidget(verification_url)
         bounds = qr_widget.getBounds()
@@ -189,6 +192,12 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setStrokeColor(colors.HexColor("#cbd5e1"))
     c.setLineWidth(1)
     c.rect(qr_x - 6, qr_y - 6, qr_size + 12, qr_size + 12, stroke=1, fill=0)
+    c.setFillColor(colors.HexColor("#475569"))
+    c.setFont("Helvetica", 8.7)
+    c.drawString(qr_x - 28, qr_y - 18, certificate.certificate_id)
+    c.drawString(qr_x - 28, qr_y - 31, issued_on)
+    c.drawString(qr_x - 28, qr_y - 44, masked_name)
+    c.drawString(qr_x - 28, qr_y - 57, (course.title or "")[:30])
 
     # Signature + digital seal
     sig_x1 = page_width / 2 - 182
@@ -204,27 +213,42 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setFont("Helvetica", 9)
     c.drawString(sig_x1, sig_y - 14, "Authorized Digital Signatory")
 
+    # Unique digital seal using certificate-specific token fragments + layered geometry
     seal_x = page_width / 2 + 158
     seal_y = sig_y + 2
+    token = (certificate.verification_token or "").upper()
+    token_a = token[:6] if token else "SECURE"
+    token_b = token[-6:] if token else "SEAL00"
+    c.setStrokeColor(colors.HexColor("#7f1d1d"))
+    c.setFillColor(colors.HexColor("#fff1f2"))
+    c.setLineWidth(1.8)
+    c.circle(seal_x, seal_y, 36, stroke=1, fill=1)
     c.setStrokeColor(colors.HexColor("#b91c1c"))
-    c.setFillColor(colors.HexColor("#fef2f2"))
-    c.setLineWidth(1.6)
-    c.circle(seal_x, seal_y, 34, stroke=1, fill=1)
+    c.setLineWidth(1.1)
+    c.circle(seal_x, seal_y, 29, stroke=1, fill=0)
+    c.circle(seal_x, seal_y, 22, stroke=1, fill=0)
     c.setFillColor(colors.HexColor("#b91c1c"))
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(seal_x, seal_y + 6, "CERTORA")
-    c.drawCentredString(seal_x, seal_y - 6, "DIGITAL SEAL")
+    c.setFont("Helvetica-Bold", 7)
+    c.drawCentredString(seal_x, seal_y + 10, "CERTORA")
+    c.drawCentredString(seal_x, seal_y + 1, token_a)
+    c.drawCentredString(seal_x, seal_y - 8, token_b)
+    c.setStrokeColor(colors.HexColor("#991b1b"))
+    c.setLineWidth(0.9)
+    c.line(seal_x - 14, seal_y, seal_x + 14, seal_y)
+    c.line(seal_x, seal_y - 14, seal_x, seal_y + 14)
+    c.line(seal_x - 10, seal_y - 10, seal_x + 10, seal_y + 10)
+    c.line(seal_x - 10, seal_y + 10, seal_x + 10, seal_y - 10)
 
     c.showPage()
     c.save()
     settings = get_settings()
-    if settings.resolved_object_storage_backend != "local":
-        return upload_file_to_cloud_storage(
-            out_path,
-            object_path=f"certificates/{certificate.certificate_id}.pdf",
-            content_type="application/pdf",
-        )
-    return _certificate_pdf_relpath(certificate.certificate_id)
+    if settings.resolved_object_storage_backend != "s3":
+        raise RuntimeError("Certificate storage requires AWS S3 backend configuration.")
+    return upload_file_to_cloud_storage(
+        out_path,
+        object_path=f"certificates/{certificate.certificate_id}.pdf",
+        content_type="application/pdf",
+    )
 
 
 def ensure_certificate_pdf(db: Session, certificate: Certificate) -> Certificate:
