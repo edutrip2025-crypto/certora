@@ -44,6 +44,10 @@ class UserOut(BaseModel):
 class RegisterRoleRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     role: UserRole
+    verification_id_type: str | None = None
+    verification_id_number: str | None = None
+    verification_country_code: str | None = None
+    verification_document_url: str | None = None
 
 
 class AdminRecoveryRequest(BaseModel):
@@ -60,6 +64,9 @@ class ProviderProfileCreate(BaseModel):
     provider_type: ProviderType
     display_name: str
     description: str = ""
+    business_registration_type: str | None = None
+    business_registration_number: str | None = None
+    business_registration_country: str | None = None
 
 
 class ProviderProfileOut(BaseModel):
@@ -68,6 +75,9 @@ class ProviderProfileOut(BaseModel):
     provider_type: ProviderType
     display_name: str
     description: str
+    business_registration_type: str | None = None
+    business_registration_number: str | None = None
+    business_registration_country: str | None = None
     approval_status: ApprovalStatus
     rejection_reason: str | None
 

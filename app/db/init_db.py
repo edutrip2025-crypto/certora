@@ -136,6 +136,25 @@ def _migrate_live_class_schema_postgres(conn) -> None:
             pass
 
 
+def _migrate_identity_schema_sqlite(conn) -> None:
+    _sqlite_add_column_if_missing(conn, "providers", "business_registration_type", "TEXT")
+    _sqlite_add_column_if_missing(conn, "providers", "business_registration_number", "TEXT")
+    _sqlite_add_column_if_missing(conn, "providers", "business_registration_country", "TEXT")
+
+
+def _migrate_identity_schema_postgres(conn) -> None:
+    statements = [
+        "ALTER TABLE providers ADD COLUMN IF NOT EXISTS business_registration_type VARCHAR(40)",
+        "ALTER TABLE providers ADD COLUMN IF NOT EXISTS business_registration_number VARCHAR(120)",
+        "ALTER TABLE providers ADD COLUMN IF NOT EXISTS business_registration_country VARCHAR(8)",
+    ]
+    for stmt in statements:
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            pass
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
@@ -161,6 +180,7 @@ def init_db() -> None:
 
             _migrate_proctor_training_feedback_nullable_attempt_id(conn)
             _migrate_live_class_schema_sqlite(conn)
+            _migrate_identity_schema_sqlite(conn)
     elif engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             try:
@@ -168,6 +188,7 @@ def init_db() -> None:
             except Exception:
                 pass
             _migrate_live_class_schema_postgres(conn)
+            _migrate_identity_schema_postgres(conn)
 
     # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()

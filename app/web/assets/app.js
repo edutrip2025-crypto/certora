@@ -1052,6 +1052,9 @@ const el = {
   signupEmail: $("signupEmail"),
   signupPassword: $("signupPassword"),
   signupRole: $("signupRole"),
+  signupVerificationType: $("signupVerificationType"),
+  signupVerificationNumber: $("signupVerificationNumber"),
+  signupVerificationCountry: $("signupVerificationCountry"),
   signupCard: $("signupCard"),
   showSignupBtn: $("showSignupBtn"),
   showLoginBtn: $("showLoginBtn"),
@@ -1399,6 +1402,49 @@ function showAuthMode(mode = "login") {
   const loginMode = mode !== "signup";
   el.loginCard?.classList.toggle("hidden", !loginMode);
   el.signupCard?.classList.toggle("hidden", loginMode);
+  if (!loginMode) refreshSignupVerificationOptions();
+}
+
+const SIGNUP_VERIFICATION_OPTIONS = {
+  student: [
+    { value: "aadhaar", label: "Aadhaar (India)" },
+    { value: "national_id", label: "National ID" },
+    { value: "passport", label: "Passport" },
+    { value: "driving_license", label: "Driving License" },
+    { value: "voter_id", label: "Voter ID" },
+    { value: "pan", label: "PAN" },
+    { value: "other", label: "Other ID" },
+  ],
+  provider: [
+    { value: "cin", label: "CIN (Business)" },
+    { value: "gst", label: "GSTIN (Business)" },
+    { value: "pan", label: "PAN" },
+    { value: "national_id", label: "National ID" },
+    { value: "passport", label: "Passport" },
+    { value: "tax_id", label: "Tax ID" },
+    { value: "other", label: "Other ID" },
+  ],
+};
+
+function refreshSignupVerificationOptions() {
+  const role = String(el.signupRole?.value || "student").toLowerCase();
+  const select = el.signupVerificationType;
+  if (!select) return;
+  const options = SIGNUP_VERIFICATION_OPTIONS[role] || SIGNUP_VERIFICATION_OPTIONS.student;
+  const current = String(select.value || "").trim().toLowerCase();
+  select.innerHTML = options.map((item) => `<option value="${item.value}">${item.label}</option>`).join("");
+  const hasCurrent = options.some((item) => item.value === current);
+  select.value = hasCurrent ? current : options[0]?.value || "aadhaar";
+}
+
+function buildRoleRegistrationPayload(fullName, role) {
+  return {
+    full_name: fullName,
+    role,
+    verification_id_type: String(el.signupVerificationType?.value || "").trim().toLowerCase() || null,
+    verification_id_number: String(el.signupVerificationNumber?.value || "").trim() || null,
+    verification_country_code: String(el.signupVerificationCountry?.value || "").trim().toUpperCase() || null,
+  };
 }
 
 function renderNonAdminRoleFix(context = null) {
@@ -7765,7 +7811,7 @@ function bindEvents() {
       let lastRoleErr = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          await api("POST", "/auth/register-role", { full_name: name, role });
+          await api("POST", "/auth/register-role", buildRoleRegistrationPayload(name, role));
           roleSetupDone = true;
           break;
         } catch (roleErr) {
@@ -7779,7 +7825,7 @@ function bindEvents() {
       state.authRoleSetupInFlight = false;
       let context = await loadSessionContext();
       if (context?.role && context.role !== role) {
-        await api("POST", "/auth/register-role", { full_name: name, role });
+        await api("POST", "/auth/register-role", buildRoleRegistrationPayload(name, role));
         await cred.user.getIdToken(true).catch(() => {});
         context = await loadSessionContext();
       }
@@ -7796,7 +7842,11 @@ function bindEvents() {
           const fallbackRole = String(localStorage.getItem("certora_signup_role_intent") || "").trim().toLowerCase();
           let context = await loadSessionContext();
           if (["student", "provider"].includes(fallbackRole) && context?.role && context.role !== fallbackRole) {
-            await api("POST", "/auth/register-role", { full_name: el.signupName?.value?.trim() || "User", role: fallbackRole });
+            await api(
+              "POST",
+              "/auth/register-role",
+              buildRoleRegistrationPayload(el.signupName?.value?.trim() || "User", fallbackRole),
+            );
             await state.auth.currentUser.getIdToken(true).catch(() => {});
             context = await loadSessionContext();
           }
@@ -7867,7 +7917,7 @@ function bindEvents() {
       if (!ensureAuthReady()) return;
       const nextRole = el.nonAdminRoleSelect?.value || "student";
       const fullName = state.auth?.currentUser?.displayName || state.context?.full_name || "User";
-      await api("POST", "/auth/register-role", { full_name: fullName, role: nextRole });
+      await api("POST", "/auth/register-role", buildRoleRegistrationPayload(fullName, nextRole));
       await state.auth?.currentUser?.getIdToken(true).catch(() => {});
       toast("Account type updated");
       await loadSessionContext();
@@ -8399,6 +8449,8 @@ function bindEvents() {
       target.requestFullscreen?.().catch(() => {});
     }
   });
+  $("signupRole")?.addEventListener("change", () => refreshSignupVerificationOptions());
+  refreshSignupVerificationOptions();
   $("liveRoomVideoStartBtn")?.addEventListener("click", () => {
     startLiveCamera()
       .then(() => toast("Camera started"))

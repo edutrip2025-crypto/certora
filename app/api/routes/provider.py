@@ -61,6 +61,7 @@ from app.services.media_storage import resolve_media_url, upload_file_to_cloud_s
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
+_BUSINESS_REG_ALLOWED = {"cin", "pan", "gst", "national_id", "passport", "tax_id", "other"}
 
 
 def _public_request_base_url(request: Request) -> str:
@@ -97,12 +98,43 @@ def _safe_filename(name: str) -> str:
     return cleaned[:180] if cleaned else f"video_{uuid4().hex}.mp4"
 
 
+def _normalize_business_registration(
+    *,
+    provider_type: ProviderType,
+    reg_type: str | None,
+    reg_number: str | None,
+    reg_country: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    if provider_type != ProviderType.BUSINESS:
+        return None, None, None
+    t = str(reg_type or "").strip().lower()
+    n = re.sub(r"\s+", "", str(reg_number or "").strip()).upper()
+    c = re.sub(r"[^A-Za-z]", "", str(reg_country or "").strip()).upper()[:8] or "IN"
+    if not t or not n:
+        raise HTTPException(status_code=400, detail="Business providers must submit registration type and number.")
+    if t not in _BUSINESS_REG_ALLOWED:
+        raise HTTPException(status_code=400, detail="Unsupported business registration type.")
+    if t == "pan" and not re.fullmatch(r"[A-Z]{5}\d{4}[A-Z]", n):
+        raise HTTPException(status_code=400, detail="Business PAN format is invalid.")
+    if t == "gst" and not re.fullmatch(r"\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9][Zz][A-Z0-9]", n):
+        raise HTTPException(status_code=400, detail="Business GSTIN format is invalid.")
+    if t == "cin" and not re.fullmatch(r"[A-Z0-9]{21}", n):
+        raise HTTPException(status_code=400, detail="Business CIN format is invalid.")
+    return t, n, c
+
+
 @router.post("/profile", response_model=ProviderProfileOut, status_code=status.HTTP_201_CREATED)
 def upsert_profile(
     payload: ProviderProfileCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER, allow_unapproved=True)),
 ):
+    reg_type, reg_number, reg_country = _normalize_business_registration(
+        provider_type=payload.provider_type,
+        reg_type=payload.business_registration_type,
+        reg_number=payload.business_registration_number,
+        reg_country=payload.business_registration_country,
+    )
     profile = db.scalar(select(ProviderProfile).where(ProviderProfile.user_id == current_user.id))
     if not profile:
         profile = ProviderProfile(
@@ -110,6 +142,9 @@ def upsert_profile(
             provider_type=payload.provider_type,
             display_name=payload.display_name,
             description=payload.description,
+            business_registration_type=reg_type,
+            business_registration_number=reg_number,
+            business_registration_country=reg_country,
             approval_status=ApprovalStatus.PENDING,
         )
         db.add(profile)
@@ -117,6 +152,9 @@ def upsert_profile(
         profile.provider_type = payload.provider_type
         profile.display_name = payload.display_name
         profile.description = payload.description
+        profile.business_registration_type = reg_type
+        profile.business_registration_number = reg_number
+        profile.business_registration_country = reg_country
         profile.approval_status = ApprovalStatus.PENDING
         profile.rejection_reason = None
         profile.reviewed_at = None

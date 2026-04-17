@@ -19,6 +19,7 @@ from app.models.entities import (
     ModerationStatus,
     ProviderDocument,
     ProviderProfile,
+    UserIdentityVerification,
     ProviderType,
     ReportItem,
     Result,
@@ -240,16 +241,29 @@ def pending_student_approvals(
     )
     total = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
     rows = db.execute(base_query.offset((page - 1) * page_size).limit(page_size)).all()
-    items = [
-        {
-            "user_id": user.id,
-            "email": user.email,
-            "full_name": user.full_name,
-            "approval_status": approval.status,
-            "created_at": approval.created_at,
-        }
-        for user, approval in rows
-    ]
+    items = []
+    for user, approval in rows:
+        identity = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == user.id))
+        items.append(
+            {
+                "user_id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "approval_status": approval.status,
+                "created_at": approval.created_at,
+                "verification": (
+                    {
+                        "id_type": identity.id_type,
+                        "id_number": identity.id_number,
+                        "country_code": identity.country_code,
+                        "status": identity.status,
+                        "document_url": identity.document_url,
+                    }
+                    if identity
+                    else None
+                ),
+            },
+        )
     return {"items": items, "page": page, "page_size": page_size, "total": total}
 
 
@@ -271,6 +285,7 @@ def pending_provider_approvals(
     data = []
     for user, profile, approval in rows:
         docs = list(db.scalars(select(ProviderDocument).where(ProviderDocument.provider_id == profile.id)).all()) if profile else []
+        identity = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == user.id))
         data.append(
             {
                 "user_id": user.id,
@@ -281,6 +296,20 @@ def pending_provider_approvals(
                 "display_name": profile.display_name if profile else user.full_name,
                 "approval_status": approval.status,
                 "profile_created": profile is not None,
+                "identity_verification": (
+                    {
+                        "id_type": identity.id_type,
+                        "id_number": identity.id_number,
+                        "country_code": identity.country_code,
+                        "status": identity.status,
+                        "document_url": identity.document_url,
+                    }
+                    if identity
+                    else None
+                ),
+                "business_registration_type": profile.business_registration_type if profile else None,
+                "business_registration_number": profile.business_registration_number if profile else None,
+                "business_registration_country": profile.business_registration_country if profile else None,
                 "documents": [
                     {
                         "id": d.id,

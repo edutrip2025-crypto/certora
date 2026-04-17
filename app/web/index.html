@@ -49,6 +49,22 @@
             <option value="provider">Provider</option>
           </select>
         </label>
+        <label>Verification ID Type
+          <select id="signupVerificationType">
+            <option value="aadhaar">Aadhaar (India)</option>
+            <option value="national_id">National ID</option>
+            <option value="passport">Passport</option>
+            <option value="driving_license">Driving License</option>
+            <option value="voter_id">Voter ID</option>
+            <option value="pan">PAN</option>
+            <option value="cin">CIN (Business)</option>
+            <option value="gst">GSTIN (Business)</option>
+            <option value="tax_id">Tax ID</option>
+            <option value="other">Other ID</option>
+          </select>
+        </label>
+        <label>Verification ID Number<input id="signupVerificationNumber" type="text" /></label>
+        <label>Verification Country Code<input id="signupVerificationCountry" type="text" value="IN" /></label>
         <button id="signupBtn" class="btn primary">Create Account</button>
         <div class="auth-switch">Already have an account? <button id="showLoginBtn" type="button" class="auth-switch-btn">Back to login</button></div>
       </article>

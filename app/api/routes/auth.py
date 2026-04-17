@@ -11,7 +11,7 @@ from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
-from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserRole
+from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserIdentityVerification, UserRole
 from app.schemas import AdminRecoveryRequest, AdminSetUserPasswordRequest, LoginRequest, RegisterRoleRequest, SignupRequest, TokenResponse, UserOut
 from app.services.firebase_auth import (
     create_firebase_custom_token,
@@ -23,6 +23,25 @@ from app.services.firebase_auth import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
+
+_ALLOWED_STUDENT_ID_TYPES = {
+    "aadhaar",
+    "passport",
+    "national_id",
+    "driving_license",
+    "voter_id",
+    "pan",
+    "other",
+}
+_ALLOWED_PROVIDER_ID_TYPES = {
+    "cin",
+    "gst",
+    "pan",
+    "passport",
+    "national_id",
+    "tax_id",
+    "other",
+}
 
 
 def _public_uid(user_id: int | None) -> str:
@@ -121,6 +140,76 @@ def _assert_recovery_key_or_403(submitted_key: str, configured_key: str) -> None
         raise HTTPException(status_code=503, detail="Admin recovery is not configured.")
     if not hmac.compare_digest(given, expected):
         raise HTTPException(status_code=403, detail="Invalid admin recovery key.")
+
+
+def _normalize_country_code(value: str | None) -> str:
+    text = re.sub(r"[^A-Za-z]", "", str(value or "").strip()).upper()
+    return text[:8] if text else "IN"
+
+
+def _normalize_id_number(value: str | None) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _validate_identity_input(
+    *,
+    role: UserRole,
+    id_type: str | None,
+    id_number: str | None,
+    country_code: str | None,
+) -> tuple[str, str, str]:
+    t = str(id_type or "").strip().lower()
+    n = _normalize_id_number(id_number)
+    c = _normalize_country_code(country_code)
+    if not t or not n:
+        raise HTTPException(status_code=400, detail="Verification ID type and number are required.")
+    allowed = _ALLOWED_STUDENT_ID_TYPES if role == UserRole.STUDENT else _ALLOWED_PROVIDER_ID_TYPES
+    if t not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported verification ID type for {role.value}.")
+    if t == "aadhaar" and not re.fullmatch(r"\d{12}", n):
+        raise HTTPException(status_code=400, detail="Aadhaar must be exactly 12 digits.")
+    if t == "pan" and not re.fullmatch(r"[A-Z]{5}\d{4}[A-Z]", n):
+        raise HTTPException(status_code=400, detail="PAN format is invalid.")
+    if t == "gst" and not re.fullmatch(r"\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9][Zz][A-Z0-9]", n):
+        raise HTTPException(status_code=400, detail="GSTIN format is invalid.")
+    if t == "cin" and not re.fullmatch(r"[A-Z0-9]{21}", n):
+        raise HTTPException(status_code=400, detail="CIN format is invalid.")
+    return t, n, c
+
+
+def _upsert_identity_verification(
+    *,
+    db: Session,
+    user_id: int,
+    role: UserRole,
+    id_type: str | None,
+    id_number: str | None,
+    country_code: str | None,
+    document_url: str | None = None,
+) -> None:
+    existing_identity = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == user_id))
+    if role not in {UserRole.STUDENT, UserRole.PROVIDER}:
+        return
+    if existing_identity is None and (not id_type or not id_number):
+        raise HTTPException(status_code=400, detail="Verification ID is required for student/provider accounts.")
+    if not id_type and not id_number:
+        return
+    v_type, v_number, v_country = _validate_identity_input(
+        role=role,
+        id_type=id_type,
+        id_number=id_number,
+        country_code=country_code,
+    )
+    if not existing_identity:
+        existing_identity = UserIdentityVerification(user_id=user_id)
+        db.add(existing_identity)
+    existing_identity.id_type = v_type
+    existing_identity.id_number = v_number
+    existing_identity.country_code = v_country
+    existing_identity.document_url = (document_url or "").strip() or None
+    existing_identity.status = ApprovalStatus.PENDING
+    existing_identity.reviewed_by_admin_id = None
+    existing_identity.reviewed_at = None
 
 
 def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str, dict]:
@@ -271,6 +360,7 @@ def me_context(
         db.commit()
     approval_status = approval.status
     rejection_reason = approval.rejection_reason
+    identity = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == current_user.id))
     _safe_sync_claims(firebase_uid, current_user, approval_status)
     return {
         "setup_required": False,
@@ -281,6 +371,9 @@ def me_context(
         "role": current_user.role,
         "approval_status": approval_status,
         "rejection_reason": rejection_reason,
+        "verification_id_type": identity.id_type if identity else None,
+        "verification_country_code": identity.country_code if identity else None,
+        "verification_status": identity.status if identity else None,
     }
 
 
@@ -322,6 +415,16 @@ def register_role(
         current_user.full_name = payload.full_name or fallback_name
         current_user.role = payload.role
 
+    _upsert_identity_verification(
+        db=db,
+        user_id=current_user.id,
+        role=payload.role,
+        id_type=payload.verification_id_type,
+        id_number=payload.verification_id_number,
+        country_code=payload.verification_country_code,
+        document_url=payload.verification_document_url,
+    )
+
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == current_user.id))
     if not approval:
         approval = UserApproval(user_id=current_user.id)
@@ -357,6 +460,15 @@ def register_role(
 
         recovered.full_name = payload.full_name or fallback_name
         recovered.role = payload.role
+        _upsert_identity_verification(
+            db=db,
+            user_id=recovered.id,
+            role=payload.role,
+            id_type=payload.verification_id_type,
+            id_number=payload.verification_id_number,
+            country_code=payload.verification_country_code,
+            document_url=payload.verification_document_url,
+        )
         recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
         if not recovered_approval:
             recovered_approval = UserApproval(user_id=recovered.id)

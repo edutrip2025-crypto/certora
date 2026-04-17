@@ -91,6 +91,23 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class UserIdentityVerification(Base):
+    __tablename__ = "user_identity_verifications"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_identity_user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    id_type: Mapped[str] = mapped_column(String(40), index=True)
+    id_number: Mapped[str] = mapped_column(String(120))
+    country_code: Mapped[str] = mapped_column(String(8), default="IN")
+    document_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    status: Mapped[ApprovalStatus] = mapped_column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING, index=True)
+    reviewed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class ProviderProfile(Base):
     __tablename__ = "providers"
 
@@ -99,6 +116,9 @@ class ProviderProfile(Base):
     provider_type: Mapped[ProviderType] = mapped_column(Enum(ProviderType))
     display_name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    business_registration_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    business_registration_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    business_registration_country: Mapped[str | None] = mapped_column(String(8), nullable=True)
     approval_status: Mapped[ApprovalStatus] = mapped_column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
