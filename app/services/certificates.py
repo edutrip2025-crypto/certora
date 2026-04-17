@@ -79,7 +79,39 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v7"
+CERTIFICATE_TEMPLATE_VERSION = "v8"
+
+
+def _font_size_to_fit(
+    c: canvas.Canvas,
+    text: str,
+    *,
+    font_name: str,
+    max_width: float,
+    max_size: float,
+    min_size: float,
+) -> float:
+    size = float(max_size)
+    if not text:
+        return size
+    while size > float(min_size):
+        if c.stringWidth(text, font_name, size) <= max_width:
+            return size
+        size -= 0.5
+    return float(min_size)
+
+
+def _trim_to_width(c: canvas.Canvas, text: str, *, font_name: str, font_size: float, max_width: float) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    if c.stringWidth(raw, font_name, font_size) <= max_width:
+        return raw
+    suffix = "..."
+    out = raw
+    while out and c.stringWidth(out + suffix, font_name, font_size) > max_width:
+        out = out[:-1]
+    return (out + suffix) if out else suffix
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -126,10 +158,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Header branding (no top bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-        logo_w = 260
-        logo_h = 64
-        logo_x = 62
-        logo_y = page_height - 114
+        logo_w = 250
+        logo_h = 62
+        logo_x = 64
+        logo_y = page_height - 116
         c.drawImage(
             str(logo_path),
             logo_x,
@@ -143,64 +175,80 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
 
     # Main title
     c.setFillColor(colors.HexColor("#8a6a1f"))
-    c.setFont("Times-Bold", 29)
-    c.drawCentredString(page_width / 2, page_height - 148, "Certificate of Achievement")
+    c.setFont("Times-Bold", 28)
+    c.drawCentredString(page_width / 2, page_height - 146, "Certificate of Achievement")
 
     c.setFillColor(colors.HexColor("#475569"))
-    c.setFont("Helvetica", 13)
-    c.drawCentredString(page_width / 2, page_height - 176, "This certifies that")
+    c.setFont("Helvetica", 12)
+    c.drawCentredString(page_width / 2, page_height - 172, "This certifies that")
 
+    student_name = (student.full_name or "").strip()
+    name_font = _font_size_to_fit(
+        c,
+        student_name,
+        font_name="Times-Bold",
+        max_width=page_width - 190,
+        max_size=31,
+        min_size=20,
+    )
     c.setFillColor(colors.HexColor("#111827"))
-    c.setFont("Times-Bold", 26)
-    c.drawCentredString(page_width / 2, page_height - 214, student.full_name)
+    c.setFont("Times-Bold", name_font)
+    c.drawCentredString(page_width / 2, page_height - 208, student_name)
 
     c.setStrokeColor(colors.HexColor("#caa14d"))
     c.setLineWidth(1.2)
-    c.line(page_width / 2 - 210, page_height - 228, page_width / 2 + 210, page_height - 228)
+    c.line(page_width / 2 - 225, page_height - 224, page_width / 2 + 225, page_height - 224)
 
     c.setFillColor(colors.HexColor("#475569"))
-    c.setFont("Helvetica", 13)
-    c.drawCentredString(page_width / 2, page_height - 252, "has successfully completed the course and passed the final assessment")
+    c.setFont("Helvetica", 12)
+    c.drawCentredString(page_width / 2, page_height - 248, "has successfully completed the course and passed the final assessment")
 
+    course_title = _trim_to_width(
+        c,
+        course.title or "",
+        font_name="Helvetica-Bold",
+        font_size=21,
+        max_width=page_width - 200,
+    )
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 21)
-    c.drawCentredString(page_width / 2, page_height - 288, course.title)
+    c.drawCentredString(page_width / 2, page_height - 284, course_title)
 
     c.setFillColor(colors.HexColor("#334155"))
-    c.setFont("Helvetica", 12)
-    c.drawCentredString(page_width / 2, page_height - 316, f"Issued by {provider.display_name} through Certora")
+    c.setFont("Helvetica", 11.5)
+    c.drawCentredString(page_width / 2, page_height - 312, f"Issued by {provider.display_name} through Certora")
 
     # Pass/result block (aligned card)
-    score_y = page_height - 368
+    score_y = page_height - 362
     score_text = f"{float(result.percentage or 0):.2f}%"
-    score_text_width = c.stringWidth(score_text, "Helvetica-Bold", 15)
+    score_text_width = c.stringWidth(score_text, "Helvetica-Bold", 14)
     pass_text_width = c.stringWidth("PASS", "Helvetica-Bold", 9)
-    card_width = max(128, score_text_width + 44, pass_text_width + 52)
-    card_height = 42
+    card_width = max(104, score_text_width + 30, pass_text_width + 38)
+    card_height = 34
     card_x = (page_width - card_width) / 2
-    card_y = score_y - 12
+    card_y = score_y - 10
     c.setFillColor(colors.HexColor("#f9f4e6"))
-    c.roundRect(card_x, card_y, card_width, card_height, 10, fill=1, stroke=0)
+    c.roundRect(card_x, card_y, card_width, card_height, 8, fill=1, stroke=0)
     c.setStrokeColor(colors.HexColor("#d6b35d"))
     c.setLineWidth(1)
-    c.roundRect(card_x, card_y, card_width, card_height, 10, fill=0, stroke=1)
+    c.roundRect(card_x, card_y, card_width, card_height, 8, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
-    c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(page_width / 2, score_y + 20, "PASS")
+    c.setFont("Helvetica-Bold", 8.2)
+    c.drawCentredString(page_width / 2, score_y + 14, "PASS")
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 15)
-    c.drawCentredString(page_width / 2, score_y + 5, score_text)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(page_width / 2, score_y + 1, score_text)
 
     # Footer metadata (trimmed; details move under QR)
     issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
     # QR-only verification block
     verification_url = certificate_verification_url(certificate, base_url=verification_base_url)
-    qr_size = 66
-    qr_x = page_width - 188
-    qr_y = 98
+    qr_size = 62
+    qr_x = page_width - 176
+    qr_y = 96
     c.setFillColor(colors.HexColor("#1f2937"))
-    c.setFont("Helvetica-Bold", 9.3)
-    c.drawString(qr_x - 10, qr_y + qr_size + 14, "For verification, scan QR")
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(qr_x - 10, qr_y + qr_size + 12, "For verification, scan QR")
     if QrCodeWidget and Drawing and renderPDF:
         qr_widget = QrCodeWidget(verification_url)
         bounds = qr_widget.getBounds()
@@ -213,22 +261,35 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.setLineWidth(1)
     c.rect(qr_x - 6, qr_y - 6, qr_size + 12, qr_size + 12, stroke=1, fill=0)
     c.setFillColor(colors.HexColor("#475569"))
-    c.setFont("Helvetica", 8.3)
-    c.drawString(qr_x - 10, qr_y - 16, certificate.certificate_id[:20])
-    c.drawString(qr_x - 10, qr_y - 28, issued_on)
-    c.drawString(qr_x - 10, qr_y - 40, (student.full_name or "")[:22])
-    c.drawString(qr_x - 10, qr_y - 52, (course.title or "")[:22])
+    c.setFont("Helvetica", 8)
+    qr_text_width = 154
+    c.drawString(
+        qr_x - 10,
+        qr_y - 15,
+        _trim_to_width(c, certificate.certificate_id, font_name="Helvetica", font_size=8, max_width=qr_text_width),
+    )
+    c.drawString(qr_x - 10, qr_y - 27, issued_on)
+    c.drawString(
+        qr_x - 10,
+        qr_y - 39,
+        _trim_to_width(c, student_name, font_name="Helvetica", font_size=8, max_width=qr_text_width),
+    )
+    c.drawString(
+        qr_x - 10,
+        qr_y - 51,
+        _trim_to_width(c, course.title or "", font_name="Helvetica", font_size=8, max_width=qr_text_width),
+    )
 
     # Signature
     sig_x1 = page_width / 2 - 182
     sig_x2 = page_width / 2 + 40
-    sig_y = 90
+    sig_y = 92
     c.setStrokeColor(colors.HexColor("#94a3b8"))
     c.setLineWidth(1)
     c.line(sig_x1, sig_y, sig_x2, sig_y)
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Times-Italic", 31)
-    c.drawString(sig_x1 + 8, sig_y + 5, "Certora")
+    c.setFont("Times-Italic", 30)
+    c.drawString(sig_x1 + 8, sig_y + 6, "Certora")
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 9)
     c.drawString(sig_x1, sig_y - 14, "Authorized Digital Signatory")
