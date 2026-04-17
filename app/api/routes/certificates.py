@@ -89,7 +89,6 @@ def verify_certificate(
         certificate_id = html_lib.escape(str(payload.get("certificate_id") or "-"))
         issued_at = html_lib.escape(str(payload.get("issued_at") or "-"))
         percentage = html_lib.escape(str(payload.get("percentage") or "-"))
-        pdf_url = html_lib.escape(str(payload.get("download_url") or payload.get("pdf_url") or "#"))
         html_page = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -102,18 +101,18 @@ def verify_certificate(
     body {{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--ink); }}
     .wrap {{ max-width: 880px; margin: 36px auto; padding: 0 16px; }}
     .card {{ background: var(--card); border: 1px solid #eadfc3; border-radius: 14px; padding: 24px; }}
+    .logo {{ width: 170px; height: auto; display:block; margin-bottom: 10px; }}
     h1 {{ margin: 0; font-size: 30px; color: var(--accent); }}
     .sub {{ margin-top: 8px; color: var(--muted); }}
     .grid {{ margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }}
     .k {{ color: var(--muted); font-size: 13px; }}
     .v {{ font-weight: 700; }}
-    .bar {{ margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; display:flex; gap:10px; flex-wrap:wrap; }}
-    .btn {{ text-decoration:none; display:inline-block; padding:10px 14px; border-radius:10px; border:1px solid #cba14c; color:#1f2937; background:#fff7e6; font-weight:700; }}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
+      <img class="logo" src="/assets/certora_logo.png" alt="Certora" />
       <h1>Certificate Verified</h1>
       <div class="sub">This certificate is active and issued by Certora.</div>
       <div class="grid">
@@ -123,9 +122,6 @@ def verify_certificate(
         <div><div class="k">Course</div><div class="v">{course_name}</div></div>
         <div><div class="k">Provider</div><div class="v">{provider_name}</div></div>
         <div><div class="k">Score</div><div class="v">{percentage}%</div></div>
-      </div>
-      <div class="bar">
-        <a class="btn" href="{pdf_url}" target="_blank" rel="noreferrer">Open Certificate PDF</a>
       </div>
     </div>
   </div>
