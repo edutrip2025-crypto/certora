@@ -74,7 +74,7 @@ def _masked_name(value: str) -> str:
     return f"{text[:3]}...{text[-3:]}"
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v2"
+CERTIFICATE_TEMPLATE_VERSION = "v3"
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
