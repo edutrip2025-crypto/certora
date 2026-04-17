@@ -1433,7 +1433,7 @@ function looksLikeVideoUrl(value) {
   );
 }
 
-function resolveCourseThumbnail(course) {
+function resolvePublicCourseThumbnail(course) {
   const fallback = "/assets/certora_logo.png";
   const raw = String(course?.thumbnail_url || "").trim();
   if (!raw) return Promise.resolve(fallback);
@@ -1488,7 +1488,7 @@ async function renderWebsiteCourses() {
     }
     const cards = await Promise.all(
       courses.slice(0, 18).map(async (course) => {
-        const thumb = await resolveCourseThumbnail(course);
+        const thumb = await resolvePublicCourseThumbnail(course);
         const title = escapeHtmlAttr(String(course.title || "Course"));
         const category = escapeHtmlAttr(String(course.category || "General"));
         const desc = escapeHtmlAttr(String(course.description || "").slice(0, 120));
