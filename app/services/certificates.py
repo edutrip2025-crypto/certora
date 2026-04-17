@@ -74,6 +74,9 @@ def _masked_name(value: str) -> str:
     return f"{text[:3]}...{text[-3:]}"
 
 
+CERTIFICATE_TEMPLATE_VERSION = "v2"
+
+
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
@@ -144,7 +147,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
 
     c.setFillColor(colors.HexColor("#111827"))
     c.setFont("Times-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height - 238, student.full_name)
+    c.drawCentredString(page_width / 2, page_height - 238, _masked_name(student.full_name))
 
     c.setStrokeColor(colors.HexColor("#caa14d"))
     c.setLineWidth(1.2)
@@ -253,13 +256,13 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
         raise RuntimeError("Certificate storage requires AWS S3 backend configuration.")
     return upload_file_to_cloud_storage(
         out_path,
-        object_path=f"certificates/{certificate.certificate_id}.pdf",
+        object_path=f"certificates/{CERTIFICATE_TEMPLATE_VERSION}/{certificate.certificate_id}.pdf",
         content_type="application/pdf",
     )
 
 
-def ensure_certificate_pdf(db: Session, certificate: Certificate) -> Certificate:
-    if certificate.pdf_url:
+def ensure_certificate_pdf(db: Session, certificate: Certificate, *, force_regenerate: bool = False) -> Certificate:
+    if certificate.pdf_url and not force_regenerate:
         if certificate.pdf_url.startswith("http://") or certificate.pdf_url.startswith("https://"):
             return certificate
         existing_path = Path(get_settings().resolved_media_dir) / certificate.pdf_url.replace("/media/", "", 1)
@@ -274,7 +277,7 @@ def issue_certificate(db: Session, result: Result) -> Certificate:
     existing = db.scalar(select(Certificate).where(Certificate.result_id == result.id))
     if existing:
         try:
-            return ensure_certificate_pdf(db, existing)
+            return ensure_certificate_pdf(db, existing, force_regenerate=True)
         except RuntimeError:
             # Keep existing certificate row usable even if PDF engine/storage is temporarily unavailable.
             return existing

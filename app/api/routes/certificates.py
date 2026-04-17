@@ -44,7 +44,7 @@ def verify_certificate(
     if not vt or vt != cert.verification_token:
         raise HTTPException(status_code=404, detail="Certificate not found")
     try:
-        ensure_certificate_pdf(db, cert)
+        ensure_certificate_pdf(db, cert, force_regenerate=True)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

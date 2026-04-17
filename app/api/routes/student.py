@@ -314,8 +314,9 @@ def student_certificates(
     dirty = False
     for cert in items:
         try:
-            ensure_certificate_pdf(db, cert)
-            dirty = True
+            prev_url = cert.pdf_url
+            ensure_certificate_pdf(db, cert, force_regenerate=True)
+            dirty = dirty or (cert.pdf_url != prev_url)
         except RuntimeError:
             # Return certificate rows even when PDF generation is temporarily unavailable.
             continue
@@ -648,7 +649,7 @@ def get_result(
     latest_feedback, feedback_count = _latest_training_feedback(db, result.attempt_id)
     cert = db.scalar(select(Certificate).where(Certificate.result_id == result.id))
     if cert:
-        ensure_certificate_pdf(db, cert)
+        ensure_certificate_pdf(db, cert, force_regenerate=True)
         db.commit()
     return {
         "id": result.id,

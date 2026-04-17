@@ -1675,8 +1675,9 @@ def provider_certifications(
     dirty = False
     for cert, _, _ in rows:
         try:
-            ensure_certificate_pdf(db, cert)
-            dirty = True
+            prev_url = cert.pdf_url
+            ensure_certificate_pdf(db, cert, force_regenerate=True)
+            dirty = dirty or (cert.pdf_url != prev_url)
         except RuntimeError:
             # Keep provider certificate list available even if PDF generation/storage is temporarily unavailable.
             continue
