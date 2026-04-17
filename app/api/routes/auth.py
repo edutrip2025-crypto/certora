@@ -352,15 +352,51 @@ def register_role(
                 firebase_uid=firebase_uid,
             )
             if not recovered:
-                # Keep previous behavior/message for truly unrecoverable states.
-                raise HTTPException(
-                    status_code=500,
-                    detail="Account profile setup failed. Please retry login once.",
-                )
+                # Last-resort recovery: create a deterministic firebase-local identity
+                # and keep retrying with a suffix to avoid uniqueness races.
+                created = None
+                for idx in range(6):
+                    probe_email = (
+                        f"{firebase_uid}@firebase.local".strip().lower()
+                        if idx == 0
+                        else f"{firebase_uid}.{idx}@firebase.local".strip().lower()
+                    )
+                    created = db.scalar(_normalized_user_query(probe_email))
+                    if created:
+                        break
+                    try:
+                        created = User(
+                            email=probe_email,
+                            full_name=payload.full_name or fallback_name,
+                            password_hash="firebase",
+                            role=payload.role,
+                            is_active=True,
+                        )
+                        db.add(created)
+                        db.flush()
+                        break
+                    except IntegrityError:
+                        db.rollback()
+                        created = None
+                        continue
+                recovered = created
+            if not recovered:
+                raise HTTPException(status_code=500, detail="Account profile setup failed. Please retry login once.")
             recovered_approval = db.scalar(select(UserApproval).where(UserApproval.user_id == recovered.id))
             if recovered_approval and recovered_approval.status != ApprovalStatus.APPROVED:
                 recovered_approval.status = ApprovalStatus.APPROVED
                 recovered_approval.rejection_reason = None
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+            elif not recovered_approval:
+                recovered_approval = UserApproval(
+                    user_id=recovered.id,
+                    status=ApprovalStatus.APPROVED,
+                    rejection_reason=None,
+                )
+                db.add(recovered_approval)
                 try:
                     db.commit()
                 except IntegrityError:
