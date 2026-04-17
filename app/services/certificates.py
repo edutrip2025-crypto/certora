@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v11"
+CERTIFICATE_TEMPLATE_VERSION = "v12"
 
 
 def _font_size_to_fit(
@@ -176,7 +176,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Main title
     c.setFillColor(colors.HexColor("#8a6a1f"))
     c.setFont("Times-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height - 146, "Certificate of Achievement")
+    c.drawCentredString(page_width / 2, page_height - 158, "Certificate of Achievement")
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 12)
@@ -234,7 +234,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.roundRect(card_x, card_y, card_width, card_height, 8, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
     c.setFont("Helvetica-Bold", 8.2)
-    c.drawCentredString(page_width / 2, score_y + 17, "PASS")
+    c.drawCentredString(page_width / 2, score_y + 14, "PASS")
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 14)
     c.drawCentredString(page_width / 2, score_y - 1, score_text)
