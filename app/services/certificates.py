@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v8"
+CERTIFICATE_TEMPLATE_VERSION = "v9"
 
 
 def _font_size_to_fit(
@@ -158,10 +158,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Header branding (no top bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-        logo_w = 250
-        logo_h = 62
-        logo_x = 64
-        logo_y = page_height - 116
+        logo_w = 270
+        logo_h = 66
+        logo_x = 50
+        logo_y = page_height - 118
         c.drawImage(
             str(logo_path),
             logo_x,
@@ -240,7 +240,6 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.drawCentredString(page_width / 2, score_y + 1, score_text)
 
     # Footer metadata (trimmed; details move under QR)
-    issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
     # QR-only verification block
     verification_url = certificate_verification_url(certificate, base_url=verification_base_url)
     qr_size = 62
@@ -268,31 +267,26 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
         qr_y - 15,
         _trim_to_width(c, certificate.certificate_id, font_name="Helvetica", font_size=8, max_width=qr_text_width),
     )
-    c.drawString(qr_x - 10, qr_y - 27, issued_on)
-    c.drawString(
-        qr_x - 10,
-        qr_y - 39,
-        _trim_to_width(c, student_name, font_name="Helvetica", font_size=8, max_width=qr_text_width),
-    )
-    c.drawString(
-        qr_x - 10,
-        qr_y - 51,
-        _trim_to_width(c, course.title or "", font_name="Helvetica", font_size=8, max_width=qr_text_width),
-    )
 
-    # Signature
-    sig_x1 = page_width / 2 - 182
-    sig_x2 = page_width / 2 + 40
+    # Signature (centered)
     sig_y = 92
+    sig_label = "Certora"
+    sig_font_name = "Times-Italic"
+    sig_font_size = 30
+    sig_width = c.stringWidth(sig_label, sig_font_name, sig_font_size)
+    pad = 20
+    sig_x1 = (page_width - (sig_width + (pad * 2))) / 2
+    sig_x2 = sig_x1 + sig_width + (pad * 2)
     c.setStrokeColor(colors.HexColor("#94a3b8"))
     c.setLineWidth(1)
     c.line(sig_x1, sig_y, sig_x2, sig_y)
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Times-Italic", 30)
-    c.drawString(sig_x1 + 8, sig_y + 6, "Certora")
+    c.setFont(sig_font_name, sig_font_size)
+    c.drawString((page_width - sig_width) / 2, sig_y + 6, sig_label)
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 9)
-    c.drawString(sig_x1, sig_y - 14, "Authorized Digital Signatory")
+    signatory_label = "Authorized Digital Signatory"
+    c.drawString((page_width - c.stringWidth(signatory_label, "Helvetica", 9)) / 2, sig_y - 14, signatory_label)
 
     c.showPage()
     c.save()
