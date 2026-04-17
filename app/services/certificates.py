@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v10"
+CERTIFICATE_TEMPLATE_VERSION = "v11"
 
 
 def _font_size_to_fit(
@@ -158,10 +158,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Header branding (no top bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-        logo_w = 270
-        logo_h = 66
+        logo_w = 310
+        logo_h = 76
         logo_x = (page_width - logo_w) / 2
-        logo_y = page_height - 118
+        logo_y = page_height - 126
         c.drawImage(
             str(logo_path),
             logo_x,
@@ -219,7 +219,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.drawCentredString(page_width / 2, page_height - 312, f"Issued by {provider.display_name} through Certora")
 
     # Pass/result block (aligned card)
-    score_y = page_height - 362
+    score_y = page_height - 380
     score_text = f"{float(result.percentage or 0):.2f}%"
     score_text_width = c.stringWidth(score_text, "Helvetica-Bold", 14)
     pass_text_width = c.stringWidth("PASS", "Helvetica-Bold", 9)
@@ -234,10 +234,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.roundRect(card_x, card_y, card_width, card_height, 8, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
     c.setFont("Helvetica-Bold", 8.2)
-    c.drawCentredString(page_width / 2, score_y + 14, "PASS")
+    c.drawCentredString(page_width / 2, score_y + 17, "PASS")
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(page_width / 2, score_y + 1, score_text)
+    c.drawCentredString(page_width / 2, score_y - 1, score_text)
 
     # Footer metadata (trimmed; details move under QR)
     # QR-only verification block
