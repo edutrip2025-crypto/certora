@@ -54,9 +54,6 @@ def _absolute_url(path_or_url: str | None) -> str | None:
 
 def certificate_verification_url(certificate: Certificate) -> str:
     base = get_settings().app_base_url.rstrip("/")
-    lower = base.lower()
-    if "localhost" in lower or "127.0.0.1" in lower:
-        raise RuntimeError("Certificate verification base URL must be public, not localhost.")
     return f"{base}/certificates/verify/{certificate.certificate_id}?vt={certificate.verification_token}"
 
 
