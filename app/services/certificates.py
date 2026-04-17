@@ -79,7 +79,7 @@ def _masked_name(value: str) -> str:
     return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v12"
+CERTIFICATE_TEMPLATE_VERSION = "v13"
 
 
 def _font_size_to_fit(
@@ -158,10 +158,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Header branding (no top bar)
     logo_path = _certificate_logo_path()
     if logo_path.exists():
-        logo_w = 310
-        logo_h = 76
+        logo_w = 340
+        logo_h = 84
         logo_x = (page_width - logo_w) / 2
-        logo_y = page_height - 126
+        logo_y = page_height - 132
         c.drawImage(
             str(logo_path),
             logo_x,
@@ -176,7 +176,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     # Main title
     c.setFillColor(colors.HexColor("#8a6a1f"))
     c.setFont("Times-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height - 158, "Certificate of Achievement")
+    c.drawCentredString(page_width / 2, page_height - 172, "Certificate of Achievement")
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 12)
