@@ -57,7 +57,7 @@ def verify_certificate(
     )
     db.commit()
     db.refresh(cert)
-    return certificate_payload(db, cert)
+    return certificate_payload(db, cert, mask_identity=True)
 
 
 @router.post("/{certificate_id}/revoke")

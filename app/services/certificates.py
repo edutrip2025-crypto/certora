@@ -66,12 +66,20 @@ def safe_certificate_verification_url(certificate: Certificate) -> str | None:
 
 def _masked_name(value: str) -> str:
     text = (value or "").strip()
-    if len(text) <= 6:
+    if not text:
         return text
-    return f"{text[:3]}...{text[-3:]}"
+    masked_chars: list[str] = []
+    visible_idx = 0
+    for ch in text:
+        if ch.isalnum():
+            masked_chars.append(ch if (visible_idx % 4) == 0 else "*")
+            visible_idx += 1
+        else:
+            masked_chars.append(ch)
+    return "".join(masked_chars)
 
 
-CERTIFICATE_TEMPLATE_VERSION = "v4"
+CERTIFICATE_TEMPLATE_VERSION = "v5"
 
 
 def _load_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -143,8 +151,8 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.drawCentredString(page_width / 2, page_height - 196, "This certifies that")
 
     c.setFillColor(colors.HexColor("#111827"))
-    c.setFont("Times-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height - 238, _masked_name(student.full_name))
+    c.setFont("Times-Bold", 27)
+    c.drawCentredString(page_width / 2, page_height - 236, student.full_name)
 
     c.setStrokeColor(colors.HexColor("#caa14d"))
     c.setLineWidth(1.2)
@@ -152,39 +160,37 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
 
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 13)
-    c.drawCentredString(page_width / 2, page_height - 280, "has successfully completed the course and passed the final assessment")
+    c.drawCentredString(page_width / 2, page_height - 276, "has successfully completed the course and passed the final assessment")
 
     c.setFillColor(colors.HexColor("#0f172a"))
     c.setFont("Helvetica-Bold", 22)
-    c.drawCentredString(page_width / 2, page_height - 322, course.title)
+    c.drawCentredString(page_width / 2, page_height - 314, course.title)
 
     c.setFillColor(colors.HexColor("#334155"))
     c.setFont("Helvetica", 12)
-    c.drawCentredString(page_width / 2, page_height - 352, f"Issued by {provider.display_name} through Certora")
+    c.drawCentredString(page_width / 2, page_height - 344, f"Issued by {provider.display_name} through Certora")
 
     # Pass/result block (aligned card)
-    score_y = page_height - 430
+    score_y = page_height - 412
     c.setFillColor(colors.HexColor("#f9f4e6"))
-    c.roundRect(page_width / 2 - 164, score_y - 20, 328, 70, 12, fill=1, stroke=0)
+    c.roundRect(page_width / 2 - 142, score_y - 16, 284, 54, 12, fill=1, stroke=0)
     c.setStrokeColor(colors.HexColor("#d6b35d"))
     c.setLineWidth(1)
-    c.roundRect(page_width / 2 - 164, score_y - 20, 328, 70, 12, fill=0, stroke=1)
+    c.roundRect(page_width / 2 - 142, score_y - 16, 284, 54, 12, fill=0, stroke=1)
     c.setFillColor(colors.HexColor("#9a6f19"))
-    c.setFont("Helvetica-Bold", 13)
-    c.drawCentredString(page_width / 2, score_y + 30, "PASS")
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(page_width / 2, score_y + 24, "PASS")
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 26)
-    c.drawCentredString(page_width / 2, score_y + 5, f"{float(result.percentage or 0):.2f}%")
+    c.setFont("Helvetica-Bold", 18)
+    c.drawCentredString(page_width / 2, score_y + 6, f"{float(result.percentage or 0):.2f}%")
 
     # Footer metadata (trimmed; details move under QR)
     issued_on = certificate.issued_at.astimezone(timezone.utc).strftime("%d %b %Y")
-    masked_name = _masked_name(student.full_name)
-
     # QR-only verification block
     verification_url = certificate_verification_url(certificate)
     qr_size = 72
     qr_x = page_width - 154
-    qr_y = 112
+    qr_y = 102
     c.setFillColor(colors.HexColor("#1f2937"))
     c.setFont("Helvetica-Bold", 10)
     c.drawString(qr_x - 28, qr_y + qr_size + 16, "For verification, scan QR")
@@ -203,48 +209,22 @@ def render_certificate_pdf(db: Session, certificate: Certificate) -> str:
     c.setFont("Helvetica", 8.7)
     c.drawString(qr_x - 28, qr_y - 18, certificate.certificate_id)
     c.drawString(qr_x - 28, qr_y - 31, issued_on)
-    c.drawString(qr_x - 28, qr_y - 44, masked_name)
+    c.drawString(qr_x - 28, qr_y - 44, (student.full_name or "")[:30])
     c.drawString(qr_x - 28, qr_y - 57, (course.title or "")[:30])
 
-    # Signature + digital seal
+    # Signature
     sig_x1 = page_width / 2 - 182
     sig_x2 = page_width / 2 + 40
-    sig_y = 104
+    sig_y = 92
     c.setStrokeColor(colors.HexColor("#94a3b8"))
     c.setLineWidth(1)
     c.line(sig_x1, sig_y, sig_x2, sig_y)
     c.setFillColor(colors.HexColor("#0f172a"))
-    c.setFont("Times-Italic", 24)
-    c.drawString(sig_x1 + 8, sig_y + 6, "Certora")
+    c.setFont("Times-Italic", 30)
+    c.drawString(sig_x1 + 8, sig_y + 4, "Certora Signature")
     c.setFillColor(colors.HexColor("#475569"))
     c.setFont("Helvetica", 9)
     c.drawString(sig_x1, sig_y - 14, "Authorized Digital Signatory")
-
-    # Unique digital seal using certificate-specific token fragments + layered geometry
-    seal_x = page_width / 2 + 158
-    seal_y = sig_y + 2
-    token = (certificate.verification_token or "").upper()
-    token_a = token[:6] if token else "SECURE"
-    token_b = token[-6:] if token else "SEAL00"
-    c.setStrokeColor(colors.HexColor("#7f1d1d"))
-    c.setFillColor(colors.HexColor("#fff1f2"))
-    c.setLineWidth(1.8)
-    c.circle(seal_x, seal_y, 36, stroke=1, fill=1)
-    c.setStrokeColor(colors.HexColor("#b91c1c"))
-    c.setLineWidth(1.1)
-    c.circle(seal_x, seal_y, 29, stroke=1, fill=0)
-    c.circle(seal_x, seal_y, 22, stroke=1, fill=0)
-    c.setFillColor(colors.HexColor("#b91c1c"))
-    c.setFont("Helvetica-Bold", 7)
-    c.drawCentredString(seal_x, seal_y + 10, "CERTORA")
-    c.drawCentredString(seal_x, seal_y + 1, token_a)
-    c.drawCentredString(seal_x, seal_y - 8, token_b)
-    c.setStrokeColor(colors.HexColor("#991b1b"))
-    c.setLineWidth(0.9)
-    c.line(seal_x - 14, seal_y, seal_x + 14, seal_y)
-    c.line(seal_x, seal_y - 14, seal_x, seal_y + 14)
-    c.line(seal_x - 10, seal_y - 10, seal_x + 10, seal_y + 10)
-    c.line(seal_x - 10, seal_y + 10, seal_x + 10, seal_y - 10)
 
     c.showPage()
     c.save()
@@ -312,7 +292,7 @@ def issue_certificate(db: Session, result: Result) -> Certificate:
         return cert
 
 
-def certificate_payload(db: Session, certificate: Certificate) -> dict:
+def certificate_payload(db: Session, certificate: Certificate, *, mask_identity: bool = False) -> dict:
     course = db.get(Course, certificate.course_id)
     provider = db.get(ProviderProfile, certificate.provider_id)
     student = db.get(User, certificate.student_id)
@@ -323,7 +303,7 @@ def certificate_payload(db: Session, certificate: Certificate) -> dict:
         "certificate_id": certificate.certificate_id,
         "result_id": certificate.result_id,
         "student_id": certificate.student_id,
-        "student_name": student.full_name if student else None,
+        "student_name": (_masked_name(student.full_name) if (student and mask_identity) else (student.full_name if student else None)),
         "course_id": certificate.course_id,
         "course_name": course.title if course else None,
         "provider_id": certificate.provider_id,
