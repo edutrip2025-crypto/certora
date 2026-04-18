@@ -1013,6 +1013,62 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border: 1px solid #e5e7eb;
   background: #f8fafc;
 }
+.course-grid-controls {
+  margin-bottom: 10px;
+}
+.course-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.course-tile {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+.course-tile-thumb {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+.course-tile-body {
+  padding: 10px;
+}
+.course-tile-title {
+  margin: 0;
+  font-size: .95rem;
+  line-height: 1.3;
+}
+.course-tile-provider {
+  margin-top: 4px;
+  font-size: .82rem;
+  color: #334155;
+  font-weight: 600;
+}
+.course-tile-meta {
+  margin-top: 4px;
+  font-size: .78rem;
+  color: #64748b;
+}
+.course-tile-progress {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid #dbe4f0;
+  background: #eef2ff;
+  overflow: hidden;
+}
+.course-tile-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg,#2563eb,#0ea5e9);
+}
+.course-tile .actions {
+  margin-top: 9px;
+}
 .class-player-grid {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -1725,6 +1781,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   .class-player-grid { grid-template-columns: 1fr; }
   .class-player-grid aside { max-height: none; }
   .assessment-screen-grid { grid-template-columns: 1fr; }
+  .course-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .video-controls {
     grid-template-columns: 40px 40px 40px 1fr;
     row-gap: 6px;
@@ -1737,6 +1794,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 
 @media (max-width: 620px) {
   .stats, .stats.small { grid-template-columns: 1fr; }
+  .course-tile-grid { grid-template-columns: 1fr; }
   .workspace-brand { left: 8px; top: 8px; }
   .settings-menu {
     position: static;

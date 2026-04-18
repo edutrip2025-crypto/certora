@@ -39,6 +39,10 @@ const state = {
   providerLiveSessions: [],
   providerLiveEditSessionId: null,
   studentLiveSessions: [],
+  studentDashboard: {
+    available: [],
+    enrolled: [],
+  },
   studentLiveReminderTimers: {},
   studentLiveReminderSent: {},
   viewerTopics: [],
@@ -1108,6 +1112,10 @@ const el = {
   studentCertificatesTabList: $("studentCertificatesTabList"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
+  studentAvailableSearch: $("studentAvailableSearch"),
+  studentAvailableSort: $("studentAvailableSort"),
+  studentEnrolledSearch: $("studentEnrolledSearch"),
+  studentEnrolledSort: $("studentEnrolledSort"),
   studentLiveClassesList: $("studentLiveClassesList"),
   studentCourseViewer: $("studentCourseViewer"),
   scvTitle: $("scvTitle"),
@@ -1737,6 +1745,124 @@ function formatCourseRating(average, count) {
   const cnt = Number(count || 0);
   if (!cnt || avg <= 0) return "No ratings yet";
   return `Rating ${avg.toFixed(1)}/5 (${cnt})`;
+}
+
+function _safeCourseTime(value) {
+  const ts = Date.parse(String(value || ""));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function _studentCourseFilterSort(items, searchRaw, sortKey) {
+  const q = String(searchRaw || "").trim().toLowerCase();
+  let out = Array.isArray(items) ? [...items] : [];
+  if (q) {
+    out = out.filter((c) => {
+      const hay = [
+        c?.title || "",
+        c?.provider_name || "",
+        c?.category || "",
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  const key = String(sortKey || "latest").toLowerCase();
+  out.sort((a, b) => {
+    if (key === "rating_desc") {
+      const ar = Number(a?.average_rating || 0);
+      const br = Number(b?.average_rating || 0);
+      if (br !== ar) return br - ar;
+    } else if (key === "title_asc") {
+      return String(a?.title || "").localeCompare(String(b?.title || ""));
+    } else if (key === "provider_asc") {
+      return String(a?.provider_name || "").localeCompare(String(b?.provider_name || ""));
+    } else if (key === "progress_desc") {
+      const ap = Number(a?.progress_pct || 0);
+      const bp = Number(b?.progress_pct || 0);
+      if (bp !== ap) return bp - ap;
+    }
+    return _safeCourseTime(b?.created_at || b?.enrolled_at) - _safeCourseTime(a?.created_at || a?.enrolled_at);
+  });
+  return out;
+}
+
+function _renderStudentCourseGrid(target, items, { enrolled = false } = {}) {
+  if (!target) return;
+  if (!items.length) {
+    target.innerHTML = `<div class="item"><div class="meta">No items</div><div style="margin-top:4px;">No courses found for current search/filter.</div></div>`;
+    return;
+  }
+  const cards = items.map((c) => {
+    const progress = Math.max(0, Math.min(100, Number(c.progress_pct || 0)));
+    const assessmentLine = c.assessment_available
+      ? "Assessment available"
+      : c.exam_eligible
+        ? "Assessment not yet published"
+        : "Assessment locked";
+    return `
+      <article class="course-tile">
+        ${c.thumbnail_url ? `<img src="${escapeHtmlAttr(c.thumbnail_url)}" alt="" class="course-tile-thumb" />` : `<div class="course-tile-thumb"></div>`}
+        <div class="course-tile-body">
+          <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
+          <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
+          <div class="course-tile-meta">${escapeHtmlAttr(c.category || "-")} | ${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+          ${
+            enrolled
+              ? `
+                <div class="course-tile-progress">
+                  <div class="course-tile-progress-bar" style="width:${progress}%;"></div>
+                </div>
+                <div class="course-tile-meta">${progress.toFixed(0)}% completed | ${escapeHtmlAttr(assessmentLine)}</div>
+              `
+              : ""
+          }
+          <div class="actions">
+            ${
+              enrolled
+                ? `<button class="btn small" data-student-view-course="${Number(c.course_id || 0)}">View Course</button>`
+                : `<button class="btn small" data-student-enroll="${Number(c.course_id || 0)}">Enroll</button>`
+            }
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
+  target.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+}
+
+function renderStudentCourseCatalogs() {
+  const available = _studentCourseFilterSort(
+    state.studentDashboard.available || [],
+    el.studentAvailableSearch?.value || "",
+    el.studentAvailableSort?.value || "latest",
+  );
+  const enrolled = _studentCourseFilterSort(
+    state.studentDashboard.enrolled || [],
+    el.studentEnrolledSearch?.value || "",
+    el.studentEnrolledSort?.value || "latest",
+  );
+  _renderStudentCourseGrid(el.studentAvailableCourses, available, { enrolled: false });
+  _renderStudentCourseGrid(el.studentEnrolledCourses, enrolled, { enrolled: true });
+
+  document.querySelectorAll("[data-student-enroll]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api("POST", "/student/enroll", { course_id: Number(btn.dataset.studentEnroll) });
+        toast("Enrollment successful");
+        await refreshStudentDashboard();
+      } catch {
+        toast("Failed to enroll", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-student-view-course]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await openStudentCourseViewer(Number(btn.dataset.studentViewCourse));
+      } catch (err) {
+        toast(err?.message || "Failed to open course", "error");
+      }
+    });
+  });
 }
 
 function parseTimeToSeconds(raw) {
@@ -2764,71 +2890,9 @@ async function refreshStudentDashboard() {
     "Exam Eligible": data.stats?.exam_eligible_courses ?? 0,
     "Certificates": data.stats?.certificates_issued ?? 0,
   });
-  renderList(
-    el.studentAvailableCourses,
-    data.available || [],
-    (c) => `
-      <div class="course-card">
-        ${c.thumbnail_url ? `<img src="${c.thumbnail_url}" alt="" class="course-thumb" />` : `<div class="course-thumb"></div>`}
-        <div>
-          <div><strong>${c.title}</strong></div>
-          <div class="meta">Category: ${c.category || "-"}</div>
-          <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}</div>
-          <div class="actions"><button class="btn small" data-student-enroll="${c.course_id}">Enroll</button></div>
-        </div>
-      </div>
-    `,
-    "No available courses right now.",
-  );
-  renderList(
-    el.studentEnrolledCourses,
-    data.enrolled || [],
-    (c) => `
-      <div class="course-card">
-        ${c.thumbnail_url ? `<img src="${c.thumbnail_url}" alt="" class="course-thumb" />` : `<div class="course-thumb"></div>`}
-        <div>
-          <div><strong>${c.title}</strong></div>
-          <div class="meta">Category: ${c.category || "-"}</div>
-          <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}${Number(c.my_rating || 0) > 0 ? ` | Your rating: ${Number(c.my_rating).toFixed(1)}` : ""}</div>
-          <div style="margin-top:6px;">
-            <div style="height:8px;border:1px solid #dbe4f0;border-radius:999px;background:#eef2ff;overflow:hidden;">
-              <div style="height:100%;width:${Math.max(0, Math.min(100, Number(c.progress_pct || 0)))}%;background:linear-gradient(90deg,#2563eb,#0ea5e9);"></div>
-            </div>
-            <div class="meta" style="margin-top:4px;">${Number(c.progress_pct || 0).toFixed(0)}% completed</div>
-            <div class="meta" style="margin-top:4px;">Assessment: ${
-              c.assessment_available
-                ? "Available"
-                : c.exam_eligible
-                  ? "Provider has not published assessment yet"
-                  : "Locked until course completion"
-            }</div>
-          </div>
-          <div class="actions"><button class="btn small" data-student-view-course="${c.course_id}">View Course</button></div>
-        </div>
-      </div>
-    `,
-    "No enrolled courses yet.",
-  );
-  document.querySelectorAll("[data-student-enroll]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await api("POST", "/student/enroll", { course_id: Number(btn.dataset.studentEnroll) });
-        toast("Enrollment successful");
-        await refreshStudentDashboard();
-      } catch {
-        toast("Failed to enroll", "error");
-      }
-    });
-  });
-  document.querySelectorAll("[data-student-view-course]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await openStudentCourseViewer(Number(btn.dataset.studentViewCourse));
-      } catch (err) {
-        toast(err?.message || "Failed to open course", "error");
-      }
-    });
-  });
+  state.studentDashboard.available = Array.isArray(data.available) ? data.available : [];
+  state.studentDashboard.enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  renderStudentCourseCatalogs();
 }
 
 async function refreshStudentCertifications() {
@@ -8377,6 +8441,10 @@ function bindEvents() {
   $("refreshProviderCoursesBtn")?.addEventListener("click", () => refreshProviderContent().catch(() => toast("Failed to refresh courses", "error")));
   $("refreshStudentDashboardBtn")?.addEventListener("click", () =>
     Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]).catch(() => toast("Failed to refresh dashboard", "error")));
+  $("studentAvailableSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
+  $("studentAvailableSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
+  $("studentEnrolledSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
+  $("studentEnrolledSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
   $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
     refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderAssessmentsBtn")?.addEventListener("click", () => refreshProviderAssessments().catch(() => toast("Failed to refresh assessments", "error")));

@@ -153,6 +153,15 @@ def dashboard(
     published_courses = list(db.scalars(select(Course).where(Course.is_published.is_(True)).order_by(Course.id.desc())).all())
     available_courses = [c for c in published_courses if c.id not in enrolled_course_ids]
     dashboard_course_ids = {int(c.id) for c in published_courses}
+    provider_ids = {int(c.provider_id) for c in published_courses if c.provider_id is not None}
+    provider_map = {
+        int(pid): (name or "Provider")
+        for pid, name in db.execute(
+            select(ProviderProfile.id, ProviderProfile.display_name).where(
+                ProviderProfile.id.in_(provider_ids) if provider_ids else False,
+            ),
+        ).all()
+    }
     rating_summary = _course_rating_summary(db, dashboard_course_ids)
     my_feedback = _student_feedback_map(db, current_user.id, dashboard_course_ids)
 
@@ -184,6 +193,7 @@ def dashboard(
                 "course_id": course.id,
                 "title": course.title,
                 "category": course.category,
+                "provider_name": provider_map.get(int(course.provider_id), "Provider"),
                 "thumbnail_url": course.thumbnail_url,
                 "progress_pct": enr.progress_pct,
                 "exam_eligible": enr.exam_eligible,
@@ -194,6 +204,7 @@ def dashboard(
                 "my_rating": float((my_feedback.get(int(course.id)) or {}).get("overall_rating", 0.0)),
                 "status": enr.status,
                 "enrolled_at": enr.enrolled_at,
+                "created_at": course.created_at,
             }
             for enr, course in enrolled_rows
         ],
@@ -202,9 +213,11 @@ def dashboard(
                 "course_id": c.id,
                 "title": c.title,
                 "category": c.category,
+                "provider_name": provider_map.get(int(c.provider_id), "Provider"),
                 "thumbnail_url": c.thumbnail_url,
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
+                "created_at": c.created_at,
             }
             for c in available_courses
         ],

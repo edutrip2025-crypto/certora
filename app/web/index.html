@@ -541,11 +541,30 @@
 
       <section class="panel content hidden" id="student-view-available">
         <h2>Available Courses</h2>
+        <div class="row wrap gap-sm course-grid-controls">
+          <input id="studentAvailableSearch" class="search" type="text" placeholder="Search by course or provider" />
+          <select id="studentAvailableSort" class="filter">
+            <option value="latest">Latest</option>
+            <option value="rating_desc">Top Rated</option>
+            <option value="title_asc">Course Name (A-Z)</option>
+            <option value="provider_asc">Provider (A-Z)</option>
+          </select>
+        </div>
         <div id="studentAvailableCourses" class="list"></div>
       </section>
 
       <section class="panel content hidden" id="student-view-enrolled">
         <h2>My Enrolled Courses</h2>
+        <div class="row wrap gap-sm course-grid-controls">
+          <input id="studentEnrolledSearch" class="search" type="text" placeholder="Search by course or provider" />
+          <select id="studentEnrolledSort" class="filter">
+            <option value="latest">Latest</option>
+            <option value="rating_desc">Top Rated</option>
+            <option value="progress_desc">Progress</option>
+            <option value="title_asc">Course Name (A-Z)</option>
+            <option value="provider_asc">Provider (A-Z)</option>
+          </select>
+        </div>
         <div id="studentEnrolledCourses" class="list"></div>
         <section id="studentCourseViewer" class="moderation-toolbar hidden">
           <div class="row between">
