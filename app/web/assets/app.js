@@ -1114,8 +1114,16 @@ const el = {
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentAvailableSearch: $("studentAvailableSearch"),
   studentAvailableSort: $("studentAvailableSort"),
+  studentAvailableFilterBtn: $("studentAvailableFilterBtn"),
+  studentAvailableFilterMenu: $("studentAvailableFilterMenu"),
   studentEnrolledSearch: $("studentEnrolledSearch"),
   studentEnrolledSort: $("studentEnrolledSort"),
+  studentEnrolledFilterBtn: $("studentEnrolledFilterBtn"),
+  studentEnrolledFilterMenu: $("studentEnrolledFilterMenu"),
+  providerCoursesSearch: $("providerCoursesSearch"),
+  providerCoursesSort: $("providerCoursesSort"),
+  providerCoursesFilterBtn: $("providerCoursesFilterBtn"),
+  providerCoursesFilterMenu: $("providerCoursesFilterMenu"),
   studentLiveClassesList: $("studentLiveClassesList"),
   studentCourseViewer: $("studentCourseViewer"),
   scvTitle: $("scvTitle"),
@@ -1783,6 +1791,40 @@ function _studentCourseFilterSort(items, searchRaw, sortKey) {
     return _safeCourseTime(b?.created_at || b?.enrolled_at) - _safeCourseTime(a?.created_at || a?.enrolled_at);
   });
   return out;
+}
+
+function _providerCourseFilterSort(items, searchRaw, sortKey) {
+  const q = String(searchRaw || "").trim().toLowerCase();
+  let out = Array.isArray(items) ? [...items] : [];
+  if (q) {
+    out = out.filter((c) => String(c?.title || "").toLowerCase().includes(q));
+  }
+  const key = String(sortKey || "latest").toLowerCase();
+  out.sort((a, b) => {
+    if (key === "rating_desc") {
+      const ar = Number(a?.average_rating || 0);
+      const br = Number(b?.average_rating || 0);
+      if (br !== ar) return br - ar;
+    } else if (key === "title_asc") {
+      return String(a?.title || "").localeCompare(String(b?.title || ""));
+    } else if (key === "status_active") {
+      const aRank = a?.is_published ? 0 : 1;
+      const bRank = b?.is_published ? 0 : 1;
+      if (aRank !== bRank) return aRank - bRank;
+    }
+    return _safeCourseTime(b?.created_at) - _safeCourseTime(a?.created_at);
+  });
+  return out;
+}
+
+function toggleFilterPopover(menu, trigger, show) {
+  if (!menu) return;
+  const next = typeof show === "boolean" ? show : menu.classList.contains("hidden");
+  [el.studentAvailableFilterMenu, el.studentEnrolledFilterMenu, el.providerCoursesFilterMenu].forEach((node) => {
+    if (node && node !== menu) node.classList.add("hidden");
+  });
+  menu.classList.toggle("hidden", !next);
+  if (trigger) trigger.classList.toggle("active", next);
 }
 
 function _renderStudentCourseGrid(target, items, { enrolled = false } = {}) {
@@ -5057,41 +5099,47 @@ function exportLiveAttendanceCsv() {
 }
 
 
-async function refreshProviderContent() {
-  const items = await api("GET", "/provider/workspace/content/courses");
-  state.providerCourses = items || [];
-  renderList(
-    el.providerCoursesList,
-    state.providerCourses,
-    (c) => {
-      const firstLesson = findPrimaryLesson(c);
-      const firstLiveLesson = findLiveLessons(c)[0] || null;
-      const thumb = resolveCourseThumbnail(c, firstLesson);
-      const durationLabel = firstLesson?.recorded_video_url
-        ? (state.videoDurationByUrl[firstLesson.recorded_video_url] != null
-          ? formatSecondsToClock(state.videoDurationByUrl[firstLesson.recorded_video_url])
-          : "Loading...")
-        : "-";
-      return `
-        <div class="course-card">
-          ${thumb ? `<img src="${thumb}" alt="" class="course-thumb" />` : `<div class="course-thumb"></div>`}
-          <div>
-            <div><strong>${c.title}</strong> <span class="status-pill ${c.is_published ? "status-resolved" : "status-open"}">${c.is_published ? "active" : "inactive"}</span></div>
-            <div class="meta">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
-            <div class="meta">${formatCourseRating(c.average_rating, c.rating_count)}</div>
-            <div class="actions">
-              <button class="btn small" data-view-course="${c.id}">View Course</button>
-              ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
-              ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
-              ${canDeleteCourseFromUi() ? `<button class="btn small danger" data-delete-course="${c.id}">Delete Course</button>` : ""}
-            </div>
+function renderProviderCourseCatalog() {
+  const courses = _providerCourseFilterSort(
+    state.providerCourses || [],
+    el.providerCoursesSearch?.value || "",
+    el.providerCoursesSort?.value || "latest",
+  );
+  if (!el.providerCoursesList) return;
+  if (!courses.length) {
+    el.providerCoursesList.innerHTML = `<div class="item"><div class="meta">No items</div><div style="margin-top:4px;">No courses found for current search/filter.</div></div>`;
+    return;
+  }
+  const cards = courses.map((c) => {
+    const firstLesson = findPrimaryLesson(c);
+    const firstLiveLesson = findLiveLessons(c)[0] || null;
+    const thumb = resolveCourseThumbnail(c, firstLesson);
+    const durationLabel = firstLesson?.recorded_video_url
+      ? (state.videoDurationByUrl[firstLesson.recorded_video_url] != null
+        ? formatSecondsToClock(state.videoDurationByUrl[firstLesson.recorded_video_url])
+        : "Loading...")
+      : "-";
+    return `
+      <article class="course-tile">
+        ${thumb ? `<img src="${escapeHtmlAttr(thumb)}" alt="" class="course-tile-thumb" />` : `<div class="course-tile-thumb"></div>`}
+        <div class="course-tile-body">
+          <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
+          <div class="course-tile-provider">Provider: You</div>
+          <div class="course-tile-meta">Status: ${c.is_published ? "Active" : "Inactive"} | Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
+          <div class="course-tile-meta">${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+          <div class="actions">
+            <button class="btn small" data-view-course="${c.id}">View Course</button>
+            ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
+            ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
+            ${canDeleteCourseFromUi() ? `<button class="btn small danger" data-delete-course="${c.id}">Delete Course</button>` : ""}
           </div>
         </div>
-      `;
-    },
-    "No courses yet. Click + to create your first course.",
-  );
-  const durationTasks = state.providerCourses.map(async (course) => {
+      </article>
+    `;
+  }).join("");
+  el.providerCoursesList.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+
+  const durationTasks = courses.map(async (course) => {
     const lesson = findPrimaryLesson(course);
     if (!lesson?.recorded_video_url) return;
     const sec = await fetchVideoDuration(lesson.recorded_video_url);
@@ -5099,6 +5147,7 @@ async function refreshProviderContent() {
     if (label) label.textContent = sec != null ? formatSecondsToClock(sec) : "-";
   });
   Promise.all(durationTasks).catch(() => {});
+
   document.querySelectorAll("[data-view-course]").forEach((btn) => {
     btn.addEventListener("click", () => openCourseViewer(Number(btn.dataset.viewCourse)));
   });
@@ -5138,6 +5187,12 @@ async function refreshProviderContent() {
       }
     });
   });
+}
+
+async function refreshProviderContent() {
+  const items = await api("GET", "/provider/workspace/content/courses");
+  state.providerCourses = items || [];
+  renderProviderCourseCatalog();
 }
 
 async function loadProviderDraftsRaw() {
@@ -7446,11 +7501,7 @@ async function createCourseFromWizard() {
 
   if (!title) throw new Error("Course name is required");
   if (!videoUrl) throw new Error("Video URL is required");
-  if (!thumbnail) {
-    const firstFrame = await captureThumbnailAt(videoUrl, 0);
-    thumbnail = firstFrame || null;
-    if (thumbnail) setThumbnailValue(thumbnail);
-  }
+  if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
 
   const course = await api("POST", "/courses", {
     title,
@@ -8033,6 +8084,17 @@ function bindEvents() {
     if (!insideAnySettings) {
       el.settingsMenus.forEach((m) => m.classList.add("hidden"));
     }
+    const filterNodes = [
+      [el.studentAvailableFilterBtn, el.studentAvailableFilterMenu],
+      [el.studentEnrolledFilterBtn, el.studentEnrolledFilterMenu],
+      [el.providerCoursesFilterBtn, el.providerCoursesFilterMenu],
+    ];
+    filterNodes.forEach(([btn, menu]) => {
+      if (!menu) return;
+      const inside = (btn && btn.contains(target)) || menu.contains(target);
+      if (!inside) menu.classList.add("hidden");
+      if (btn && !inside) btn.classList.remove("active");
+    });
   });
 
   document.querySelectorAll(".nav-btn:not(.provider-nav-btn)").forEach((btn) => {
@@ -8443,8 +8505,25 @@ function bindEvents() {
     Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]).catch(() => toast("Failed to refresh dashboard", "error")));
   $("studentAvailableSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
   $("studentAvailableSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
+  $("studentAvailableFilterBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFilterPopover(el.studentAvailableFilterMenu, el.studentAvailableFilterBtn);
+  });
+  $("studentAvailableFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("studentEnrolledSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
   $("studentEnrolledSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
+  $("studentEnrolledFilterBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFilterPopover(el.studentEnrolledFilterMenu, el.studentEnrolledFilterBtn);
+  });
+  $("studentEnrolledFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
+  $("providerCoursesSearch")?.addEventListener("input", () => renderProviderCourseCatalog());
+  $("providerCoursesSort")?.addEventListener("change", () => renderProviderCourseCatalog());
+  $("providerCoursesFilterBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFilterPopover(el.providerCoursesFilterMenu, el.providerCoursesFilterBtn);
+  });
+  $("providerCoursesFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
     refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderAssessmentsBtn")?.addEventListener("click", () => refreshProviderAssessments().catch(() => toast("Failed to refresh assessments", "error")));

@@ -108,6 +108,18 @@
             <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
           </div>
         </div>
+        <div class="row wrap gap-sm course-grid-controls">
+          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course name" />
+          <button id="providerCoursesFilterBtn" class="btn small icon-filter-btn" type="button" title="Filter" aria-label="Filter">&#9776;</button>
+          <div id="providerCoursesFilterMenu" class="filter-popover hidden">
+            <select id="providerCoursesSort" class="filter">
+              <option value="latest">Latest</option>
+              <option value="rating_desc">Top Rated</option>
+              <option value="title_asc">Course Name (A-Z)</option>
+              <option value="status_active">Active First</option>
+            </select>
+          </div>
+        </div>
         <div id="providerCoursesList" class="list"></div>
         <section id="providerCourseViewer" class="moderation-toolbar hidden">
           <div class="row between">
@@ -186,7 +198,7 @@
                 <option value="Advanced">Advanced</option>
               </select>
               <input id="cwCourseCategory" class="search" type="text" placeholder="Category (Tax, GST, etc.)" />
-              <input id="cwCourseThumbnail" class="search" type="url" placeholder="Thumbnail URL (optional)" />
+              <input id="cwCourseThumbnail" class="search" type="url" placeholder="Thumbnail URL (required)" />
             </div>
             <label>Description
               <textarea id="cwCourseDescription" rows="3" placeholder="What will students learn?"></textarea>
@@ -543,12 +555,15 @@
         <h2>Available Courses</h2>
         <div class="row wrap gap-sm course-grid-controls">
           <input id="studentAvailableSearch" class="search" type="text" placeholder="Search by course or provider" />
-          <select id="studentAvailableSort" class="filter">
-            <option value="latest">Latest</option>
-            <option value="rating_desc">Top Rated</option>
-            <option value="title_asc">Course Name (A-Z)</option>
-            <option value="provider_asc">Provider (A-Z)</option>
-          </select>
+          <button id="studentAvailableFilterBtn" class="btn small icon-filter-btn" type="button" title="Filter" aria-label="Filter">&#9776;</button>
+          <div id="studentAvailableFilterMenu" class="filter-popover hidden">
+            <select id="studentAvailableSort" class="filter">
+              <option value="latest">Latest</option>
+              <option value="rating_desc">Top Rated</option>
+              <option value="title_asc">Course Name (A-Z)</option>
+              <option value="provider_asc">Provider (A-Z)</option>
+            </select>
+          </div>
         </div>
         <div id="studentAvailableCourses" class="list"></div>
       </section>
@@ -557,13 +572,16 @@
         <h2>My Enrolled Courses</h2>
         <div class="row wrap gap-sm course-grid-controls">
           <input id="studentEnrolledSearch" class="search" type="text" placeholder="Search by course or provider" />
-          <select id="studentEnrolledSort" class="filter">
-            <option value="latest">Latest</option>
-            <option value="rating_desc">Top Rated</option>
-            <option value="progress_desc">Progress</option>
-            <option value="title_asc">Course Name (A-Z)</option>
-            <option value="provider_asc">Provider (A-Z)</option>
-          </select>
+          <button id="studentEnrolledFilterBtn" class="btn small icon-filter-btn" type="button" title="Filter" aria-label="Filter">&#9776;</button>
+          <div id="studentEnrolledFilterMenu" class="filter-popover hidden">
+            <select id="studentEnrolledSort" class="filter">
+              <option value="latest">Latest</option>
+              <option value="rating_desc">Top Rated</option>
+              <option value="progress_desc">Progress</option>
+              <option value="title_asc">Course Name (A-Z)</option>
+              <option value="provider_asc">Provider (A-Z)</option>
+            </select>
+          </div>
         </div>
         <div id="studentEnrolledCourses" class="list"></div>
         <section id="studentCourseViewer" class="moderation-toolbar hidden">

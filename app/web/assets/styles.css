@@ -1015,6 +1015,35 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 .course-grid-controls {
   margin-bottom: 10px;
+  position: relative;
+  align-items: center;
+}
+.icon-filter-btn {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  font-size: .95rem;
+  line-height: 1;
+}
+.icon-filter-btn.active {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+.filter-popover {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 8;
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+}
+.filter-popover .filter {
+  width: 100%;
 }
 .course-tile-grid {
   display: grid;
