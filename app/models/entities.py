@@ -161,8 +161,119 @@ class Course(Base):
     category: Mapped[str] = mapped_column(String(100), index=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     includes_certification_exam: Mapped[bool] = mapped_column(Boolean, default=False)
+    fair_usage_multiplier: Mapped[float] = mapped_column(Float, default=3.0)
+    fair_usage_override_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    admin_fair_usage_override_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Creator(Base):
+    __tablename__ = "creators"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_creator_user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    display_name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CourseLesson(Base):
+    __tablename__ = "course_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    position: Mapped[int] = mapped_column(Integer, default=1)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CoursePurchase(Base):
+    __tablename__ = "course_purchases"
+    __table_args__ = (UniqueConstraint("user_id", "course_id", name="uq_course_purchase_user_course"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    price_amount: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="INR")
+    payment_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="paid", index=True)
+    admin_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LessonVideo(Base):
+    __tablename__ = "lesson_videos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("course_lessons.id"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("creators.id"), index=True)
+    internal_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    cloudflare_video_uid: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    upload_status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    ready_status: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    playback_hls_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    direct_upload_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class VideoWatchSession(Base):
+    __tablename__ = "video_watch_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("course_lessons.id"), index=True)
+    lesson_video_id: Mapped[int] = mapped_column(ForeignKey("lesson_videos.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    last_position_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    client_app: Mapped[str] = mapped_column(String(30), default="web")
+    ip_address: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class VideoWatchProgress(Base):
+    __tablename__ = "video_watch_progress"
+    __table_args__ = (UniqueConstraint("user_id", "lesson_video_id", name="uq_video_watch_progress_user_video"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("course_lessons.id"), index=True)
+    lesson_video_id: Mapped[int] = mapped_column(ForeignKey("lesson_videos.id"), index=True)
+    total_watched_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    resume_position_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    completion_ratio: Mapped[float] = mapped_column(Float, default=0)
+    first_watched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_watched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    usage_warning_level: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LiveStreamSession(Base):
+    __tablename__ = "live_stream_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("creators.id"), index=True)
+    course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    cloudflare_input_id: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
+    cloudflare_live_uid: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    scheduled_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class CourseModule(Base):

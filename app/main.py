@@ -71,3 +71,8 @@ app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 @app.get("/")
 def frontend():
     return FileResponse(str(WEB_DIR / "index.html"))
+
+
+@app.get("/stream-player")
+def stream_player_frontend():
+    return FileResponse(str(WEB_DIR / "stream_player.html"))

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import admin, auth, certificates, courses, exams, proctoring, provider, student
+from app.api.routes import admin, auth, certificates, courses, exams, proctoring, provider, stream_market, student
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -11,3 +11,4 @@ api_router.include_router(student.router)
 api_router.include_router(proctoring.router)
 api_router.include_router(certificates.router)
 api_router.include_router(admin.router)
+api_router.include_router(stream_market.router)

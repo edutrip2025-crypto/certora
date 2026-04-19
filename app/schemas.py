@@ -466,3 +466,67 @@ class LiveClassHostAction(BaseModel):
     target_user_id: int | None = None
     room: str | None = None
     enabled: bool | None = None
+
+
+class StreamCourseCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255)
+    description: str = ""
+    category: str = "General"
+    fair_usage_multiplier: float | None = None
+
+
+class StreamLessonCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255)
+    position: int = Field(default=1, ge=1)
+
+
+class StreamVideoUploadInitRequest(BaseModel):
+    lesson_id: int
+    max_duration_seconds: int | None = Field(default=None, ge=30, le=86400)
+
+
+class StreamVideoUploadInitResponse(BaseModel):
+    lesson_video_id: int
+    internal_id: str
+    cloudflare_video_uid: str
+    upload_url: str
+    expires_at: datetime | None = None
+    status: str
+
+
+class StreamPurchaseRequest(BaseModel):
+    course_id: int
+    price_amount: float = Field(ge=0)
+    currency: str = Field(default="INR", min_length=3, max_length=8)
+    payment_ref: str | None = Field(default=None, max_length=120)
+
+
+class StreamPlaybackTokenRequest(BaseModel):
+    lesson_video_id: int
+    client_app: str = Field(default="web", max_length=30)
+
+
+class StreamWatchHeartbeatRequest(BaseModel):
+    session_id: int
+    lesson_video_id: int
+    watched_seconds_delta: int = Field(ge=0, le=120)
+    position_seconds: int = Field(ge=0)
+    player_state: str | None = Field(default=None, max_length=40)
+    ended: bool = False
+
+
+class StreamPricingRecommendationRequest(BaseModel):
+    entered_price: float = Field(ge=0)
+    expected_views_per_month: int = Field(default=100, ge=1, le=1000000)
+
+
+class StreamLiveSessionCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255)
+    course_id: int | None = None
+    scheduled_start_at: datetime | None = None
+
+
+class StreamFairUsageOverrideRequest(BaseModel):
+    fair_usage_multiplier: float | None = Field(default=None, ge=0.1, le=20.0)
+    override_seconds: int | None = Field(default=None, ge=60)
+    override_enabled: bool = False

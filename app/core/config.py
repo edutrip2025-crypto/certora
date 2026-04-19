@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     identity_verify_voter_id_url: str = ""
     identity_verify_tax_id_url: str = ""
     identity_verify_other_url: str = ""
+    cloudflare_stream_account_id: str = ""
+    cloudflare_stream_api_token: str = ""
+    cloudflare_stream_customer_code: str = ""
+    cloudflare_stream_signing_key_id: str = ""
+    cloudflare_stream_signing_key_secret: str = ""
+    stream_playback_token_ttl_seconds: int = 900
+    stream_direct_upload_expiry_seconds: int = 3600
+    fair_usage_default_multiplier: float = 3.0
+    fair_usage_warn_threshold_1: float = 0.8
+    fair_usage_warn_threshold_2: float = 1.0
+    fair_usage_warn_threshold_3: float = 1.2
+    pricing_currency: str = "INR"
+    pricing_stream_storage_cost_per_minute_month: float = 0.08
+    pricing_stream_delivery_cost_per_minute: float = 0.03
+    pricing_platform_fee_pct: float = 0.1
+    pricing_creator_margin_floor_pct: float = 0.35
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
