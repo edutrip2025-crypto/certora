@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -177,13 +178,18 @@ def delete_course(
         AttemptEvent,
         Certificate,
         CourseComment,
+        CourseLesson,
         CourseCompletion,
         CourseFeedback,
+        CoursePurchase,
         Enrollment,
         Exam,
         ExamAttempt,
         ExamRule,
+        InstructorMapping,
         LessonTopic,
+        LessonVideo,
+        LiveStreamSession,
         LiveClassCompletion,
         Option,
         ProctorEvent,
@@ -194,10 +200,14 @@ def delete_course(
         Result,
         StudentAnswer,
         VerificationRecord,
+        VideoWatchProgress,
+        VideoWatchSession,
     )
 
     module_ids = list(db.scalars(select(CourseModule.id).where(CourseModule.course_id == course.id)).all())
     lesson_ids = list(db.scalars(select(Lesson.id).where(Lesson.module_id.in_(module_ids))).all()) if module_ids else []
+    stream_lesson_ids = list(db.scalars(select(CourseLesson.id).where(CourseLesson.course_id == course.id)).all())
+    lesson_video_ids = list(db.scalars(select(LessonVideo.id).where(LessonVideo.course_id == course.id)).all())
     exam_ids = list(db.scalars(select(Exam.id).where(Exam.course_id == course.id)).all())
     question_ids = list(db.scalars(select(Question.id).where(Question.exam_id.in_(exam_ids))).all()) if exam_ids else []
     attempt_ids = list(db.scalars(select(ExamAttempt.id).where(ExamAttempt.exam_id.in_(exam_ids))).all()) if exam_ids else []
@@ -244,6 +254,17 @@ def delete_course(
         db.execute(delete(Lesson).where(Lesson.id.in_(lesson_ids)))
     if module_ids:
         db.execute(delete(CourseModule).where(CourseModule.id.in_(module_ids)))
+    if lesson_video_ids:
+        db.execute(delete(VideoWatchSession).where(VideoWatchSession.lesson_video_id.in_(lesson_video_ids)))
+        db.execute(delete(VideoWatchProgress).where(VideoWatchProgress.lesson_video_id.in_(lesson_video_ids)))
+        db.execute(delete(LessonVideo).where(LessonVideo.id.in_(lesson_video_ids)))
+    db.execute(delete(VideoWatchSession).where(VideoWatchSession.course_id == course.id))
+    db.execute(delete(VideoWatchProgress).where(VideoWatchProgress.course_id == course.id))
+    if stream_lesson_ids:
+        db.execute(delete(CourseLesson).where(CourseLesson.id.in_(stream_lesson_ids)))
+    db.execute(delete(CoursePurchase).where(CoursePurchase.course_id == course.id))
+    db.execute(delete(LiveStreamSession).where(LiveStreamSession.course_id == course.id))
+    db.execute(delete(InstructorMapping).where(InstructorMapping.course_id == course.id))
 
     db.execute(delete(CourseComment).where(CourseComment.course_id == course.id))
     db.execute(delete(CourseFeedback).where(CourseFeedback.course_id == course.id))
@@ -251,5 +272,12 @@ def delete_course(
     db.execute(delete(LiveClassCompletion).where(LiveClassCompletion.course_id == course.id))
     db.execute(delete(Enrollment).where(Enrollment.course_id == course.id))
     db.delete(course)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Course cannot be deleted because dependent records still exist. Please retry or contact support.",
+        )
     return {"deleted": True, "course_id": course_id}
