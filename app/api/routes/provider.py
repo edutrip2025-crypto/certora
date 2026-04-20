@@ -672,12 +672,26 @@ def complete_video_upload(
     upload = db.scalar(select(VideoUploadSession).where(VideoUploadSession.session_id == session_id))
     if not upload or upload.provider_id != provider.id:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    if upload.received_chunks < upload.total_chunks:
-        raise HTTPException(status_code=400, detail="Upload is incomplete")
-
     videos_dir, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     final_path = videos_dir / upload.stored_filename
+    if not session_dir.exists():
+        upload.status = VideoUploadStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=400, detail="Upload session files are missing")
+
+    missing_chunks = [
+        idx for idx in range(upload.total_chunks)
+        if not (session_dir / f"{idx}.part").exists()
+    ]
+    upload.received_chunks = upload.total_chunks - len(missing_chunks)
+    db.commit()
+    if missing_chunks:
+        first_missing = missing_chunks[0]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload is incomplete (missing chunk {first_missing})",
+        )
 
     try:
         with final_path.open("wb") as out:

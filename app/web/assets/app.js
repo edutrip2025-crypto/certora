@@ -2822,13 +2822,13 @@ async function uploadLocalVideoInChunks(file) {
       </div>
     `;
   };
-  const chunkSizeCandidates = [6, 4, 2, 1].map((mb) => mb * 1024 * 1024);
+  const chunkSizeCandidates = [1, 0.5, 0.25, 0.125].map((mb) => Math.floor(mb * 1024 * 1024));
   let lastErr = null;
 
   for (let sizeIdx = 0; sizeIdx < chunkSizeCandidates.length; sizeIdx += 1) {
     const chunkSize = chunkSizeCandidates[sizeIdx];
     const totalChunks = Math.ceil(file.size / chunkSize);
-    const maxParallel = chunkSize >= 4 * 1024 * 1024 ? 3 : Math.min(6, Math.max(2, totalChunks));
+    const maxParallel = chunkSize >= 1024 * 1024 ? 3 : Math.min(4, Math.max(2, totalChunks));
     const mb = Math.round((chunkSize / (1024 * 1024)) * 10) / 10;
     renderUploadProgress(0, `Preparing upload (${mb} MB chunks)`);
 
@@ -2887,6 +2887,9 @@ async function uploadLocalVideoInChunks(file) {
       if (Number(err?.status || 0) === 413 && sizeIdx < chunkSizeCandidates.length - 1) {
         renderUploadProgress(0, "Chunk too large for server. Retrying with smaller chunks...");
         continue;
+      }
+      if (Number(err?.status || 0) === 413) {
+        renderUploadProgress(0, "Server upload limit reached. Contact admin to increase request size.");
       }
       throw err;
     }
