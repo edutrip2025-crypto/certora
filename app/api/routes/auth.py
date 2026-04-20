@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
@@ -152,6 +152,48 @@ def _normalize_id_number(value: str | None) -> str:
     return re.sub(r"\s+", "", str(value or "").strip()).upper()
 
 
+def _normalize_phone_number(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    cleaned = re.sub(r"[^\d+]", "", raw)
+    return cleaned or None
+
+
+def _assert_not_banned_identity(
+    db: Session,
+    *,
+    email: str | None,
+    phone_number: str | None,
+    id_type: str | None = None,
+    id_number: str | None = None,
+    country_code: str | None = None,
+) -> None:
+    from app.models.entities import BannedIdentity
+
+    e_norm = str(email or "").strip().lower() or None
+    p_norm = _normalize_phone_number(phone_number)
+    t_norm = str(id_type or "").strip().lower() or None
+    n_norm = _normalize_id_number(id_number) if id_number else None
+    c_norm = _normalize_country_code(country_code) if country_code else None
+
+    if e_norm and db.scalar(select(BannedIdentity.id).where(func.lower(func.trim(BannedIdentity.email)) == e_norm)):
+        raise HTTPException(status_code=403, detail="This account is banned and cannot be registered.")
+    if p_norm and db.scalar(select(BannedIdentity.id).where(BannedIdentity.phone_number == p_norm)):
+        raise HTTPException(status_code=403, detail="This account is banned and cannot be registered.")
+    if t_norm and n_norm:
+        q = select(BannedIdentity.id).where(
+            and_(
+                BannedIdentity.id_type == t_norm,
+                BannedIdentity.id_number == n_norm,
+            ),
+        )
+        if c_norm:
+            q = q.where(BannedIdentity.country_code == c_norm)
+        if db.scalar(q):
+            raise HTTPException(status_code=403, detail="This KYC identity is banned and cannot be registered.")
+
+
 def _validate_identity_input(
     *,
     role: UserRole,
@@ -195,6 +237,14 @@ def _upsert_identity_verification(
         raise HTTPException(status_code=400, detail="Verification ID is required for student/provider accounts.")
     if not id_type and not id_number:
         return
+    _assert_not_banned_identity(
+        db,
+        email=None,
+        phone_number=None,
+        id_type=id_type,
+        id_number=id_number,
+        country_code=country_code,
+    )
     v_type, v_number, v_country = _validate_identity_input(
         role=role,
         id_type=id_type,
@@ -223,17 +273,18 @@ def _upsert_identity_verification(
     existing_identity.reviewed_at = None
 
 
-def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str, dict]:
+def _firebase_identity_or_401(token: str | None) -> tuple[str, str | None, str | None, str, dict]:
     if not token:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     try:
         payload = verify_firebase_token(token)
         firebase_uid = payload.get("uid")
         email = payload.get("email")
+        phone_number = _normalize_phone_number(payload.get("phone_number"))
         name = payload.get("name") or (email.split("@")[0] if email else "Firebase User")
         if not firebase_uid:
             raise HTTPException(status_code=401, detail="Could not validate credentials")
-        return str(firebase_uid), email, str(name), payload
+        return str(firebase_uid), email, phone_number, str(name), payload
     except HTTPException:
         raise
     except Exception as exc:
@@ -276,7 +327,7 @@ def me_context(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    firebase_uid, email, fallback_name, token_payload = _firebase_identity_or_401(token)
+    firebase_uid, email, phone_number, fallback_name, token_payload = _firebase_identity_or_401(token)
     email_norm = str(email or "").strip().lower() or None
     current_user = db.scalar(_normalized_user_query(email_norm)) if email_norm else None
     settings = get_settings()
@@ -285,6 +336,7 @@ def me_context(
     if role_claim in {r.value for r in UserRole}:
         role_from_claim = UserRole(role_claim)
     if not current_user:
+        _assert_not_banned_identity(db, email=email_norm, phone_number=phone_number)
         desired_role: UserRole
         if role_from_claim in {UserRole.STUDENT, UserRole.PROVIDER}:
             desired_role = role_from_claim
@@ -322,10 +374,12 @@ def me_context(
         else:
             current_user = User(
                 email=email_norm or _firebase_local_email(firebase_uid),
+                phone_number=phone_number,
                 full_name=fallback_name,
                 password_hash="firebase",
                 role=desired_role,
                 is_active=True,
+                account_state="active",
             )
             db.add(current_user)
             db.flush()
@@ -350,6 +404,13 @@ def me_context(
         if current_user.full_name != fallback_name:
             current_user.full_name = fallback_name
             changed = True
+        if phone_number and current_user.phone_number != phone_number:
+            current_user.phone_number = phone_number
+            changed = True
+        if str(current_user.account_state or "active").lower() in {"banned", "deleted"}:
+            raise HTTPException(status_code=403, detail="This account is not allowed to access the platform.")
+        if str(current_user.account_state or "active").lower() == "frozen":
+            raise HTTPException(status_code=403, detail="This account is temporarily frozen. Contact support.")
         if changed:
             db.commit()
             db.refresh(current_user)
@@ -380,6 +441,7 @@ def me_context(
         "email": current_user.email,
         "full_name": current_user.full_name,
         "role": current_user.role,
+        "account_state": str(current_user.account_state or "active"),
         "approval_status": approval_status,
         "rejection_reason": rejection_reason,
         "verification_id_type": identity.id_type if identity else None,
@@ -394,7 +456,7 @@ def register_role(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    firebase_uid, email, fallback_name, token_payload = _firebase_identity_or_401(token)
+    firebase_uid, email, phone_number, fallback_name, token_payload = _firebase_identity_or_401(token)
     email_norm = str(email or "").strip().lower() or None
     settings = get_settings()
     if payload.role == UserRole.ADMIN and (not email_norm or email_norm not in settings.admin_email_set):
@@ -411,20 +473,37 @@ def register_role(
     if not email_norm and (not target_email or target_email.endswith("@firebase.local")):
         target_email = _firebase_local_email(firebase_uid)
 
+    _assert_not_banned_identity(
+        db,
+        email=target_email,
+        phone_number=phone_number,
+        id_type=payload.verification_id_type,
+        id_number=payload.verification_id_number,
+        country_code=payload.verification_country_code,
+    )
+
     if not current_user:
         current_user = User(
             email=target_email,
+            phone_number=phone_number,
             full_name=payload.full_name or fallback_name,
             password_hash="firebase",
             role=payload.role,
             is_active=True,
+            account_state="active",
         )
         db.add(current_user)
         db.flush()
     else:
         current_user.email = target_email
+        if phone_number:
+            current_user.phone_number = phone_number
         current_user.full_name = payload.full_name or fallback_name
         current_user.role = payload.role
+        if str(current_user.account_state or "active").lower() in {"banned", "deleted"}:
+            raise HTTPException(status_code=403, detail="This account is not allowed to access the platform.")
+        if str(current_user.account_state or "active").lower() == "frozen":
+            raise HTTPException(status_code=403, detail="This account is temporarily frozen. Contact support.")
 
     _upsert_identity_verification(
         db=db,
@@ -461,10 +540,12 @@ def register_role(
             # Last resort: create a deterministic local-email user for this Firebase UID.
             recovered = User(
                 email=_firebase_local_email(firebase_uid),
+                phone_number=phone_number,
                 full_name=payload.full_name or fallback_name,
                 password_hash="firebase",
                 role=payload.role,
                 is_active=True,
+                account_state="active",
             )
             db.add(recovered)
             db.flush()
@@ -510,10 +591,12 @@ def register_role(
                     try:
                         created = User(
                             email=probe_email,
+                            phone_number=phone_number,
                             full_name=payload.full_name or fallback_name,
                             password_hash="firebase",
                             role=payload.role,
                             is_active=True,
+                            account_state="active",
                         )
                         db.add(created)
                         db.flush()
@@ -560,7 +643,7 @@ def recover_self_as_admin(
 ):
     settings = get_settings()
     _assert_recovery_key_or_403(payload.recovery_key, settings.admin_recovery_key)
-    firebase_uid, email, fallback_name, _ = _firebase_identity_or_401(token)
+    firebase_uid, email, phone_number, fallback_name, _ = _firebase_identity_or_401(token)
     email_norm = str(email or "").strip().lower()
     if not email_norm:
         raise HTTPException(status_code=400, detail="Authenticated Firebase account has no email.")
@@ -569,17 +652,22 @@ def recover_self_as_admin(
     if not user:
         user = User(
             email=email_norm,
+            phone_number=phone_number,
             full_name=fallback_name,
             password_hash="firebase",
             role=UserRole.ADMIN,
             is_active=True,
+            account_state="active",
         )
         db.add(user)
         db.flush()
     else:
         user.role = UserRole.ADMIN
         user.full_name = fallback_name
+        if phone_number:
+            user.phone_number = phone_number
         user.is_active = True
+        user.account_state = "active"
 
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
     if not approval:

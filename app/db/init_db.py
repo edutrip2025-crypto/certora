@@ -180,6 +180,62 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
             pass
 
 
+def _migrate_admin_user_controls_sqlite(conn) -> None:
+    _sqlite_add_column_if_missing(conn, "users", "phone_number", "TEXT")
+    _sqlite_add_column_if_missing(conn, "users", "account_state", "TEXT DEFAULT 'active'")
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS banned_identities (
+                id INTEGER NOT NULL PRIMARY KEY,
+                email VARCHAR(320),
+                phone_number VARCHAR(32),
+                id_type VARCHAR(40),
+                id_number VARCHAR(120),
+                country_code VARCHAR(8),
+                source_user_id INTEGER REFERENCES users(id),
+                reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        ),
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_banned_identities_email ON banned_identities (email)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_banned_identities_phone_number ON banned_identities (phone_number)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_banned_identities_id_type ON banned_identities (id_type)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_banned_identities_id_number ON banned_identities (id_number)"))
+
+
+def _migrate_admin_user_controls_postgres(conn) -> None:
+    statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(32)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_state VARCHAR(20) DEFAULT 'active'",
+        "UPDATE users SET account_state = 'active' WHERE account_state IS NULL",
+        """
+        CREATE TABLE IF NOT EXISTS banned_identities (
+            id BIGSERIAL PRIMARY KEY,
+            email VARCHAR(320),
+            phone_number VARCHAR(32),
+            id_type VARCHAR(40),
+            id_number VARCHAR(120),
+            country_code VARCHAR(8),
+            source_user_id BIGINT REFERENCES users(id),
+            reason TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_banned_identities_email ON banned_identities(email)",
+        "CREATE INDEX IF NOT EXISTS ix_banned_identities_phone_number ON banned_identities(phone_number)",
+        "CREATE INDEX IF NOT EXISTS ix_banned_identities_id_type ON banned_identities(id_type)",
+        "CREATE INDEX IF NOT EXISTS ix_banned_identities_id_number ON banned_identities(id_number)",
+    ]
+    for stmt in statements:
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            pass
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
@@ -207,6 +263,7 @@ def init_db() -> None:
             _migrate_live_class_schema_sqlite(conn)
             _migrate_identity_schema_sqlite(conn)
             _migrate_stream_market_schema_sqlite(conn)
+            _migrate_admin_user_controls_sqlite(conn)
     elif engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             try:
@@ -216,6 +273,7 @@ def init_db() -> None:
             _migrate_live_class_schema_postgres(conn)
             _migrate_identity_schema_postgres(conn)
             _migrate_stream_market_schema_postgres(conn)
+            _migrate_admin_user_controls_postgres(conn)
 
     # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()

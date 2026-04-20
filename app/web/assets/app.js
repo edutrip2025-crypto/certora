@@ -1106,12 +1106,13 @@ const el = {
   moderationSearch: $("moderationSearch"),
   moderationStatusFilter: $("moderationStatusFilter"),
   reportsBadge: $("reportsBadge"),
-  approvalsBadge: $("approvalsBadge"),
   approvalSummary: $("approvalSummary"),
   pendingStudents: $("pendingStudents"),
   pendingProviders: $("pendingProviders"),
   studentsApprovalPane: $("studentsApprovalPane"),
   providersApprovalPane: $("providersApprovalPane"),
+  adminUsersSearch: $("adminUsersSearch"),
+  refreshAdminUsersBtn: $("refreshAdminUsersBtn"),
   billingPanel: $("billingPanel"),
   refreshProctorSessionsBtn: $("refreshProctorSessionsBtn"),
   loginBtn: $("loginBtn"),
@@ -1699,6 +1700,9 @@ function activateAdminSubView(name) {
   document.querySelectorAll('[id^="view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`view-${name}`);
   if (pane) pane.classList.remove("hidden");
+  if (name === "users") {
+    refreshAdminUsers().catch(() => toast("Failed to load users", "error"));
+  }
 }
 
 function activateProviderSubView(name) {
@@ -3102,76 +3106,70 @@ async function refreshModerationData() {
 async function refreshAdminBadges() {
   const badgeData = await api("GET", "/admin/workspace-badges");
   setBadge(el.reportsBadge, badgeData.open_moderation);
-  setBadge(el.approvalsBadge, badgeData.pending_approvals);
 }
 
-async function approvalDecision(kind, id, approve) {
-  const reason = approve ? null : (prompt("Rejection reason") || "Profile invalid");
-  let url = "";
-  if (kind === "student") url = `/admin/approvals/students/${id}/decision`;
-  if (kind === "provider") url = `/admin/approvals/providers/${id}/decision`;
-  if (kind === "provider-user") url = `/admin/approvals/providers/users/${id}/decision`;
-  await api("POST", url, { approve, rejection_reason: reason });
-  toast("Approval updated");
-  await refreshApprovals();
-  await refreshAdminBadges();
+async function adminUserAction(userId, action) {
+  const uid = Number(userId || 0);
+  if (!uid) return;
+  let reason = "";
+  if (action === "ban") reason = prompt("Reason for ban") || "Banned by admin";
+  if (action === "freeze") reason = prompt("Reason for freeze") || "Frozen by admin";
+  if (action === "delete") {
+    const ok = confirm("Mark this account as deleted?");
+    if (!ok) return;
+    reason = "Deleted by admin";
+  }
+  await api("POST", `/admin/users/${uid}/state`, { action, reason });
+  toast(`User ${action} action applied`);
+  await refreshAdminUsers();
 }
 
-async function refreshApprovals() {
-  const summary = await api("GET", "/admin/approvals/summary");
-  const studentsResp = await api("GET", "/admin/approvals/students?page=1&page_size=50");
-  const providersResp = await api("GET", "/admin/approvals/providers?page=1&page_size=50");
+function userStateLabel(item) {
+  const state = String(item?.account_state || "active").toLowerCase();
+  if (state === "banned") return "Banned";
+  if (state === "frozen") return "Frozen";
+  if (state === "deleted") return "Deleted";
+  return "Active";
+}
+
+function renderAdminUsersList(target, items, emptyText) {
+  renderList(
+    target,
+    items,
+    (u) => `
+      <div><strong>${escapeHtmlAttr(u.full_name || "User")}</strong> (${escapeHtmlAttr(u.email || "-")})</div>
+      <div class="meta">User ID: ${u.user_id} | State: ${escapeHtmlAttr(userStateLabel(u))} | Phone: ${escapeHtmlAttr(u.phone_number || "-")}</div>
+      <div class="meta">KYC: ${escapeHtmlAttr(u.verification?.id_type || "-")} | ${escapeHtmlAttr(u.verification?.id_number || "-")}</div>
+      <div class="actions">
+        <button class="btn small" data-admin-user-active="${u.user_id}">Activate</button>
+        <button class="btn small" data-admin-user-freeze="${u.user_id}">Freeze</button>
+        <button class="btn small danger" data-admin-user-ban="${u.user_id}">Ban</button>
+        <button class="btn small danger" data-admin-user-delete="${u.user_id}">Delete</button>
+      </div>
+    `,
+    emptyText,
+  );
+}
+
+async function refreshAdminUsers() {
+  const query = encodeURIComponent(String(el.adminUsersSearch?.value || "").trim());
+  const studentsResp = await api("GET", `/admin/users?role=students&q=${query}`);
+  const providersResp = await api("GET", `/admin/users?role=providers&q=${query}`);
   const students = studentsResp.items || [];
   const providers = providersResp.items || [];
 
   renderSimpleStats(el.approvalSummary, {
-    "Pending Students": summary.pending_students,
-    "Pending Providers": summary.pending_providers,
+    "Students": studentsResp.total || 0,
+    "Providers": providersResp.total || 0,
   });
 
-  renderList(
-    el.pendingStudents,
-    students,
-    (s) => `
-      <div><strong>${s.full_name}</strong> (${s.email})</div>
-      <div class="meta">Student ID: ${s.user_id}</div>
-      <div class="actions">
-        <button class="btn small" data-student-approve="${s.user_id}">Approve</button>
-        <button class="btn small danger" data-student-reject="${s.user_id}">Reject</button>
-        <a class="btn small" href="mailto:${s.email}?subject=Certora%20Approval%20Update">Email</a>
-      </div>
-    `,
-    "No pending students.",
-  );
+  renderAdminUsersList(el.pendingStudents, students, "No students found.");
+  renderAdminUsersList(el.pendingProviders, providers, "No providers found.");
 
-  renderList(
-    el.pendingProviders,
-    providers,
-    (p) => `
-      <div><strong>${p.display_name}</strong> (${p.email})</div>
-      <div class="meta">Provider ID: ${p.provider_id ?? "-"} | User ID: ${p.user_id} | ${p.provider_type}</div>
-      <div class="meta">Profile: ${p.profile_created ? "Submitted" : "Not submitted yet (direct signup)"}</div>
-      <div class="meta">Docs: ${(p.documents || []).map((d) => `<a href="${d.file_url}" target="_blank">${d.document_type}</a>`).join(" | ") || "None"}</div>
-      <div class="actions">
-        ${
-          p.provider_id
-            ? `<button class="btn small" data-provider-approve="${p.provider_id}">Approve</button>
-               <button class="btn small danger" data-provider-reject="${p.provider_id}">Reject</button>`
-            : `<button class="btn small" data-provider-user-approve="${p.user_id}">Approve</button>
-               <button class="btn small danger" data-provider-user-reject="${p.user_id}">Reject</button>`
-        }
-        <a class="btn small" href="mailto:${p.email}?subject=Certora%20Approval%20Update">Email</a>
-      </div>
-    `,
-    "No pending providers.",
-  );
-
-  document.querySelectorAll("[data-student-approve]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("student", btn.dataset.studentApprove, true)));
-  document.querySelectorAll("[data-student-reject]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("student", btn.dataset.studentReject, false)));
-  document.querySelectorAll("[data-provider-approve]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("provider", btn.dataset.providerApprove, true)));
-  document.querySelectorAll("[data-provider-reject]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("provider", btn.dataset.providerReject, false)));
-  document.querySelectorAll("[data-provider-user-approve]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("provider-user", btn.dataset.providerUserApprove, true)));
-  document.querySelectorAll("[data-provider-user-reject]").forEach((btn) => btn.addEventListener("click", () => approvalDecision("provider-user", btn.dataset.providerUserReject, false)));
+  document.querySelectorAll("[data-admin-user-active]").forEach((btn) => btn.addEventListener("click", () => adminUserAction(btn.dataset.adminUserActive, "active")));
+  document.querySelectorAll("[data-admin-user-freeze]").forEach((btn) => btn.addEventListener("click", () => adminUserAction(btn.dataset.adminUserFreeze, "freeze")));
+  document.querySelectorAll("[data-admin-user-ban]").forEach((btn) => btn.addEventListener("click", () => adminUserAction(btn.dataset.adminUserBan, "ban")));
+  document.querySelectorAll("[data-admin-user-delete]").forEach((btn) => btn.addEventListener("click", () => adminUserAction(btn.dataset.adminUserDelete, "delete")));
   renderApprovalsTab();
 }
 
@@ -7879,7 +7877,7 @@ async function loadSessionContext() {
       refreshAdminProctorSessions(),
       refreshAdminTrainingReviews(),
       refreshModerationData(),
-      refreshApprovals(),
+      refreshAdminUsers(),
       refreshBilling(),
       refreshAdminBadges(),
     ]);
@@ -7887,7 +7885,7 @@ async function loadSessionContext() {
       try {
         await Promise.all([
           refreshModerationData(),
-          refreshApprovals(),
+          refreshAdminUsers(),
           refreshAdminBadges(),
           refreshAdminProctorSessions(),
           refreshAdminTrainingReviews(),
@@ -8019,7 +8017,7 @@ function handleKeyboardShortcuts(event) {
   if (state.context.role === "admin") {
     if (event.key === "1") activateAdminSubView("home");
     if (event.key === "2") activateAdminSubView("reports");
-    if (event.key === "3") activateAdminSubView("approvals");
+    if (event.key === "3") activateAdminSubView("users");
     if (event.key === "4") activateAdminSubView("billing");
   }
   if (state.context.role === "provider") {
@@ -8459,8 +8457,11 @@ function bindEvents() {
   $("exportComplaintsBtn")?.addEventListener("click", async () => {
     try { await downloadFile("/admin/complaints/export.csv", "complaints.csv"); toast("Compliants CSV exported"); } catch { toast("Export failed", "error"); }
   });
-  $("exportApprovalsBtn")?.addEventListener("click", async () => {
-    try { await downloadFile("/admin/approvals/export.csv", "pending_approvals.csv"); toast("Approvals CSV exported"); } catch { toast("Export failed", "error"); }
+  el.adminUsersSearch?.addEventListener("input", () => {
+    refreshAdminUsers().catch(() => toast("Failed to refresh users", "error"));
+  });
+  el.refreshAdminUsersBtn?.addEventListener("click", () => {
+    refreshAdminUsers().catch(() => toast("Failed to refresh users", "error"));
   });
 
   $("openCourseWizardBtn")?.addEventListener("click", () => {

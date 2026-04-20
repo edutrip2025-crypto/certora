@@ -84,10 +84,26 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     full_name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    account_state: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active | frozen | banned | deleted
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BannedIdentity(Base):
+    __tablename__ = "banned_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    id_type: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    id_number: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    country_code: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    source_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.entities import ApprovalStatus, ProviderProfile, User, UserApproval, UserRole
+from app.models.entities import ApprovalStatus, BannedIdentity, ProviderProfile, User, UserApproval, UserRole
 from app.services.firebase_auth import set_firebase_custom_claims, verify_firebase_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/firebase/login", auto_error=False)
@@ -90,6 +90,7 @@ def get_current_user(
         payload = verify_firebase_token(token)
         firebase_uid = payload.get("uid")
         email = payload.get("email")
+        phone_number = str(payload.get("phone_number") or "").strip() or None
         email_norm = str(email or "").strip().lower() or None
         name = payload.get("name") or (email.split("@")[0] if email else "Firebase User")
         role_claim = str(payload.get("role") or "").strip().lower()
@@ -100,6 +101,12 @@ def get_current_user(
         raise credentials_exception from exc
 
     user = db.scalar(select(User).where(func.lower(func.trim(User.email)) == email_norm)) if email_norm else None
+    if not user and email_norm:
+        if db.scalar(select(BannedIdentity.id).where(func.lower(func.trim(BannedIdentity.email)) == email_norm)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is banned.")
+    if not user and phone_number:
+        if db.scalar(select(BannedIdentity.id).where(BannedIdentity.phone_number == phone_number)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is banned.")
     if not user:
         if role_claim in {UserRole.PROVIDER.value, UserRole.STUDENT.value}:
             role = UserRole(role_claim)
@@ -111,10 +118,12 @@ def get_current_user(
             role = UserRole.STUDENT
         user = User(
             email=email_norm or f"{firebase_uid}@firebase.local",
+            phone_number=phone_number,
             full_name=name,
             password_hash="firebase",
             role=role,
             is_active=True,
+            account_state="active",
         )
         db.add(user)
         db.flush()
@@ -142,6 +151,12 @@ def get_current_user(
     if changed:
         db.commit()
         db.refresh(user)
+
+    state = str(user.account_state or "active").lower()
+    if state in {"banned", "deleted"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is not allowed to access the platform.")
+    if state == "frozen":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is temporarily frozen.")
 
     approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
     if not approval:

@@ -3,13 +3,14 @@ import csv
 import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
 from app.db.session import get_db
 from app.models.entities import (
     AuditLog,
+    BannedIdentity,
     ApprovalStatus,
     Certificate,
     ComplaintItem,
@@ -24,6 +25,7 @@ from app.models.entities import (
     ReportItem,
     Result,
     User,
+    UserIdentityVerification,
     UserApproval,
     UserRole,
 )
@@ -225,6 +227,191 @@ def workspace_badges(
         "open_complaints": open_complaints,
         "open_moderation": open_reports + open_complaints,
     }
+
+
+def _normalize_phone(value: str | None) -> str | None:
+    raw = "".join(ch for ch in str(value or "").strip() if ch.isdigit() or ch == "+")
+    return raw or None
+
+
+@router.get("/users")
+def admin_users_list(
+    role: str = Query(default="students"),
+    q: str = Query(default=""),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    role_key = str(role or "students").strip().lower()
+    if role_key not in {"students", "providers"}:
+        raise HTTPException(status_code=400, detail="role must be students or providers")
+    target_role = UserRole.STUDENT if role_key == "students" else UserRole.PROVIDER
+    rows = db.scalars(select(User).where(User.role == target_role).order_by(User.created_at.desc())).all()
+    needle = str(q or "").strip().lower()
+    items = []
+    for u in rows:
+        ap = db.scalar(select(UserApproval).where(UserApproval.user_id == u.id))
+        idv = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == u.id))
+        provider = db.scalar(select(ProviderProfile).where(ProviderProfile.user_id == u.id)) if u.role == UserRole.PROVIDER else None
+        item = {
+            "user_id": u.id,
+            "email": u.email,
+            "phone_number": u.phone_number,
+            "full_name": u.full_name,
+            "role": u.role.value,
+            "is_active": bool(u.is_active),
+            "account_state": str(u.account_state or "active"),
+            "approval_status": (ap.status.value if ap else ApprovalStatus.APPROVED.value),
+            "created_at": u.created_at,
+            "verification": (
+                {
+                    "id_type": idv.id_type,
+                    "id_number": idv.id_number,
+                    "country_code": idv.country_code,
+                    "status": idv.status.value if idv.status else None,
+                } if idv else None
+            ),
+            "provider_profile": (
+                {
+                    "provider_id": provider.id,
+                    "display_name": provider.display_name,
+                    "provider_type": provider.provider_type.value if provider.provider_type else None,
+                    "business_registration_type": provider.business_registration_type,
+                    "business_registration_number": provider.business_registration_number,
+                    "business_registration_country": provider.business_registration_country,
+                } if provider else None
+            ),
+        }
+        if needle:
+            blob = " ".join(
+                [
+                    str(item.get("email") or ""),
+                    str(item.get("full_name") or ""),
+                    str(item.get("phone_number") or ""),
+                    str((item.get("provider_profile") or {}).get("display_name") or ""),
+                    str((item.get("verification") or {}).get("id_number") or ""),
+                ],
+            ).lower()
+            if needle not in blob:
+                continue
+        items.append(item)
+    return {"items": items, "total": len(items), "role": role_key}
+
+
+def _sync_user_approval_state(
+    db: Session,
+    *,
+    user: User,
+    reviewer_id: int,
+    state: str,
+    reason: str | None = None,
+) -> None:
+    approval = db.scalar(select(UserApproval).where(UserApproval.user_id == user.id))
+    if not approval:
+        approval = UserApproval(user_id=user.id)
+        db.add(approval)
+    if state in {"active", "frozen"}:
+        approval.status = ApprovalStatus.APPROVED
+        approval.rejection_reason = None
+    else:
+        approval.status = ApprovalStatus.REJECTED
+        approval.rejection_reason = reason or state
+    approval.reviewed_by_admin_id = reviewer_id
+    approval.reviewed_at = datetime.now(timezone.utc)
+
+
+def _ban_user_identities(
+    db: Session,
+    *,
+    user: User,
+    reason: str | None,
+    actor_user_id: int,
+) -> None:
+    identity = db.scalar(select(UserIdentityVerification).where(UserIdentityVerification.user_id == user.id))
+    email = str(user.email or "").strip().lower() or None
+    phone = _normalize_phone(user.phone_number)
+    existing_rows = db.scalars(select(BannedIdentity).where(BannedIdentity.source_user_id == user.id)).all()
+    if existing_rows:
+        for row in existing_rows:
+            row.reason = reason or row.reason
+        return
+    db.add(
+        BannedIdentity(
+            email=email,
+            phone_number=phone,
+            id_type=(identity.id_type if identity else None),
+            id_number=(identity.id_number if identity else None),
+            country_code=(identity.country_code if identity else None),
+            source_user_id=user.id,
+            reason=reason or "Account banned by admin",
+        ),
+    )
+    _audit(
+        db,
+        actor_user_id,
+        "user_identity_banned",
+        "user",
+        user.id,
+        {
+            "email": email,
+            "phone_number": phone,
+            "id_type": identity.id_type if identity else None,
+            "id_number": identity.id_number if identity else None,
+            "country_code": identity.country_code if identity else None,
+            "reason": reason or "Account banned by admin",
+        },
+    )
+
+
+@router.post("/users/{user_id}/state")
+def admin_update_user_state(
+    user_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    user = db.get(User, int(user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be updated here")
+    action = str(payload.get("action") or "").strip().lower()
+    reason = str(payload.get("reason") or "").strip() or None
+    if action not in {"active", "freeze", "ban", "delete"}:
+        raise HTTPException(status_code=400, detail="action must be active, freeze, ban, or delete")
+
+    if action == "active":
+        user.is_active = True
+        user.account_state = "active"
+        _sync_user_approval_state(db, user=user, reviewer_id=current_user.id, state="active")
+    elif action == "freeze":
+        user.is_active = False
+        user.account_state = "frozen"
+        _sync_user_approval_state(db, user=user, reviewer_id=current_user.id, state="frozen", reason=reason)
+    elif action == "ban":
+        user.is_active = False
+        user.account_state = "banned"
+        _sync_user_approval_state(db, user=user, reviewer_id=current_user.id, state="banned", reason=reason)
+        _ban_user_identities(db, user=user, reason=reason, actor_user_id=current_user.id)
+    else:  # delete
+        user.is_active = False
+        user.account_state = "deleted"
+        tomb = f"deleted+{user.id}@deleted.local"
+        user.email = tomb
+        user.phone_number = None
+        user.full_name = f"Deleted User {user.id}"
+        _sync_user_approval_state(db, user=user, reviewer_id=current_user.id, state="deleted", reason=reason)
+        db.execute(delete(ProviderProfile).where(ProviderProfile.user_id == user.id))
+
+    _audit(
+        db,
+        current_user.id,
+        "user_state_updated",
+        "user",
+        user.id,
+        {"action": action, "reason": reason},
+    )
+    db.commit()
+    return {"ok": True, "user_id": user.id, "account_state": user.account_state, "is_active": user.is_active}
 
 
 @router.get("/approvals/students")

@@ -29,14 +29,15 @@ main { width: calc(100% - clamp(16px, 2.6vw, 34px)); margin-left: auto; margin-r
 .top-right { display: flex; gap: 8px; align-items: center; }
 .badge { border: 1px solid #d1d5db; border-radius: 999px; background: #fff; padding: 6px 10px; font-size: .82rem; font-weight: 700; }
 
-main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top: 64px; }
+main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top: 18px; }
 .panel { background: var(--surface); border: none; border-radius: 0; box-shadow: none; }
 
 .workspace-brand {
-  position: fixed;
-  top: 10px;
-  left: clamp(8px, 2vw, 18px);
-  z-index: 1100;
+  position: relative;
+  top: auto;
+  left: auto;
+  z-index: 10;
+  margin-bottom: 8px;
 }
 .workspace-expand-fab {
   position: fixed;
@@ -1928,7 +1929,7 @@ input:focus, select:focus, textarea:focus {
 }
 .sidebar {
   top: 8px;
-  padding: 104px 12px 12px;
+  padding: 16px 12px 12px;
   border-right: none;
   border-radius: 18px;
   border: 1px solid #1e3a8a;
@@ -2062,7 +2063,7 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 620px) {
   .stats, .stats.small { grid-template-columns: 1fr; }
   .course-tile-grid { grid-template-columns: 1fr; }
-  .workspace-brand { left: 8px; top: 8px; }
+  .workspace-brand { margin-bottom: 4px; }
   .content { padding: 14px; }
   .settings-menu {
     position: static;
@@ -2070,7 +2071,7 @@ input:focus, select:focus, textarea:focus {
     bottom: auto;
     right: auto;
   }
-  main { padding-top: 74px; }
+  main { padding-top: 12px; }
   .attention-challenge {
     inset: 10px 10px auto 10px;
     min-height: 98px;

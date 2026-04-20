@@ -992,7 +992,7 @@
         
         <button class="nav-btn active" data-view="home">Home</button>
         <button class="nav-btn" data-view="reports">Reports & Compliants <span id="reportsBadge" class="nav-badge hidden">0</span></button>
-        <button class="nav-btn" data-view="approvals">Approvals <span id="approvalsBadge" class="nav-badge hidden">0</span></button>
+        <button class="nav-btn" data-view="users">Users</button>
         <button class="nav-btn" data-view="billing">Billing & Payments</button>
         <div class="sidebar-tools">
           <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">⚙</button>
@@ -1063,10 +1063,11 @@
         <div id="moderationList" class="list"></div>
       </section>
 
-      <section class="panel content hidden" id="view-approvals">
-        <h2>Approvals</h2>
+      <section class="panel content hidden" id="view-users">
+        <h2>Users</h2>
         <div class="row wrap gap-sm approvals-toolbar">
-          <button id="exportApprovalsBtn" class="btn small">Export Pending Approvals CSV</button>
+          <input id="adminUsersSearch" type="text" placeholder="Search by name, email, phone, KYC..." class="search" />
+          <button id="refreshAdminUsersBtn" class="btn small">Refresh</button>
         </div>
         <div id="approvalSummary" class="stats small"></div>
         <div class="row wrap gap-sm">
@@ -1075,12 +1076,12 @@
         </div>
 
         <section id="studentsApprovalPane">
-          <h3>Pending Students</h3>
+          <h3>Students</h3>
           <div id="pendingStudents" class="list"></div>
         </section>
 
         <section id="providersApprovalPane" class="hidden">
-          <h3>Pending Providers</h3>
+          <h3>Providers</h3>
           <div id="pendingProviders" class="list"></div>
         </section>
       </section>
