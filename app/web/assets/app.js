@@ -51,6 +51,16 @@ const state = {
   studentVideoCompletionSent: {},
   studentPlaybackPolicyByCourse: {},
   studentSeekHintAt: 0,
+  studentViewerMode: "legacy",
+  studentStreamCacheByCourse: {},
+  studentStreamPlayback: {
+    courseId: 0,
+    lessonVideoId: 0,
+    sessionId: 0,
+    positionSeconds: 0,
+    durationSeconds: 0,
+    heartbeatId: null,
+  },
   videoDurationByUrl: {},
   assessmentDraftQuestions: [],
   assessmentEditingExamId: null,
@@ -1713,6 +1723,8 @@ function ensureCourseWizardMounted() {
 
 function activateStudentSubView(name) {
   if (name !== "enrolled") {
+    stopStudentStreamHeartbeat();
+    setStudentViewerMode("legacy");
     el.studentCourseViewer?.classList.add("hidden");
   }
   document.querySelectorAll(".student-nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.studentView === name));
@@ -1987,6 +1999,152 @@ function updateStudentViewerTimeMeta() {
   syncActiveTopic("scvTopicList", "scvCurrentTopic", state.studentViewerTopics || [], current);
 }
 
+function stopStudentStreamHeartbeat() {
+  const hb = state.studentStreamPlayback.heartbeatId;
+  if (hb) {
+    clearInterval(hb);
+    state.studentStreamPlayback.heartbeatId = null;
+  }
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(String(value || ""));
+  } catch {
+    return null;
+  }
+}
+
+function parseApiErrorMessage(err) {
+  const parsed = safeJsonParse(err?.message || "");
+  if (!parsed || typeof parsed !== "object") return { status: null, detail: null };
+  return {
+    status: Number(parsed.status || 0) || null,
+    detail: parsed.data?.detail ?? null,
+  };
+}
+
+function setStudentViewerMode(mode = "legacy") {
+  const shell = $("scvVideoShell");
+  const video = $("scvVideo");
+  const frame = $("scvStreamFrame");
+  const streamMeta = $("scvStreamMeta");
+  state.studentViewerMode = mode === "stream" ? "stream" : "legacy";
+  if (state.studentViewerMode === "stream") {
+    shell?.classList.add("stream-mode");
+    frame?.classList.remove("hidden");
+    video?.classList.add("hidden");
+    if (streamMeta) streamMeta.classList.remove("hidden");
+  } else {
+    shell?.classList.remove("stream-mode");
+    frame?.classList.add("hidden");
+    if (frame) frame.src = "";
+    video?.classList.remove("hidden");
+    if (streamMeta) {
+      streamMeta.classList.add("hidden");
+      streamMeta.textContent = "";
+    }
+  }
+}
+
+function streamReadyVideoFromLessons(lessons = []) {
+  for (const lesson of lessons || []) {
+    const ready = (lesson.videos || []).find((v) => Boolean(v.ready));
+    if (ready) return ready;
+  }
+  return null;
+}
+
+async function fetchStudentStreamPayload(courseId) {
+  const cid = Number(courseId || 0);
+  if (!cid) return null;
+  if (state.studentStreamCacheByCourse[cid]) return state.studentStreamCacheByCourse[cid];
+  const entitlement = await api("GET", `/stream/courses/${cid}/entitlement`);
+  if (!entitlement?.entitled) {
+    const payload = { entitlement, lessons: [] };
+    state.studentStreamCacheByCourse[cid] = payload;
+    return payload;
+  }
+  const lessonOut = await api("GET", `/stream/courses/${cid}/lessons`);
+  const payload = { entitlement, lessons: lessonOut?.lessons || [] };
+  state.studentStreamCacheByCourse[cid] = payload;
+  return payload;
+}
+
+function updateStudentStreamMeta(extra = "") {
+  const node = $("scvStreamMeta");
+  if (!node || state.studentViewerMode !== "stream") return;
+  const sp = state.studentStreamPlayback;
+  const base = `Stream: ${formatSecondsToClock(Math.floor(sp.positionSeconds || 0))} / ${formatSecondsToClock(Math.floor(sp.durationSeconds || 0))}`;
+  node.textContent = extra ? `${base} | ${extra}` : base;
+}
+
+async function sendStudentStreamHeartbeat() {
+  const sp = state.studentStreamPlayback;
+  if (!sp.sessionId || !sp.lessonVideoId || !sp.courseId) return;
+  if (document.visibilityState === "hidden") return;
+  if (state.studentViewerMode !== "stream") return;
+  if (Number(state.studentActiveCourseId || 0) !== Number(sp.courseId)) return;
+
+  const delta = 20; // Lower heartbeat frequency to reduce API calls/cost
+  sp.positionSeconds = Math.min(Math.max(0, Number(sp.durationSeconds || 0)), Number(sp.positionSeconds || 0) + delta);
+  const out = await api("POST", "/stream/watch/heartbeat", {
+    session_id: Number(sp.sessionId),
+    lesson_video_id: Number(sp.lessonVideoId),
+    watched_seconds_delta: delta,
+    position_seconds: Math.max(0, Math.floor(sp.positionSeconds || 0)),
+    player_state: "playing",
+    ended: false,
+  });
+  const usage = out?.fair_usage || {};
+  const flags = (usage.status_flags || []).join(", ");
+  updateStudentStreamMeta(flags || "");
+  if (out?.credits_required) {
+    stopStudentStreamHeartbeat();
+    throw new Error("Maximum watch allowance reached. Buy credits to continue this course.");
+  }
+  const ratio = Number(sp.durationSeconds || 0) > 0
+    ? Number(sp.positionSeconds || 0) / Number(sp.durationSeconds || 1)
+    : 0;
+  if (ratio >= 0.9 && !state.studentVideoCompletionSent[Number(sp.courseId)]) {
+    maybeUnlockAssessmentFromPlayback().catch(() => {});
+  }
+}
+
+async function startStudentStreamPlayback(courseId, lessonVideo) {
+  const cid = Number(courseId || 0);
+  const lessonVideoId = Number(lessonVideo?.lesson_video_id || 0);
+  if (!cid || !lessonVideoId) return false;
+
+  const tok = await api("POST", "/stream/playback/token", {
+    lesson_video_id: lessonVideoId,
+    client_app: "web",
+  });
+  const frame = $("scvStreamFrame");
+  if (!frame) return false;
+
+  stopStudentStreamHeartbeat();
+  state.studentStreamPlayback = {
+    courseId: cid,
+    lessonVideoId,
+    sessionId: Number(tok.session_id || 0),
+    positionSeconds: Math.max(0, Number(tok.resume_position_seconds || 0)),
+    durationSeconds: Math.max(0, Number(lessonVideo?.duration_seconds || 0)),
+    heartbeatId: null,
+  };
+
+  setStudentViewerMode("stream");
+  frame.src = String(tok?.playback?.iframe_url || "");
+  updateStudentStreamMeta();
+  state.studentStreamPlayback.heartbeatId = setInterval(() => {
+    sendStudentStreamHeartbeat().catch((err) => {
+      stopStudentStreamHeartbeat();
+      toast(err?.message || "Stream progress sync failed", "error");
+    });
+  }, 20000);
+  return true;
+}
+
 function getStudentPlaybackPolicy(courseId) {
   if (!courseId) return null;
   return state.studentPlaybackPolicyByCourse[Number(courseId)] || null;
@@ -2063,9 +2221,16 @@ async function maybeUnlockAssessmentFromPlayback() {
   const courseId = Number(state.studentActiveCourseId || 0);
   if (!courseId) return;
   if (state.studentVideoCompletionSent[courseId]) return;
-  const video = $("scvVideo");
-  if (!video || !video.duration) return;
-  const progressRatio = Number(video.currentTime || 0) / Number(video.duration || 1);
+  let progressRatio = 0;
+  if (state.studentViewerMode === "stream") {
+    const sp = state.studentStreamPlayback;
+    if (Number(sp.courseId || 0) !== courseId || !Number(sp.durationSeconds || 0)) return;
+    progressRatio = Number(sp.positionSeconds || 0) / Number(sp.durationSeconds || 1);
+  } else {
+    const video = $("scvVideo");
+    if (!video || !video.duration) return;
+    progressRatio = Number(video.currentTime || 0) / Number(video.duration || 1);
+  }
   if (progressRatio < 0.9) return;
   state.studentVideoCompletionSent[courseId] = true;
   try {
@@ -7121,17 +7286,33 @@ function openCourseViewer(courseId) {
 
 async function openStudentCourseViewer(courseId) {
   const detail = await api("GET", `/student/courses/${courseId}/detail`);
+  stopStudentStreamHeartbeat();
+  setStudentViewerMode("legacy");
   state.studentActiveCourseId = Number(courseId);
   state.studentVideoCompletionSent[Number(courseId)] = false;
   const lesson = findPrimaryLesson(detail);
   const liveLessons = findLiveLessons(detail);
-  if (!lesson?.recorded_video_url && !liveLessons.length) {
-    throw new Error("No recorded or live lesson available for this course.");
+
+  let streamReadyVideo = null;
+  try {
+    const streamPayload = await fetchStudentStreamPayload(courseId);
+    streamReadyVideo = streamReadyVideoFromLessons(streamPayload?.lessons || []);
+  } catch (err) {
+    const parsed = parseApiErrorMessage(err);
+    if (parsed.status && parsed.status !== 403 && parsed.status !== 404) {
+      toast("Stream lessons are currently unavailable. Falling back to standard playback.", "error");
+    }
+  }
+
+  const useStreamPlayback = Boolean(streamReadyVideo);
+  if (!lesson?.recorded_video_url && !liveLessons.length && !useStreamPlayback) {
+    throw new Error("No recorded, stream, or live lesson available for this course.");
   }
 
   const video = $("scvVideo");
   const hasRecordedLesson = Boolean(lesson?.recorded_video_url);
-  if (video && hasRecordedLesson) {
+  const hasPlayableLesson = hasRecordedLesson || useStreamPlayback;
+  if (video && hasRecordedLesson && !useStreamPlayback) {
     video.src = lesson.recorded_video_url;
     video.load();
   } else if (video) {
@@ -7173,10 +7354,10 @@ async function openStudentCourseViewer(courseId) {
         ${t.thumbnail_data_url ? `<img src="${t.thumbnail_data_url}" alt="" style="width:100%;border-radius:8px;border:1px solid #e5e7eb; margin-bottom:6px;" />` : ""}
         <div><strong>${t.title}</strong></div>
         <div class="meta">${formatSecondsToClock(t.time_seconds)}</div>
-        <div class="actions"><button class="btn small" data-scv-seek="${t.time_seconds}">Go</button></div>
+        <div class="actions"><button class="btn small" data-scv-seek="${t.time_seconds}" ${useStreamPlayback ? "disabled" : ""}>Go</button></div>
       </div>
     `,
-    hasRecordedLesson ? "No topics available for this lesson." : "No recorded lesson topics available.",
+    hasPlayableLesson ? "No topics available for this lesson." : "No recorded lesson topics available.",
   );
   renderList(
     el.scvLiveClassList,
@@ -7195,11 +7376,15 @@ async function openStudentCourseViewer(courseId) {
     el.scvResourceList,
     resources,
     (r) => `<div><a href="${r.url}" target="_blank" rel="noreferrer">${r.title || r.url}</a></div><div class="meta">${r.resource_type || "attachment"}</div>`,
-    hasRecordedLesson ? "No resources attached." : "No lesson resources attached.",
+    hasPlayableLesson ? "No resources attached." : "No lesson resources attached.",
   );
   state.studentViewerTopics = [...(lesson?.topics || [])];
   document.querySelectorAll("[data-scv-seek]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (useStreamPlayback) {
+        toast("Topic jump is disabled for secure Stream playback.", "error");
+        return;
+      }
       if (!video) return;
       const target = Number(btn.dataset.scvSeek || 0);
       if (!canStudentSeekTo(target, Number(video.currentTime || 0))) {
@@ -7226,7 +7411,7 @@ async function openStudentCourseViewer(courseId) {
   const videoShell = $("scvVideoShell");
   const timeline = $("scvTimelineMarkers");
   const tooltip = $("scvMarkerTooltip");
-  if (videoShell) videoShell.classList.toggle("hidden", !hasRecordedLesson);
+  if (videoShell) videoShell.classList.toggle("hidden", !hasPlayableLesson);
   if (tooltip) tooltip.classList.add("hidden");
   refreshStudentSeekUi();
   el.studentCourseViewer?.classList.remove("hidden");
@@ -7234,7 +7419,7 @@ async function openStudentCourseViewer(courseId) {
     examEligible: Boolean(detail.exam_eligible),
     assessmentAvailable: Boolean(detail.assessment_available),
     publishedAssessments: Number(detail.published_assessments || 0),
-    hasRecordedLesson,
+    hasRecordedLesson: hasPlayableLesson,
     progressPct: Number(detail.progress_pct || 0),
   });
   const applyMarkers = () => {
@@ -7244,6 +7429,7 @@ async function openStudentCourseViewer(courseId) {
       lesson?.topics || [],
       Number(video?.duration || 0),
       (seconds) => {
+        if (useStreamPlayback) return;
         if (!video) return;
         if (!canStudentSeekTo(Number(seconds || 0), Number(video.currentTime || 0))) {
           maybeShowStudentSeekLockHint();
@@ -7254,7 +7440,24 @@ async function openStudentCourseViewer(courseId) {
       },
     );
   };
-  if (hasRecordedLesson) {
+  if (useStreamPlayback) {
+    renderTimelineMarkers(timeline, tooltip, [], 0, () => {});
+    try {
+      await startStudentStreamPlayback(courseId, streamReadyVideo);
+    } catch (err) {
+      const parsed = parseApiErrorMessage(err);
+      const detailPayload = parsed.detail;
+      if (detailPayload?.credits_required) {
+        throw new Error(detailPayload?.message || "Maximum watch allowance reached. Buy credits to continue.");
+      }
+      throw new Error(
+        (typeof detailPayload === "string" && detailPayload)
+        || detailPayload?.message
+        || err?.message
+        || "Unable to start Stream playback.",
+      );
+    }
+  } else if (hasRecordedLesson) {
     video?.addEventListener("loadedmetadata", applyMarkers, { once: true });
     applyMarkers();
   } else if (timeline) {
@@ -8416,6 +8619,8 @@ function bindEvents() {
     refreshStudentSeekUi();
   });
   $("scvCloseBtn")?.addEventListener("click", () => {
+    stopStudentStreamHeartbeat();
+    setStudentViewerMode("legacy");
     el.studentCourseViewer?.classList.add("hidden");
   });
   $("scvSaveRatingBtn")?.addEventListener("click", async () => {

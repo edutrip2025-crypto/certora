@@ -1133,6 +1133,23 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-radius: 10px;
   cursor: pointer;
 }
+.stream-iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 10px;
+  background: #000;
+}
+.video-shell.stream-mode video {
+  display: none;
+}
+.video-shell.stream-mode .video-controls {
+  display: none;
+}
+.video-shell.stream-mode .icon-corner-btn {
+  display: none;
+}
 .icon-corner-btn {
   position: absolute;
   right: 12px;
@@ -1798,13 +1815,231 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   color: #0f172a;
 }
 
+/* -----------------------------
+   Visual Refresh (non-breaking)
+------------------------------ */
+:root {
+  --bg: #eef3fb;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #d9e2f0;
+  --brand: #0b3b8a;
+  --brand-2: #0f766e;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+}
+
+body {
+  background:
+    radial-gradient(circle at 6% 10%, rgba(37, 99, 235, 0.16), transparent 38%),
+    radial-gradient(circle at 96% 0%, rgba(15, 118, 110, 0.14), transparent 36%),
+    linear-gradient(180deg, #f7faff 0%, #eef3fb 48%, #eaf0fa 100%);
+}
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(50px);
+  pointer-events: none;
+}
+body::before {
+  width: 280px;
+  height: 280px;
+  left: -70px;
+  top: 70px;
+  background: rgba(37, 99, 235, 0.14);
+}
+body::after {
+  width: 300px;
+  height: 300px;
+  right: -90px;
+  bottom: 60px;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+main {
+  max-width: 1400px;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.98));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.workspace-brand .brand-logo {
+  filter: drop-shadow(0 8px 18px rgba(15, 23, 42, 0.2));
+}
+
+.auth-hero {
+  padding: 30px 26px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(37, 99, 235, 0.16), transparent 44%),
+    radial-gradient(circle at 88% 0%, rgba(15, 118, 110, 0.16), transparent 40%),
+    linear-gradient(160deg, #ffffff 0%, #f3f8ff 100%);
+  border: 1px solid #d8e5ff;
+}
+.auth-card {
+  background: #ffffff;
+  border: 1px solid #d3def2;
+  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.12);
+}
+
+input, select, textarea {
+  border-color: #c9d6ea;
+  background: #fbfdff;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  background: #ffffff;
+}
+
+.btn {
+  border-color: #c8d6ea;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8fd 100%);
+  color: #0f172a;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+}
+.btn.primary {
+  background: linear-gradient(135deg, #0b3b8a 0%, #0f766e 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 26px rgba(11, 59, 138, 0.28);
+}
+.btn.danger {
+  background: linear-gradient(180deg, #fff5f5, #ffe4e6);
+}
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.admin-layout {
+  gap: 20px;
+}
+.sidebar {
+  top: 8px;
+  padding: 16px 12px 12px;
+  border-right: none;
+  border-radius: 18px;
+  border: 1px solid #1e3a8a;
+  background: linear-gradient(180deg, #0b1d44 0%, #102a63 100%);
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.3);
+}
+.sidebar h3 {
+  color: #e6efff;
+  margin-bottom: 14px;
+}
+.nav-btn {
+  color: #d7e5ff;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  margin-bottom: 6px;
+}
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.nav-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.sidebar-tools {
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+.settings-toggle {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.content {
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 255, 0.96));
+  border: 1px solid #d6e0ef;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+.content h2 {
+  margin-bottom: 14px;
+}
+
+.stat,
+.item,
+.course-tile,
+.class-player-grid aside,
+.moderation-toolbar {
+  border-color: #d5dfed;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+.item {
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+.item:hover {
+  border-color: #bdd2ec;
+}
+
+.course-tile {
+  border-radius: 14px;
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.course-tile:hover {
+  transform: translateY(-3px);
+  border-color: #a8c2e9;
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.12);
+}
+.course-tile-body {
+  padding: 12px;
+}
+.course-tile-title {
+  color: #0f172a;
+  font-weight: 800;
+}
+.course-tile-provider {
+  color: #1e3a8a;
+}
+.course-tile-meta {
+  color: #475569;
+}
+
+.search,
+.filter {
+  background: #ffffff;
+}
+.chip {
+  border-color: #c8d6ea;
+  background: #f7fbff;
+}
+
+.toast {
+  border-color: #d2deef;
+  border-left-color: #0f766e;
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.14);
+}
+.toast.error {
+  border-left-color: #b91c1c;
+}
+
 @media (max-width: 1040px) {
   .auth-wrap { grid-template-columns: 1fr; min-height: auto; gap: 18px; }
   .auth-hero { padding: 8px 0; max-width: none; }
   .auth-card { justify-self: stretch; max-width: none; }
   .admin-layout { grid-template-columns: 1fr; }
   .admin-glimpse-grid { grid-template-columns: 1fr; }
-  .sidebar { position: static; border-right: none; border-bottom: 1px solid #eef2f7; padding: 86px 0 10px; }
+  .sidebar {
+    position: static;
+    border-right: none;
+    border-bottom: none;
+    padding: 14px;
+    border-radius: 16px;
+  }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .class-player-grid { grid-template-columns: 1fr; }
@@ -1825,6 +2060,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   .stats, .stats.small { grid-template-columns: 1fr; }
   .course-tile-grid { grid-template-columns: 1fr; }
   .workspace-brand { left: 8px; top: 8px; }
+  .content { padding: 14px; }
   .settings-menu {
     position: static;
     margin-top: 8px;

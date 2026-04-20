@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 import json
 from urllib import error, request
 
-from jose import jwt
-
 from app.core.config import get_settings
 
 
@@ -105,23 +103,23 @@ def get_video_details(video_uid: str) -> dict:
 
 
 def generate_playback_token(*, video_uid: str, user_id: int, course_id: int, ttl_seconds: int | None = None) -> str:
-    s = get_settings()
-    key_id = str(s.cloudflare_stream_signing_key_id or "").strip()
-    key_secret = str(s.cloudflare_stream_signing_key_secret or "").strip()
-    if not key_id or not key_secret:
-        raise CloudflareStreamError("Cloudflare playback signing key is not configured")
+    uid = str(video_uid or "").strip()
+    if not uid:
+        raise CloudflareStreamError("video uid is required")
     now = datetime.now(timezone.utc)
+    s = get_settings()
     ttl = int(ttl_seconds or s.stream_playback_token_ttl_seconds or 900)
     payload = {
-        "sub": str(video_uid),
-        "kid": key_id,
         "exp": int((now + timedelta(seconds=max(60, ttl))).timestamp()),
         "nbf": int(now.timestamp()),
         "accessRules": [{"type": "any"}],
-        "u": int(user_id),
-        "c": int(course_id),
     }
-    return jwt.encode(payload, key_secret, algorithm="HS256", headers={"kid": key_id})
+    out = _http_json("POST", f"{_api_base()}/stream/{uid}/token", payload)
+    result = out.get("result") or {}
+    token = str(result.get("token") or out.get("token") or "").strip()
+    if not token:
+        raise CloudflareStreamError("Cloudflare token API did not return a playback token")
+    return token
 
 
 def build_playback_urls(*, video_uid: str, token: str | None) -> dict:
@@ -130,13 +128,10 @@ def build_playback_urls(*, video_uid: str, token: str | None) -> dict:
     if not customer_code:
         raise CloudflareStreamError("CLOUDFLARE_STREAM_CUSTOMER_CODE is missing")
     uid = str(video_uid)
-    iframe_url = f"https://iframe.videodelivery.net/{uid}"
-    hls_url = f"https://customer-{customer_code}.cloudflarestream.com/{uid}/manifest/video.m3u8"
-    dash_url = f"https://customer-{customer_code}.cloudflarestream.com/{uid}/manifest/video.mpd"
-    if token:
-        iframe_url = f"{iframe_url}?token={token}"
-        hls_url = f"{hls_url}?token={token}"
-        dash_url = f"{dash_url}?token={token}"
+    playback_id = str(token).strip() if token else uid
+    iframe_url = f"https://customer-{customer_code}.cloudflarestream.com/{playback_id}/iframe"
+    hls_url = f"https://customer-{customer_code}.cloudflarestream.com/{playback_id}/manifest/video.m3u8"
+    dash_url = f"https://customer-{customer_code}.cloudflarestream.com/{playback_id}/manifest/video.mpd"
     return {
         "iframe_url": iframe_url,
         "hls_url": hls_url,

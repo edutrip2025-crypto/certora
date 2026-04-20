@@ -657,6 +657,7 @@
             </aside>
             <div>
               <div id="scvVideoShell" class="video-shell">
+                <iframe id="scvStreamFrame" class="stream-iframe hidden" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>
                 <video id="scvVideo" style="width:100%; border-radius:10px; background:#000;"></video>
                 <button id="scvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
                 <div class="video-controls">
@@ -688,6 +689,7 @@
                     <input id="scvVolume" type="range" min="0" max="1" step="0.05" value="1" />
                   </label>
                 </div>
+                <div id="scvStreamMeta" class="meta hidden" style="margin-top:8px;color:#e5e7eb;"></div>
               </div>
               <div id="scvMarkerTooltip" class="marker-tooltip hidden"></div>
             </div>
