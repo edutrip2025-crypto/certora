@@ -28,7 +28,12 @@
         <h2>Login</h2>
         <p>Sign in with your account to continue.</p>
         <label>Email<input id="loginEmail" type="email" placeholder="admin@certora.in" /></label>
-        <label>Password<input id="loginPassword" type="password" placeholder="Password" /></label>
+        <label>Password
+          <div class="password-field">
+            <input id="loginPassword" type="password" placeholder="Password" />
+            <button id="loginShowPasswordBtn" class="btn small ghost" type="button">Show</button>
+          </div>
+        </label>
         <div class="row wrap">
           <button id="loginBtn" class="btn primary">Login</button>
           <button id="googleBtn" class="btn">Google</button>
@@ -335,81 +340,102 @@
           <button id="assessmentBuilderCloseBtn" class="btn small">Close</button>
         </div>
 
-        <div class="assessment-screen-grid">
-          <section class="item">
-            <h3>1. Course Selection</h3>
-            <div class="row wrap gap-sm">
-              <select id="abCourseFilter" class="filter">
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="draft">Drafts</option>
-              </select>
-              <select id="abCourseSelect" class="search">
-                <option value="">Select course or draft video</option>
-              </select>
-            </div>
-            <div id="abCourseMeta" class="meta" style="margin-top:6px;">No course selected.</div>
-          </section>
-
-          <section class="item">
-            <h3>2. Assessment Settings</h3>
-            <div class="row wrap gap-sm">
-              <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
-              <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass %" />
-              <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts" />
-              <input id="abQuestionsPerAttempt" class="filter" type="number" min="1" placeholder="Questions shown to student" />
-            </div>
-            <div class="row wrap gap-sm" style="margin-top:8px;">
-              <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
-              <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions</span></label>
-              <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options</span></label>
-              <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled</span></label>
-            </div>
-            <div class="row wrap gap-sm" style="margin-top:8px;">
-              <select id="abTimingMode" class="filter">
-                <option value="assessment">Time per assessment</option>
-                <option value="question">Time per question</option>
-              </select>
-              <input id="abDurationMinutes" class="filter" type="number" min="1" placeholder="Duration (mins)" />
-              <input id="abTimePerQuestionSeconds" class="filter hidden" type="number" min="5" placeholder="Time/question (sec)" />
-            </div>
-          </section>
-
-          <section class="item">
-            <h3>3. Add MCQ Question</h3>
-            <div class="row wrap gap-sm">
-              <select id="abQuestionType" class="filter">
-                <option value="mcq_single_correct">MCQ - Single Correct</option>
-                <option value="mcq_multiple_correct">MCQ - Multiple Correct</option>
-              </select>
-              <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
-              <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
-            </div>
-            <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
-            <div class="ab-options-grid" style="margin-top:8px;">
-              <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
-              <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
-              <label class="ab-option-row"><input data-ab-correct="2" type="checkbox" /><input id="abOption3" class="search" type="text" placeholder="Option 3" /></label>
-              <label class="ab-option-row"><input data-ab-correct="3" type="checkbox" /><input id="abOption4" class="search" type="text" placeholder="Option 4" /></label>
-            </div>
-            <div class="row" style="margin-top:8px;">
-              <button id="abAddQuestionBtn" class="btn small">Add To Pool</button>
-            </div>
-          </section>
-        </div>
-
-        <section class="item" style="margin-top:12px;">
-          <div class="row between">
-            <h3>Question Pool</h3>
-            <div id="abPoolMeta" class="meta">0 questions in pool.</div>
+        <div class="ab-wizard-shell">
+          <div class="ab-stepper">
+            <div class="ab-step-indicator active" data-ab-step-indicator="1"><span>1</span><strong>Course Selection</strong></div>
+            <div class="ab-step-indicator" data-ab-step-indicator="2"><span>2</span><strong>Assessment Settings</strong></div>
+            <div class="ab-step-indicator" data-ab-step-indicator="3"><span>3</span><strong>Questions</strong></div>
           </div>
-          <div id="abQuestionPoolList" class="list"></div>
-        </section>
 
-        <div class="row wrap gap-sm" style="margin-top:12px;">
-          <button id="abSaveDraftBtn" class="btn small">Save Assessment Draft</button>
-          <button id="abPublishBtn" class="btn primary">Publish Assessment</button>
+          <div class="ab-step-viewport">
+            <div id="abStepTrack" class="ab-step-track">
+              <section class="item ab-step-page">
+                <h3>Course Selection</h3>
+                <p class="muted">Choose one published course before moving to settings.</p>
+                <div class="row wrap gap-sm">
+                  <select id="abCourseFilter" class="filter">
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="draft">Drafts</option>
+                  </select>
+                  <select id="abCourseSelect" class="search">
+                    <option value="">Select course or draft video</option>
+                  </select>
+                </div>
+                <div id="abCourseMeta" class="meta" style="margin-top:10px;">No course selected.</div>
+                <div class="row wrap gap-sm" style="margin-top:16px;">
+                  <button id="abStep1NextBtn" class="btn primary">Next: Settings</button>
+                </div>
+              </section>
+
+              <section class="item ab-step-page">
+                <h3>Assessment Settings</h3>
+                <p class="muted">Define exam behavior, scoring, and timing for student attempts.</p>
+                <div class="row wrap gap-sm">
+                  <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
+                  <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass %" />
+                  <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts" />
+                  <input id="abQuestionsPerAttempt" class="filter" type="number" min="1" placeholder="Questions shown to student" />
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
+                  <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions</span></label>
+                  <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options</span></label>
+                  <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled</span></label>
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <select id="abTimingMode" class="filter">
+                    <option value="assessment">Time per assessment</option>
+                    <option value="question">Time per question</option>
+                  </select>
+                  <input id="abDurationMinutes" class="filter" type="number" min="1" placeholder="Duration (mins)" />
+                  <input id="abTimePerQuestionSeconds" class="filter hidden" type="number" min="5" placeholder="Time/question (sec)" />
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:16px;">
+                  <button id="abStep2BackBtn" class="btn small">Back</button>
+                  <button id="abStep2NextBtn" class="btn primary">Next: Questions</button>
+                </div>
+              </section>
+
+              <section class="item ab-step-page">
+                <h3>Questions</h3>
+                <p class="muted">Add MCQ questions to the pool and publish when ready.</p>
+                <div class="row wrap gap-sm">
+                  <select id="abQuestionType" class="filter">
+                    <option value="mcq_single_correct">MCQ - Single Correct</option>
+                    <option value="mcq_multiple_correct">MCQ - Multiple Correct</option>
+                  </select>
+                  <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
+                  <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
+                </div>
+                <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
+                <div class="ab-options-grid" style="margin-top:8px;">
+                  <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
+                  <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
+                  <label class="ab-option-row"><input data-ab-correct="2" type="checkbox" /><input id="abOption3" class="search" type="text" placeholder="Option 3" /></label>
+                  <label class="ab-option-row"><input data-ab-correct="3" type="checkbox" /><input id="abOption4" class="search" type="text" placeholder="Option 4" /></label>
+                </div>
+                <div class="row" style="margin-top:8px;">
+                  <button id="abAddQuestionBtn" class="btn small">Add To Pool</button>
+                </div>
+
+                <section class="item" style="margin-top:12px;">
+                  <div class="row between">
+                    <h3>Question Pool</h3>
+                    <div id="abPoolMeta" class="meta">0 questions in pool.</div>
+                  </div>
+                  <div id="abQuestionPoolList" class="list"></div>
+                </section>
+
+                <div class="row wrap gap-sm" style="margin-top:14px;">
+                  <button id="abStep3BackBtn" class="btn small">Back</button>
+                  <button id="abSaveDraftBtn" class="btn small">Save Assessment Draft</button>
+                  <button id="abPublishBtn" class="btn primary">Publish Assessment</button>
+                </div>
+              </section>
+            </div>
+          </div>
         </div>
       </section>
 

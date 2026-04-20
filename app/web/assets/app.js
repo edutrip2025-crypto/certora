@@ -27,6 +27,7 @@ const state = {
   authRoleSetupInFlight: false,
   moderationMode: "reports",
   approvalsTab: "students",
+  assessmentBuilderStep: 1,
   reports: [],
   complaints: [],
   adminPollingId: null,
@@ -5469,6 +5470,53 @@ function getAssessmentSourceValue() {
   return $("abCourseSelect")?.value || "";
 }
 
+function setAssessmentBuilderStep(step, options = {}) {
+  const normalized = Math.max(1, Math.min(3, Number(step || 1)));
+  state.assessmentBuilderStep = normalized;
+  const track = $("abStepTrack");
+  if (track) {
+    if (options.noAnimate) track.style.transition = "none";
+    track.style.transform = `translateX(-${(normalized - 1) * (100 / 3)}%)`;
+    if (options.noAnimate) {
+      requestAnimationFrame(() => {
+        track.style.transition = "";
+      });
+    }
+  }
+  document.querySelectorAll("[data-ab-step-indicator]").forEach((node) => {
+    node.classList.toggle("active", Number(node.getAttribute("data-ab-step-indicator") || 0) === normalized);
+  });
+}
+
+function goToAssessmentStep(step) {
+  setAssessmentBuilderStep(step);
+}
+
+function validateAssessmentStep(step) {
+  const s = Number(step || 1);
+  if (s === 1) {
+    const courseId = getSelectedAssessmentCourseId();
+    if (!courseId || isAssessmentDraftSourceSelected()) {
+      toast("Select an active/inactive course (draft is not allowed for assessment).", "error");
+      return false;
+    }
+    return true;
+  }
+  if (s === 2) {
+    const title = $("abTitle")?.value?.trim() || "";
+    if (!title) {
+      toast("Assessment title is required.", "error");
+      return false;
+    }
+    if (Number($("abQuestionsPerAttempt")?.value || 0) <= 0) {
+      toast("Questions shown to student must be greater than 0.", "error");
+      return false;
+    }
+    return true;
+  }
+  return true;
+}
+
 function getSelectedAssessmentCourseId() {
   const raw = getAssessmentSourceValue();
   if (!raw || !raw.startsWith("course:")) return null;
@@ -5519,11 +5567,13 @@ function resetAssessmentBuilder() {
   const publishBtn = $("abPublishBtn");
   if (saveBtn) saveBtn.textContent = "Save Assessment Draft";
   if (publishBtn) publishBtn.textContent = "Publish Assessment";
+  setAssessmentBuilderStep(1, { noAnimate: true });
 }
 
 function openAssessmentBuilder() {
   resetAssessmentBuilder();
   el.assessmentBuilderScreen?.classList.remove("hidden");
+  setAssessmentBuilderStep(1, { noAnimate: true });
 }
 
 function closeAssessmentBuilder() {
@@ -5685,6 +5735,7 @@ async function openAssessmentBuilderForEdit(assessment) {
     })),
   }));
   renderAssessmentPool();
+  setAssessmentBuilderStep(1, { noAnimate: true });
 }
 
 function buildQuestionFromAssessmentForm() {
@@ -8407,6 +8458,15 @@ function bindEvents() {
     });
   });
 
+  $("loginShowPasswordBtn")?.addEventListener("click", () => {
+    const input = $("loginPassword");
+    const btn = $("loginShowPasswordBtn");
+    if (!input || !btn) return;
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    btn.textContent = reveal ? "Hide" : "Show";
+  });
+
   document.querySelectorAll(".nav-btn:not(.provider-nav-btn)").forEach((btn) => {
     btn.addEventListener("click", () => activateAdminSubView(btn.dataset.view));
   });
@@ -8718,6 +8778,16 @@ function bindEvents() {
     refreshAdminTrainingReviews().catch(() => toast("Failed to refresh training reviews", "error")),
   );
   $("assessmentBuilderCloseBtn")?.addEventListener("click", () => closeAssessmentBuilder());
+  $("abStep1NextBtn")?.addEventListener("click", () => {
+    if (!validateAssessmentStep(1)) return;
+    goToAssessmentStep(2);
+  });
+  $("abStep2BackBtn")?.addEventListener("click", () => goToAssessmentStep(1));
+  $("abStep2NextBtn")?.addEventListener("click", () => {
+    if (!validateAssessmentStep(2)) return;
+    goToAssessmentStep(3);
+  });
+  $("abStep3BackBtn")?.addEventListener("click", () => goToAssessmentStep(2));
   $("assessmentPreviewCloseBtn")?.addEventListener("click", () => confirmQuitAssessment());
   $("apRerunChecksBtn")?.addEventListener("click", () => runProctoringPrecheck().catch(() => toast("Failed to run proctor checks", "error")));
   $("apStartTestBtn")?.addEventListener("click", () => startAssessmentAfterPrecheck());
