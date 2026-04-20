@@ -21,7 +21,7 @@ def course_total_duration_seconds(db: Session, course_id: int) -> int:
 def fair_usage_allowance_seconds(course: Course, total_duration_seconds: int) -> int:
     if course.admin_fair_usage_override_enabled and course.fair_usage_override_seconds and course.fair_usage_override_seconds > 0:
         return int(course.fair_usage_override_seconds)
-    mult = float(course.fair_usage_multiplier or get_settings().fair_usage_default_multiplier or 3.0)
+    mult = float(course.fair_usage_multiplier or get_settings().fair_usage_default_multiplier or 2.5)
     return int(max(0, total_duration_seconds) * max(0.1, mult))
 
 
@@ -66,6 +66,9 @@ def evaluate_fair_usage(db: Session, *, user_id: int, course_id: int) -> dict:
         flags.append("warn_100")
     if warning_level >= 3:
         flags.append("warn_120")
+    if allowance > 0 and consumed >= allowance:
+        flags.append("credits_required")
+        flags.append("max_watch_reached")
 
     return {
         "allowance_seconds": allowance,

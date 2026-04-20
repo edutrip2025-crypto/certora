@@ -96,7 +96,7 @@ def create_stream_course(
         category=payload.category,
         includes_certification_exam=False,
         is_published=False,
-        fair_usage_multiplier=float(payload.fair_usage_multiplier or 3.0),
+        fair_usage_multiplier=float(payload.fair_usage_multiplier or 2.5),
     )
     db.add(course)
     db.add(
@@ -396,6 +396,18 @@ def issue_stream_playback_token(
         _must_have_course_purchase(db, user_id=current_user.id, course_id=int(video.course_id))
 
     usage_before = evaluate_fair_usage(db, user_id=current_user.id, course_id=int(video.course_id))
+    if current_user.role not in {UserRole.ADMIN, UserRole.PROVIDER} and (
+        int(usage_before.get("allowance_seconds") or 0) > 0
+        and int(usage_before.get("consumed_seconds") or 0) >= int(usage_before.get("allowance_seconds") or 0)
+    ):
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "Maximum watch allowance reached for this course. Please buy credits to continue watching.",
+                "credits_required": True,
+                "fair_usage": usage_before,
+            },
+        )
 
     try:
         token = generate_playback_token(video_uid=video.cloudflare_video_uid, user_id=current_user.id, course_id=video.course_id)
@@ -501,6 +513,8 @@ def stream_watch_heartbeat(
         "session_id": sess.id,
         "consumed_seconds": int(sess.consumed_seconds or 0),
         "resume_position_seconds": int(progress.resume_position_seconds or 0),
+        "playback_allowed": "credits_required" not in set(after_usage.get("status_flags") or []),
+        "credits_required": "credits_required" in set(after_usage.get("status_flags") or []),
         "fair_usage": after_usage,
     }
 

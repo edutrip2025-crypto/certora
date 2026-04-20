@@ -4,9 +4,16 @@
 BEGIN;
 
 ALTER TABLE IF EXISTS courses
-  ADD COLUMN IF NOT EXISTS fair_usage_multiplier DOUBLE PRECISION DEFAULT 3.0,
+  ADD COLUMN IF NOT EXISTS fair_usage_multiplier DOUBLE PRECISION DEFAULT 2.5,
   ADD COLUMN IF NOT EXISTS fair_usage_override_seconds INTEGER,
   ADD COLUMN IF NOT EXISTS admin_fair_usage_override_enabled BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE IF EXISTS courses
+  ALTER COLUMN fair_usage_multiplier SET DEFAULT 2.5;
+
+UPDATE courses
+SET fair_usage_multiplier = 2.5
+WHERE fair_usage_multiplier IS NULL OR fair_usage_multiplier > 2.5;
 
 CREATE TABLE IF NOT EXISTS creators (
   id BIGSERIAL PRIMARY KEY,

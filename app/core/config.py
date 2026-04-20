@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     cloudflare_stream_signing_key_secret: str = ""
     stream_playback_token_ttl_seconds: int = 900
     stream_direct_upload_expiry_seconds: int = 3600
-    fair_usage_default_multiplier: float = 3.0
+    fair_usage_default_multiplier: float = 2.5
     fair_usage_warn_threshold_1: float = 0.8
     fair_usage_warn_threshold_2: float = 1.0
     fair_usage_warn_threshold_3: float = 1.2

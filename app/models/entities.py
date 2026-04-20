@@ -161,7 +161,7 @@ class Course(Base):
     category: Mapped[str] = mapped_column(String(100), index=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     includes_certification_exam: Mapped[bool] = mapped_column(Boolean, default=False)
-    fair_usage_multiplier: Mapped[float] = mapped_column(Float, default=3.0)
+    fair_usage_multiplier: Mapped[float] = mapped_column(Float, default=2.5)
     fair_usage_override_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     admin_fair_usage_override_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)

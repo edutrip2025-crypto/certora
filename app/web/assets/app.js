@@ -49,6 +49,8 @@ const state = {
   studentViewerTopics: [],
   studentActiveCourseId: null,
   studentVideoCompletionSent: {},
+  studentPlaybackPolicyByCourse: {},
+  studentSeekHintAt: 0,
   videoDurationByUrl: {},
   assessmentDraftQuestions: [],
   assessmentEditingExamId: null,
@@ -1985,25 +1987,98 @@ function updateStudentViewerTimeMeta() {
   syncActiveTopic("scvTopicList", "scvCurrentTopic", state.studentViewerTopics || [], current);
 }
 
+function getStudentPlaybackPolicy(courseId) {
+  if (!courseId) return null;
+  return state.studentPlaybackPolicyByCourse[Number(courseId)] || null;
+}
+
+function ensureStudentPlaybackPolicy(courseId, progressPct = 0) {
+  const id = Number(courseId || 0);
+  if (!id) return null;
+  if (!state.studentPlaybackPolicyByCourse[id]) {
+    const seed = Math.max(0, Math.min(100, Number(progressPct || 0)));
+    state.studentPlaybackPolicyByCourse[id] = {
+      seedProgressPct: seed,
+      seededByDuration: false,
+      maxReachedSeconds: 0,
+      forwardLocked: seed < 90,
+      unlockedToastShown: false,
+    };
+  }
+  return state.studentPlaybackPolicyByCourse[id];
+}
+
+function refreshStudentSeekUi() {
+  const courseId = Number(state.studentActiveCourseId || 0);
+  const policy = getStudentPlaybackPolicy(courseId);
+  const locked = Boolean(policy?.forwardLocked);
+  const fwdBtn = $("scvFwd10Btn");
+  if (fwdBtn) {
+    fwdBtn.disabled = locked;
+    fwdBtn.title = locked ? "Forward unlocks after 90% watch" : "Forward 10s";
+    fwdBtn.setAttribute("aria-disabled", locked ? "true" : "false");
+  }
+}
+
+function maybeShowStudentSeekLockHint() {
+  const now = Date.now();
+  if (now - Number(state.studentSeekHintAt || 0) < 1500) return;
+  state.studentSeekHintAt = now;
+  toast("Forward skip unlocks after 90% watch completion.", "error");
+}
+
+function canStudentSeekTo(targetSeconds, currentSeconds = 0) {
+  const courseId = Number(state.studentActiveCourseId || 0);
+  const policy = getStudentPlaybackPolicy(courseId);
+  if (!policy || !policy.forwardLocked) return true;
+  if (Number(targetSeconds || 0) <= Number(currentSeconds || 0)) return true;
+  return Number(targetSeconds || 0) <= Number(policy.maxReachedSeconds || 0) + 1;
+}
+
+function updateStudentPlaybackPolicyFromVideo(video) {
+  const courseId = Number(state.studentActiveCourseId || 0);
+  if (!courseId || !video) return;
+  const policy = ensureStudentPlaybackPolicy(courseId, 0);
+  if (!policy) return;
+  const duration = Number(video.duration || 0);
+  if (duration > 0 && !policy.seededByDuration) {
+    const seededSeconds = Math.max(0, Math.min(duration, (Number(policy.seedProgressPct || 0) / 100) * duration));
+    policy.maxReachedSeconds = Math.max(Number(policy.maxReachedSeconds || 0), seededSeconds);
+    policy.seededByDuration = true;
+  }
+  const current = Number(video.currentTime || 0);
+  policy.maxReachedSeconds = Math.max(Number(policy.maxReachedSeconds || 0), current);
+  const ratio = duration > 0 ? current / duration : 0;
+  if (policy.forwardLocked && ratio >= 0.9) {
+    policy.forwardLocked = false;
+    if (!policy.unlockedToastShown) {
+      policy.unlockedToastShown = true;
+      toast("90% reached. Forward seek is now enabled.");
+    }
+  }
+  refreshStudentSeekUi();
+}
+
 async function maybeUnlockAssessmentFromPlayback() {
   const courseId = Number(state.studentActiveCourseId || 0);
   if (!courseId) return;
   if (state.studentVideoCompletionSent[courseId]) return;
   const video = $("scvVideo");
   if (!video || !video.duration) return;
-  const remaining = Number(video.duration) - Number(video.currentTime || 0);
-  if (remaining > 5) return;
+  const progressRatio = Number(video.currentTime || 0) / Number(video.duration || 1);
+  if (progressRatio < 0.9) return;
   state.studentVideoCompletionSent[courseId] = true;
   try {
     await api("POST", `/student/courses/${courseId}/complete`);
-    if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
-    if (el.scvProgressText) el.scvProgressText.textContent = "100%";
+    const unlockedPct = Math.max(90, Math.floor(progressRatio * 100));
+    if (el.scvProgressBar) el.scvProgressBar.style.width = `${Math.min(100, unlockedPct)}%`;
+    if (el.scvProgressText) el.scvProgressText.textContent = `${Math.min(100, unlockedPct)}%`;
     await refreshStudentAssessmentPanel(courseId, {
       examEligible: true,
       hasRecordedLesson: true,
-      progressPct: 100,
+      progressPct: Math.max(90, progressRatio * 100),
     });
-    toast("Assessment unlocked");
+    toast("Assessment unlocked at 90% completion");
     refreshStudentDashboard().catch(() => {});
   } catch {
     state.studentVideoCompletionSent[courseId] = false;
@@ -2163,6 +2238,8 @@ function bindCustomPlayerControls({
   fullscreenBtnId,
   topicsGetter,
   updateTimeFn,
+  canSeekTo,
+  onSeekBlocked,
 }) {
   const video = $(videoId);
   const shell = $(shellId);
@@ -2220,7 +2297,14 @@ function bindCustomPlayerControls({
     if (!scrubber) return;
     const rect = scrubber.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    if (video.duration) video.currentTime = ratio * video.duration;
+    if (video.duration) {
+      const target = ratio * video.duration;
+      if (canSeekTo && !canSeekTo(target, Number(video.currentTime || 0), video, "scrubber")) {
+        onSeekBlocked?.("scrubber");
+        return;
+      }
+      video.currentTime = target;
+    }
     updateTimeFn();
   };
   const showHoverPreview = async (clientX) => {
@@ -2268,7 +2352,12 @@ function bindCustomPlayerControls({
     updateTimeFn();
   });
   fwd10Btn?.addEventListener("click", () => {
-    video.currentTime = Math.min(Number(video.duration || video.currentTime + 10), video.currentTime + 10);
+    const target = Math.min(Number(video.duration || video.currentTime + 10), video.currentTime + 10);
+    if (canSeekTo && !canSeekTo(target, Number(video.currentTime || 0), video, "forward_button")) {
+      onSeekBlocked?.("forward_button");
+      return;
+    }
+    video.currentTime = target;
     updateTimeFn();
   });
   speed?.addEventListener("change", () => {
@@ -7053,6 +7142,7 @@ async function openStudentCourseViewer(courseId) {
   if (el.scvTitle) el.scvTitle.textContent = `${detail.title} - Course Viewer`;
   if (el.scvMeta) el.scvMeta.textContent = `${detail.category || "General"} | ${detail.description || ""}`.trim();
   const progressPct = Number(detail.progress_pct || 0);
+  ensureStudentPlaybackPolicy(courseId, progressPct);
   if (el.scvProgressBar) el.scvProgressBar.style.width = `${Math.max(0, Math.min(100, progressPct))}%`;
   if (el.scvProgressText) el.scvProgressText.textContent = `${progressPct.toFixed(0)}%`;
   if (el.scvCourseRatingSummary) {
@@ -7111,7 +7201,12 @@ async function openStudentCourseViewer(courseId) {
   document.querySelectorAll("[data-scv-seek]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (!video) return;
-      video.currentTime = Number(btn.dataset.scvSeek || 0);
+      const target = Number(btn.dataset.scvSeek || 0);
+      if (!canStudentSeekTo(target, Number(video.currentTime || 0))) {
+        maybeShowStudentSeekLockHint();
+        return;
+      }
+      video.currentTime = target;
       video.play().catch(() => {});
     });
   });
@@ -7133,6 +7228,7 @@ async function openStudentCourseViewer(courseId) {
   const tooltip = $("scvMarkerTooltip");
   if (videoShell) videoShell.classList.toggle("hidden", !hasRecordedLesson);
   if (tooltip) tooltip.classList.add("hidden");
+  refreshStudentSeekUi();
   el.studentCourseViewer?.classList.remove("hidden");
   await refreshStudentAssessmentPanel(courseId, {
     examEligible: Boolean(detail.exam_eligible),
@@ -7149,6 +7245,10 @@ async function openStudentCourseViewer(courseId) {
       Number(video?.duration || 0),
       (seconds) => {
         if (!video) return;
+        if (!canStudentSeekTo(Number(seconds || 0), Number(video.currentTime || 0))) {
+          maybeShowStudentSeekLockHint();
+          return;
+        }
         video.currentTime = seconds;
         video.play().catch(() => {});
       },
@@ -7170,21 +7270,21 @@ async function refreshStudentAssessmentPanel(courseId, options = {}) {
   const hasRecordedLesson = Boolean(options.hasRecordedLesson);
   const progressPct = Number(options.progressPct || 0);
 
-  if (!examEligible && progressPct >= 100) {
+  if (!examEligible && progressPct >= 90) {
     try {
       await api("POST", `/student/courses/${courseId}/complete`);
       examEligible = true;
-      if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
-      if (el.scvProgressText) el.scvProgressText.textContent = "100%";
+      if (el.scvProgressBar) el.scvProgressBar.style.width = `${Math.max(90, Math.min(100, progressPct))}%`;
+      if (el.scvProgressText) el.scvProgressText.textContent = `${Math.max(90, Math.min(100, progressPct)).toFixed(0)}%`;
     } catch {}
   }
 
   if (!examEligible) {
-    const canManualUnlock = progressPct >= 100 || !hasRecordedLesson;
+    const canManualUnlock = progressPct >= 90 || !hasRecordedLesson;
     el.scvAssessmentPanel.innerHTML = `
       <span id="scvAssessmentStatus" class="meta">${
         hasRecordedLesson
-          ? "Watch the full video to unlock assessment."
+          ? "Watch at least 90% of the video to unlock assessment."
           : "Complete this course to unlock assessment."
       }</span>
       ${canManualUnlock ? '<button class="btn small" id="scvUnlockAssessmentBtn">Unlock Assessment</button>' : ""}
@@ -7192,12 +7292,13 @@ async function refreshStudentAssessmentPanel(courseId, options = {}) {
     $("scvUnlockAssessmentBtn")?.addEventListener("click", async () => {
       try {
         await api("POST", `/student/courses/${courseId}/complete`);
-        if (el.scvProgressBar) el.scvProgressBar.style.width = "100%";
-        if (el.scvProgressText) el.scvProgressText.textContent = "100%";
+        const displayPct = Math.max(90, Math.min(100, progressPct));
+        if (el.scvProgressBar) el.scvProgressBar.style.width = `${displayPct}%`;
+        if (el.scvProgressText) el.scvProgressText.textContent = `${displayPct.toFixed(0)}%`;
         await refreshStudentAssessmentPanel(courseId, {
           examEligible: true,
           hasRecordedLesson,
-          progressPct: 100,
+          progressPct: displayPct,
         });
         refreshStudentDashboard().catch(() => {});
         toast("Assessment unlocked");
@@ -8305,10 +8406,15 @@ function bindEvents() {
   $("pcvVideo")?.addEventListener("timeupdate", () => updateViewerTimeMeta());
   $("pcvVideo")?.addEventListener("loadedmetadata", () => updateViewerTimeMeta());
   $("scvVideo")?.addEventListener("timeupdate", () => {
+    updateStudentPlaybackPolicyFromVideo($("scvVideo"));
     updateStudentViewerTimeMeta();
     maybeUnlockAssessmentFromPlayback().catch(() => {});
   });
-  $("scvVideo")?.addEventListener("loadedmetadata", () => updateStudentViewerTimeMeta());
+  $("scvVideo")?.addEventListener("loadedmetadata", () => {
+    updateStudentPlaybackPolicyFromVideo($("scvVideo"));
+    updateStudentViewerTimeMeta();
+    refreshStudentSeekUi();
+  });
   $("scvCloseBtn")?.addEventListener("click", () => {
     el.studentCourseViewer?.classList.add("hidden");
   });
@@ -8380,6 +8486,8 @@ function bindEvents() {
     fullscreenBtnId: "scvFullscreenBtn",
     topicsGetter: () => state.studentViewerTopics || [],
     updateTimeFn: updateStudentViewerTimeMeta,
+    canSeekTo: (targetSeconds, currentSeconds) => canStudentSeekTo(targetSeconds, currentSeconds),
+    onSeekBlocked: () => maybeShowStudentSeekLockHint(),
   });
   $("cwCreateCourseBtn")?.addEventListener("click", async () => {
     try {

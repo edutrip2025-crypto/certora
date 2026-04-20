@@ -156,16 +156,22 @@ def _migrate_identity_schema_postgres(conn) -> None:
 
 
 def _migrate_stream_market_schema_sqlite(conn) -> None:
-    _sqlite_add_column_if_missing(conn, "courses", "fair_usage_multiplier", "FLOAT DEFAULT 3.0")
+    _sqlite_add_column_if_missing(conn, "courses", "fair_usage_multiplier", "FLOAT DEFAULT 2.5")
     _sqlite_add_column_if_missing(conn, "courses", "fair_usage_override_seconds", "INTEGER")
     _sqlite_add_column_if_missing(conn, "courses", "admin_fair_usage_override_enabled", "BOOLEAN DEFAULT 0")
+    try:
+        conn.execute(text("UPDATE courses SET fair_usage_multiplier = 2.5 WHERE fair_usage_multiplier IS NULL OR fair_usage_multiplier > 2.5"))
+    except Exception:
+        pass
 
 
 def _migrate_stream_market_schema_postgres(conn) -> None:
     statements = [
-        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_multiplier FLOAT DEFAULT 3.0",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_multiplier FLOAT DEFAULT 2.5",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_override_seconds INTEGER",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS admin_fair_usage_override_enabled BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE courses ALTER COLUMN fair_usage_multiplier SET DEFAULT 2.5",
+        "UPDATE courses SET fair_usage_multiplier = 2.5 WHERE fair_usage_multiplier IS NULL OR fair_usage_multiplier > 2.5",
     ]
     for stmt in statements:
         try:
