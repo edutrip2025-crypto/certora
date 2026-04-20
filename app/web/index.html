@@ -198,7 +198,6 @@
                 <option value="Advanced">Advanced</option>
               </select>
               <input id="cwCourseCategory" class="search" type="text" placeholder="Category (Tax, GST, etc.)" />
-              <input id="cwCourseThumbnail" class="search" type="url" placeholder="Thumbnail URL (required)" />
             </div>
             <label>Description
               <textarea id="cwCourseDescription" rows="3" placeholder="What will students learn?"></textarea>
@@ -216,6 +215,7 @@
           <section id="cwStepVideo" class="hidden">
             <h3>Step 2: Choose Video</h3>
             <input id="cwVideoUrl" class="search" type="url" placeholder="Recorded video URL" />
+            <input id="cwCourseThumbnail" type="hidden" />
             <div class="row wrap gap-sm" style="margin-top:8px;">
               <input id="cwVideoFile" type="file" accept="video/*" />
               <button id="cwUploadVideoBtn" class="btn small">Upload Local Video</button>
@@ -223,7 +223,7 @@
             <div id="cwUploadProgress" class="meta" style="margin-top:6px;"></div>
             <div class="item" style="margin-top:10px;">
               <div><strong>Thumbnail</strong></div>
-              <div class="meta">Choose from video frame or upload an image. If none selected, first frame is used automatically.</div>
+              <div class="meta">Thumbnail is required. Choose from video frame or upload an image from local system.</div>
               <div class="row wrap gap-sm" style="margin-top:8px;">
                 <button id="cwUseCurrentFrameBtn" class="btn small">Use Current Video Frame</button>
                 <input id="cwThumbnailFile" type="file" accept="image/*" />
@@ -303,6 +303,14 @@
             </div>
           </section>
         </div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-course-create">
+        <div class="row between">
+          <h2>Create New Course</h2>
+          <button id="closeCourseCreatePageBtn" class="btn small">Back to Courses</button>
+        </div>
+        <div id="providerCourseCreateMount"></div>
       </section>
 
       <section class="panel content hidden" id="provider-view-assessments">

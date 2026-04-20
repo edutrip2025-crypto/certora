@@ -1144,6 +1144,8 @@ const el = {
   scvAssessmentPanel: $("scvAssessmentPanel"),
   scvAssessmentStatus: $("scvAssessmentStatus"),
   providerCoursesList: $("providerCoursesList"),
+  providerCourseCreateMount: $("providerCourseCreateMount"),
+  closeCourseCreatePageBtn: $("closeCourseCreatePageBtn"),
   providerDraftsPage: $("providerDraftsPage"),
   providerCourseViewer: $("providerCourseViewer"),
   pcvTitle: $("pcvTitle"),
@@ -1699,6 +1701,12 @@ function activateProviderSubView(name) {
   if (name === "live") {
     refreshProviderLiveClasses().catch(() => toast("Failed to load live classes", "error"));
   }
+}
+
+function ensureCourseWizardMounted() {
+  if (!el.providerCourseCreateMount || !el.courseWizard) return;
+  if (el.providerCourseCreateMount.contains(el.courseWizard)) return;
+  el.providerCourseCreateMount.appendChild(el.courseWizard);
 }
 
 function activateStudentSubView(name) {
@@ -8152,6 +8160,8 @@ function bindEvents() {
   });
 
   $("openCourseWizardBtn")?.addEventListener("click", () => {
+    ensureCourseWizardMounted();
+    activateProviderSubView("course-create");
     el.courseWizard?.classList.remove("hidden");
     el.providerDraftsPage?.classList.add("hidden");
     resetCourseWizard();
@@ -8176,6 +8186,11 @@ function bindEvents() {
   $("refreshDraftsBtn")?.addEventListener("click", () => refreshProviderDrafts().catch(() => toast("Failed to refresh drafts", "error")));
   $("closeCourseWizardBtn")?.addEventListener("click", () => {
     el.courseWizard?.classList.add("hidden");
+    activateProviderSubView("courses");
+  });
+  $("closeCourseCreatePageBtn")?.addEventListener("click", () => {
+    el.courseWizard?.classList.add("hidden");
+    activateProviderSubView("courses");
   });
   $("cwSaveDraftBtn")?.addEventListener("click", async () => {
     try {
@@ -8247,6 +8262,8 @@ function bindEvents() {
   $("cwNextToTopicsBtn")?.addEventListener("click", () => {
     const videoUrl = $("cwVideoUrl")?.value?.trim();
     if (!videoUrl) return toast("Video URL is required", "error");
+    const thumbnail = $("cwCourseThumbnail")?.value?.trim();
+    if (!thumbnail) return toast("Thumbnail is required. Upload one or capture from video.", "error");
     setCourseWizardStep("topics");
   });
   $("cwBackToVideoBtn")?.addEventListener("click", () => setCourseWizardStep("video"));
@@ -8372,8 +8389,9 @@ function bindEvents() {
       await refreshProviderHome();
       await refreshProviderContent();
       await refreshProviderDrafts();
-    } catch {
-      toast("Failed to create course", "error");
+      activateProviderSubView("courses");
+    } catch (err) {
+      toast(err?.message || "Failed to create course", "error");
     }
   });
 
