@@ -337,7 +337,9 @@
             <h2>Assessment Builder</h2>
             <p class="muted">Closing this screen discards unsaved setup.</p>
           </div>
-          <button id="assessmentBuilderCloseBtn" class="btn small">Close</button>
+          <button id="assessmentBuilderCloseBtn" class="btn small icon-close-animated" aria-label="Close">
+            <span></span><span></span>
+          </button>
         </div>
 
         <div class="ab-wizard-shell">
@@ -359,7 +361,7 @@
                     <option value="inactive">Inactive</option>
                     <option value="draft">Drafts</option>
                   </select>
-                  <select id="abCourseSelect" class="search">
+                  <select id="abCourseSelect" class="filter ab-course-select">
                     <option value="">Select course or draft video</option>
                   </select>
                 </div>
