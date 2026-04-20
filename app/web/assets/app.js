@@ -2812,15 +2812,6 @@ async function refreshProviderDrafts() {
 }
 
 async function uploadLocalVideoInChunks(file) {
-  const chunkSize = 6 * 1024 * 1024;
-  const totalChunks = Math.ceil(file.size / chunkSize);
-  const maxParallel = Math.min(6, Math.max(2, totalChunks));
-  const init = await api("POST", "/provider/workspace/uploads/init", {
-    filename: file.name,
-    total_size: file.size,
-    total_chunks: totalChunks,
-    mime_type: file.type || "video/mp4",
-  });
   const progress = $("cwUploadProgress");
   const renderUploadProgress = (pct, label = "Uploading video") => {
     if (!progress) return;
@@ -2831,45 +2822,76 @@ async function uploadLocalVideoInChunks(file) {
       </div>
     `;
   };
-  renderUploadProgress(0);
+  const chunkSizeCandidates = [6, 4, 2, 1].map((mb) => mb * 1024 * 1024);
+  let lastErr = null;
 
-  const uploadChunk = async (i) => {
-    const start = i * chunkSize;
-    const end = Math.min(start + chunkSize, file.size);
-    const blob = file.slice(start, end);
-    const fd = new FormData();
-    fd.append("chunk", blob, `${file.name}.part`);
-    const headers = await getHeaders(true);
-    delete headers["Content-Type"];
-    const res = await fetch(`/provider/workspace/uploads/${init.session_id}/chunk?index=${i}`, {
-      method: "PUT",
-      headers,
-      body: fd,
+  for (let sizeIdx = 0; sizeIdx < chunkSizeCandidates.length; sizeIdx += 1) {
+    const chunkSize = chunkSizeCandidates[sizeIdx];
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const maxParallel = chunkSize >= 4 * 1024 * 1024 ? 3 : Math.min(6, Math.max(2, totalChunks));
+    const mb = Math.round((chunkSize / (1024 * 1024)) * 10) / 10;
+    renderUploadProgress(0, `Preparing upload (${mb} MB chunks)`);
+
+    const init = await api("POST", "/provider/workspace/uploads/init", {
+      filename: file.name,
+      total_size: file.size,
+      total_chunks: totalChunks,
+      mime_type: file.type || "video/mp4",
     });
-    if (!res.ok) throw new Error("Chunk upload failed");
-  };
 
-  let uploadedCount = 0;
-  let nextIndex = 0;
-  const workers = Array.from({ length: maxParallel }).map(async () => {
-    while (nextIndex < totalChunks) {
-      const current = nextIndex;
-      nextIndex += 1;
-      await uploadChunk(current);
-      uploadedCount += 1;
-      renderUploadProgress((uploadedCount / totalChunks) * 100);
+    const uploadChunk = async (i) => {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const blob = file.slice(start, end);
+      const fd = new FormData();
+      fd.append("chunk", blob, `${file.name}.part`);
+      const headers = await getHeaders(true);
+      delete headers["Content-Type"];
+      const res = await fetch(`/provider/workspace/uploads/${init.session_id}/chunk?index=${i}`, {
+        method: "PUT",
+        headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = new Error(`Chunk upload failed (HTTP ${res.status})`);
+        err.status = res.status;
+        throw err;
+      }
+    };
+
+    try {
+      let uploadedCount = 0;
+      let nextIndex = 0;
+      const workers = Array.from({ length: maxParallel }).map(async () => {
+        while (nextIndex < totalChunks) {
+          const current = nextIndex;
+          nextIndex += 1;
+          await uploadChunk(current);
+          uploadedCount += 1;
+          renderUploadProgress((uploadedCount / totalChunks) * 100, `Uploading video (${mb} MB chunks)`);
+        }
+      });
+      await Promise.all(workers);
+
+      renderUploadProgress(99, "Finalizing upload...");
+      const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
+      $("cwVideoUrl").value = done.storage_ref || done.file_url;
+      if (done.file_url && $("cwVideoPreview")) {
+        $("cwVideoPreview").setAttribute("src", done.file_url);
+        $("cwVideoPreview").load();
+      }
+      renderUploadProgress(100, "Upload complete");
+      return done.storage_ref || done.file_url;
+    } catch (err) {
+      lastErr = err;
+      if (Number(err?.status || 0) === 413 && sizeIdx < chunkSizeCandidates.length - 1) {
+        renderUploadProgress(0, "Chunk too large for server. Retrying with smaller chunks...");
+        continue;
+      }
+      throw err;
     }
-  });
-  await Promise.all(workers);
-
-  const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
-  $("cwVideoUrl").value = done.storage_ref || done.file_url;
-  if (done.file_url && $("cwVideoPreview")) {
-    $("cwVideoPreview").setAttribute("src", done.file_url);
-    $("cwVideoPreview").load();
   }
-  renderUploadProgress(100, "Upload complete");
-  return done.storage_ref || done.file_url;
+  throw lastErr || new Error("Upload failed");
 }
 
 async function refreshAnalytics() {
