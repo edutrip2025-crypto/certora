@@ -2812,8 +2812,9 @@ async function refreshProviderDrafts() {
 }
 
 async function uploadLocalVideoInChunks(file) {
-  const chunkSize = 2 * 1024 * 1024;
+  const chunkSize = 6 * 1024 * 1024;
   const totalChunks = Math.ceil(file.size / chunkSize);
+  const maxParallel = Math.min(6, Math.max(2, totalChunks));
   const init = await api("POST", "/provider/workspace/uploads/init", {
     filename: file.name,
     total_size: file.size,
@@ -2821,7 +2822,18 @@ async function uploadLocalVideoInChunks(file) {
     mime_type: file.type || "video/mp4",
   });
   const progress = $("cwUploadProgress");
-  for (let i = 0; i < totalChunks; i += 1) {
+  const renderUploadProgress = (pct, label = "Uploading video") => {
+    if (!progress) return;
+    progress.innerHTML = `
+      <div class="upload-progress-wrap">
+        <div class="upload-progress-label">${label}</div>
+        <div class="upload-progress-bar"><span style="width:${Math.max(0, Math.min(100, pct))}%;"></span></div>
+      </div>
+    `;
+  };
+  renderUploadProgress(0);
+
+  const uploadChunk = async (i) => {
     const start = i * chunkSize;
     const end = Math.min(start + chunkSize, file.size);
     const blob = file.slice(start, end);
@@ -2835,15 +2847,28 @@ async function uploadLocalVideoInChunks(file) {
       body: fd,
     });
     if (!res.ok) throw new Error("Chunk upload failed");
-    if (progress) progress.textContent = `Uploading... ${i + 1}/${totalChunks} chunks`;
-  }
+  };
+
+  let uploadedCount = 0;
+  let nextIndex = 0;
+  const workers = Array.from({ length: maxParallel }).map(async () => {
+    while (nextIndex < totalChunks) {
+      const current = nextIndex;
+      nextIndex += 1;
+      await uploadChunk(current);
+      uploadedCount += 1;
+      renderUploadProgress((uploadedCount / totalChunks) * 100);
+    }
+  });
+  await Promise.all(workers);
+
   const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
   $("cwVideoUrl").value = done.storage_ref || done.file_url;
   if (done.file_url && $("cwVideoPreview")) {
     $("cwVideoPreview").setAttribute("src", done.file_url);
     $("cwVideoPreview").load();
   }
-  if (progress) progress.textContent = `Upload complete`;
+  renderUploadProgress(100, "Upload complete");
   return done.storage_ref || done.file_url;
 }
 

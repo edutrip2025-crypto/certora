@@ -12,6 +12,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body { font-family: "Manrope", sans-serif; color: var(--ink); background: var(--bg); }
+body { font-size: 15px; }
 
 main { width: calc(100% - clamp(16px, 2.6vw, 34px)); margin-left: auto; margin-right: auto; }
 .brand { display: flex; gap: 10px; align-items: center; }
@@ -1325,6 +1326,31 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border: 1px solid #e5e7eb;
   background: #fff;
 }
+.upload-progress-wrap {
+  max-width: 460px;
+  display: grid;
+  gap: 6px;
+}
+.upload-progress-label {
+  font-size: .82rem;
+  color: #334155;
+  font-weight: 700;
+}
+.upload-progress-bar {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid #bfd3f0;
+  background: #eef4ff;
+  overflow: hidden;
+}
+.upload-progress-bar > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2563eb, #0f766e);
+  transition: width .18s ease;
+}
 #cwCurrentTopic, #pcvCurrentTopic {
   max-width: 160px;
   overflow: hidden;
@@ -1514,6 +1540,13 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   overflow: auto;
   padding: 20px 22px 24px;
 }
+#assessmentBuilderScreen {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.14), transparent 30%),
+    radial-gradient(circle at 94% 0%, rgba(15, 118, 110, 0.12), transparent 34%),
+    #f5f8ff;
+}
 .assessment-screen-head {
   display: flex;
   align-items: flex-start;
@@ -1558,12 +1591,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: #f8fafc;
 }
 .ab-step-indicator strong {
-  font-size: .86rem;
+  font-size: .8rem;
   color: #334155;
 }
 .ab-step-indicator.active {
-  border-color: #93c5fd;
-  background: linear-gradient(180deg, #eff6ff, #ffffff);
+  border-color: #60a5fa;
+  background: linear-gradient(180deg, #e8f1ff, #ffffff);
 }
 .ab-step-indicator.active span {
   border-color: #2563eb;
@@ -1586,11 +1619,69 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   transition: transform .36s cubic-bezier(.2,.8,.2,1);
 }
 .ab-step-page {
-  min-height: calc(100dvh - 220px);
+  height: calc(100dvh - 220px);
   padding: 16px;
   border-radius: 14px;
-  border: 1px solid #dbe4f0;
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  border: 1px solid #cddaf0;
+  background: linear-gradient(180deg, #ffffff, #f7faff);
+  overflow: auto;
+}
+.ab-step-page:first-child,
+.ab-step-page:nth-child(2) {
+  overflow: hidden;
+}
+.ab-step-page h3 {
+  margin-top: 0;
+  font-size: 1.06rem;
+}
+.ab-step-page .muted {
+  font-size: .88rem;
+}
+.ab-step-page .filter,
+.ab-step-page .search {
+  min-width: 130px;
+  max-width: 240px;
+}
+.ab-course-select {
+  min-width: 220px !important;
+  max-width: 380px !important;
+}
+
+.icon-close-animated {
+  position: relative;
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+.icon-close-animated span {
+  position: absolute;
+  width: 16px;
+  height: 2px;
+  background: #0f172a;
+  border-radius: 999px;
+  transition: transform .2s ease, background .2s ease;
+}
+.icon-close-animated span:first-child {
+  transform: rotate(45deg);
+}
+.icon-close-animated span:last-child {
+  transform: rotate(-45deg);
+}
+.icon-close-animated:hover {
+  background: linear-gradient(180deg, #fee2e2, #fff1f2);
+  border-color: #fca5a5;
+}
+.icon-close-animated:hover span:first-child {
+  transform: rotate(135deg);
+  background: #991b1b;
+}
+.icon-close-animated:hover span:last-child {
+  transform: rotate(45deg);
+  background: #991b1b;
 }
 .ab-options-grid {
   display: grid;
@@ -2126,7 +2217,15 @@ input:focus, select:focus, textarea:focus {
   .class-player-grid aside { max-height: none; }
   .assessment-screen-grid { grid-template-columns: 1fr; }
   .ab-stepper { grid-template-columns: 1fr; }
-  .ab-step-page { min-height: auto; }
+  .ab-step-page {
+    height: auto;
+    max-height: none;
+    overflow: auto;
+  }
+  .ab-step-page:first-child,
+  .ab-step-page:nth-child(2) {
+    overflow: auto;
+  }
   .course-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .video-controls {
     grid-template-columns: 40px 40px 40px 1fr;
