@@ -5743,6 +5743,14 @@ function persistAssessmentBuilderCache() {
       questionType: $("abQuestionType")?.value || "mcq_single_correct",
       questionMarks: $("abQuestionMarks")?.value || "",
       questionNegativeMarks: $("abQuestionNegativeMarks")?.value || "",
+      questionText: $("abQuestionText")?.value || "",
+      option1: $("abOption1")?.value || "",
+      option2: $("abOption2")?.value || "",
+      option3: $("abOption3")?.value || "",
+      option4: $("abOption4")?.value || "",
+      correctIndexes: Array.from(document.querySelectorAll("[data-ab-correct]"))
+        .map((n, idx) => (n.checked ? idx : -1))
+        .filter((idx) => idx >= 0),
       questions: state.assessmentDraftQuestions || [],
       questionDefaultMarks: state.assessmentQuestionDefaultMarks,
       questionDefaultNegativeMarks: state.assessmentQuestionDefaultNegativeMarks,
@@ -5763,10 +5771,27 @@ function tryRestoreAssessmentBuilderCache() {
     const raw = localStorage.getItem(ASSESSMENT_BUILDER_CACHE_KEY);
     if (!raw) return;
     const payload = JSON.parse(raw);
-    if (!payload || !Array.isArray(payload.questions) || !payload.questions.length) return;
+    if (!payload) return;
     const ageMs = Date.now() - Number(payload.ts || 0);
     if (!Number.isFinite(ageMs) || ageMs > (24 * 60 * 60 * 1000)) return;
-    if (!window.confirm("Recovered assessment draft found. Restore unsaved work?")) return;
+    const hasPool = Array.isArray(payload.questions) && payload.questions.length > 0;
+    const hasFormState = Boolean(
+      String(payload.title || "").trim()
+      || String(payload.passScore || "").trim()
+      || String(payload.maxAttempts || "").trim()
+      || String(payload.questionsPerAttempt || "").trim()
+      || String(payload.durationMinutes || "").trim()
+      || String(payload.durationSeconds || "").trim()
+      || String(payload.timePerQuestionSeconds || "").trim()
+      || String(payload.questionText || "").trim()
+      || String(payload.questionMarks || "").trim()
+      || String(payload.questionNegativeMarks || "").trim()
+      || String(payload.option1 || "").trim()
+      || String(payload.option2 || "").trim()
+      || String(payload.option3 || "").trim()
+      || String(payload.option4 || "").trim(),
+    );
+    if (!hasPool && !hasFormState) return;
     $("abCourseFilter").value = String(payload.courseFilter || "all");
     renderAssessmentCourseOptions();
     $("abCourseSelect").value = String(payload.courseSelect || "");
@@ -5786,6 +5811,15 @@ function tryRestoreAssessmentBuilderCache() {
     $("abQuestionType").value = String(payload.questionType || "mcq_single_correct");
     $("abQuestionMarks").value = String(payload.questionMarks || "");
     $("abQuestionNegativeMarks").value = String(payload.questionNegativeMarks || "");
+    $("abQuestionText").value = String(payload.questionText || "");
+    if ($("abOption1")) $("abOption1").value = String(payload.option1 || "");
+    if ($("abOption2")) $("abOption2").value = String(payload.option2 || "");
+    if ($("abOption3")) $("abOption3").value = String(payload.option3 || "");
+    if ($("abOption4")) $("abOption4").value = String(payload.option4 || "");
+    const correct = Array.isArray(payload.correctIndexes) ? payload.correctIndexes.map((x) => Number(x)) : [];
+    document.querySelectorAll("[data-ab-correct]").forEach((n, idx) => {
+      n.checked = correct.includes(idx);
+    });
     state.assessmentQuestionDefaultMarks = Number.isFinite(Number(payload.questionDefaultMarks))
       ? Number(payload.questionDefaultMarks)
       : null;
@@ -5797,6 +5831,7 @@ function tryRestoreAssessmentBuilderCache() {
     applyAssessmentNegativeMarkingUi();
     updateAssessmentSourceMeta();
     renderAssessmentPool();
+    toast("Recovered unsaved assessment builder work");
   } catch {}
 }
 
