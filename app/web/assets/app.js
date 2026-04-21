@@ -36,6 +36,7 @@ const state = {
   activeDraftId: null,
   providerCourses: [],
   providerDrafts: [],
+  wizardLocalVideoObjectUrl: "",
   providerAssessments: [],
   providerLiveSessions: [],
   providerLiveEditSessionId: null,
@@ -2012,6 +2013,24 @@ function stopStudentStreamHeartbeat() {
   }
 }
 
+function releaseWizardLocalVideoObjectUrl() {
+  const prev = String(state.wizardLocalVideoObjectUrl || "");
+  if (prev && prev.startsWith("blob:")) {
+    try { URL.revokeObjectURL(prev); } catch {}
+  }
+  state.wizardLocalVideoObjectUrl = "";
+}
+
+function setWizardVideoPreviewFromLocalFile(file) {
+  if (!file) return "";
+  releaseWizardLocalVideoObjectUrl();
+  const objectUrl = URL.createObjectURL(file);
+  state.wizardLocalVideoObjectUrl = objectUrl;
+  if ($("cwVideoUrl")) $("cwVideoUrl").value = objectUrl;
+  ensureCourseVideoPreview();
+  return objectUrl;
+}
+
 function safeJsonParse(value) {
   try {
     return JSON.parse(String(value || ""));
@@ -2669,6 +2688,7 @@ function renderDraftTopics() {
 function resetCourseWizard() {
   state.activeDraftId = null;
   state.draftTopics = [];
+  releaseWizardLocalVideoObjectUrl();
   ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwVideoUrl", "cwTopicTitle", "cwTopicTime"].forEach((id) => {
     const node = $(id);
     if (node) node.value = "";
@@ -2686,6 +2706,8 @@ function resetCourseWizard() {
   setCourseWizardStep("details");
   const progress = $("cwUploadProgress");
   if (progress) progress.textContent = "";
+  const videoFile = $("cwVideoFile");
+  if (videoFile) videoFile.value = "";
   const thumbFile = $("cwThumbnailFile");
   if (thumbFile) thumbFile.value = "";
   const thumbPreview = $("cwThumbnailPreview");
@@ -2730,6 +2752,8 @@ function captureFrameFromVideoElement(videoEl) {
 }
 
 function wizardPayload() {
+  const rawVideoUrl = $("cwVideoUrl")?.value?.trim() || "";
+  const safeVideoUrl = rawVideoUrl.startsWith("blob:") ? "" : rawVideoUrl;
   return {
     draft_id: state.activeDraftId,
     title: $("cwCourseTitle")?.value?.trim() || "",
@@ -2738,7 +2762,7 @@ function wizardPayload() {
     description: $("cwCourseDescription")?.value?.trim() || "",
     thumbnail_url: $("cwCourseThumbnail")?.value?.trim() || null,
     includes_exam: Boolean($("cwIncludesExam")?.checked),
-    video_url: $("cwVideoUrl")?.value?.trim() || null,
+    video_url: safeVideoUrl || null,
     topics: state.draftTopics,
   };
 }
@@ -2895,6 +2919,87 @@ async function uploadLocalVideoInChunks(file) {
     }
   }
   throw lastErr || new Error("Upload failed");
+}
+
+async function uploadToCloudflareDirectUrl(uploadUrl, file, onProgress) {
+  const tryPutRaw = async () => {
+    const xhr = new XMLHttpRequest();
+    await new Promise((resolve, reject) => {
+      xhr.open("PUT", uploadUrl, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && typeof onProgress === "function") {
+          onProgress((event.loaded / event.total) * 100);
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(null);
+        else reject(new Error(`Cloudflare direct PUT failed (HTTP ${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("Cloudflare direct PUT failed"));
+      xhr.send(file);
+    });
+  };
+
+  const tryPostMultipart = async () => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "video.mp4");
+    const res = await fetch(uploadUrl, { method: "POST", body: fd });
+    if (!res.ok) throw new Error(`Cloudflare direct POST failed (HTTP ${res.status})`);
+    if (typeof onProgress === "function") onProgress(100);
+  };
+
+  try {
+    await tryPutRaw();
+    return;
+  } catch {}
+  await tryPostMultipart();
+}
+
+async function uploadWizardVideoToStream(courseId, title, file) {
+  const progress = $("cwUploadProgress");
+  const renderUploadProgress = (pct, label = "Uploading video") => {
+    if (!progress) return;
+    progress.innerHTML = `
+      <div class="upload-progress-wrap">
+        <div class="upload-progress-label">${label}</div>
+        <div class="upload-progress-bar"><span style="width:${Math.max(0, Math.min(100, pct))}%;"></span></div>
+      </div>
+    `;
+  };
+
+  renderUploadProgress(0, "Preparing Cloudflare upload...");
+  const streamLesson = await api("POST", `/stream/courses/${Number(courseId)}/lessons`, {
+    title: `${String(title || "Course")} - Stream Lesson`,
+    position: 1,
+  });
+  const init = await api("POST", "/stream/videos/upload-init", {
+    lesson_id: Number(streamLesson.lesson_id),
+  });
+  const uploadUrl = String(init?.upload_url || "").trim();
+  if (!uploadUrl) throw new Error("Cloudflare direct upload URL missing.");
+
+  await uploadToCloudflareDirectUrl(uploadUrl, file, (pct) => {
+    renderUploadProgress(pct, "Uploading to Cloudflare Stream...");
+  });
+
+  renderUploadProgress(100, "Upload completed. Processing video...");
+  const lessonVideoId = Number(init?.lesson_video_id || 0);
+  if (!lessonVideoId) return init;
+
+  const startMs = Date.now();
+  const timeoutMs = 8 * 60 * 1000;
+  while (Date.now() - startMs < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const status = await api("GET", `/stream/videos/${lessonVideoId}/status?sync=true`);
+    if (status?.ready_status) {
+      renderUploadProgress(100, "Cloudflare video ready");
+      return { ...init, ...status };
+    }
+    renderUploadProgress(100, `Processing on Cloudflare (${status?.upload_status || "pending"})...`);
+  }
+  renderUploadProgress(100, "Upload accepted. Cloudflare processing is still in progress.");
+  return init;
 }
 
 async function refreshAnalytics() {
@@ -7908,11 +8013,13 @@ async function createCourseFromWizard() {
   const description = $("cwCourseDescription")?.value?.trim() || "";
   let thumbnail = $("cwCourseThumbnail")?.value?.trim() || null;
   const videoUrl = $("cwVideoUrl")?.value?.trim();
+  const localVideoFile = $("cwVideoFile")?.files?.[0] || null;
   const includesExam = Boolean($("cwIncludesExam")?.checked);
 
   if (!title) throw new Error("Course name is required");
-  if (!videoUrl) throw new Error("Video URL is required");
+  if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
+  const safeRecordedVideoUrl = localVideoFile ? null : videoUrl;
 
   const course = await api("POST", "/courses", {
     title,
@@ -7929,7 +8036,7 @@ async function createCourseFromWizard() {
   const lesson = await api("POST", `/courses/modules/${module.id}/lessons`, {
     title: `${title} - Main Class`,
     lesson_type: "recorded_video",
-    recorded_video_url: videoUrl,
+    recorded_video_url: safeRecordedVideoUrl,
     live_class_url: null,
     position: 1,
   });
@@ -7939,6 +8046,9 @@ async function createCourseFromWizard() {
       time_seconds: topic.time_seconds,
       thumbnail_data_url: topic.thumbnail_data_url || null,
     });
+  }
+  if (localVideoFile) {
+    await uploadWizardVideoToStream(course.id, title, localVideoFile);
   }
   await api("POST", `/courses/${course.id}/publish`);
   if (state.activeDraftId) {
@@ -8629,10 +8739,10 @@ function bindEvents() {
     const file = $("cwVideoFile")?.files?.[0];
     if (!file) return toast("Choose a local video file first", "error");
     try {
-      await uploadLocalVideoInChunks(file);
-      toast("Video uploaded");
-    } catch {
-      toast("Video upload failed", "error");
+      setWizardVideoPreviewFromLocalFile(file);
+      toast("Local video selected. It will upload to Cloudflare on Create Course.");
+    } catch (err) {
+      toast(err?.message || "Video selection failed", "error");
     }
   });
   $("cwThumbnailFile")?.addEventListener("change", async () => {
@@ -8676,7 +8786,8 @@ function bindEvents() {
   $("cwBackToDetailsBtn")?.addEventListener("click", () => setCourseWizardStep("details"));
   $("cwNextToTopicsBtn")?.addEventListener("click", () => {
     const videoUrl = $("cwVideoUrl")?.value?.trim();
-    if (!videoUrl) return toast("Video URL is required", "error");
+    const localVideoFile = $("cwVideoFile")?.files?.[0] || null;
+    if (!videoUrl && !localVideoFile) return toast("Video URL or local video file is required", "error");
     const thumbnail = $("cwCourseThumbnail")?.value?.trim();
     if (!thumbnail) return toast("Thumbnail is required. Upload one or capture from video.", "error");
     setCourseWizardStep("topics");
