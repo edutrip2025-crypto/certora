@@ -5754,6 +5754,7 @@ function persistAssessmentBuilderCache() {
       questions: state.assessmentDraftQuestions || [],
       questionDefaultMarks: state.assessmentQuestionDefaultMarks,
       questionDefaultNegativeMarks: state.assessmentQuestionDefaultNegativeMarks,
+      editingExamId: state.assessmentEditingExamId ? Number(state.assessmentEditingExamId) : null,
     };
     localStorage.setItem(ASSESSMENT_BUILDER_CACHE_KEY, JSON.stringify(payload));
   } catch {}
@@ -7564,8 +7565,38 @@ function startAssessmentPreviewTimer() {
 async function openAssessmentPreview(examId) {
   const exam = state.providerAssessments.find((x) => Number(x.exam_id) === Number(examId));
   if (!exam) throw new Error("Assessment not found");
-  const questions = await api("GET", `/exams/${examId}/questions`);
-  if (!questions?.length) throw new Error("No questions available for preview");
+  let questions = await api("GET", `/exams/${examId}/questions`);
+  if (!questions?.length) {
+    let recovered = null;
+    try {
+      const raw = localStorage.getItem(ASSESSMENT_BUILDER_CACHE_KEY);
+      if (raw) {
+        const payload = JSON.parse(raw);
+        const sameExam = Number(payload?.editingExamId || 0) === Number(examId);
+        if (sameExam && Array.isArray(payload?.questions) && payload.questions.length > 0) {
+          recovered = payload.questions.map((q, idx) => ({
+            question_id: Number(q.question_id || (idx + 1)),
+            question_text: String(q.question_text || ""),
+            question_type: String(q.question_type || "mcq_single_correct"),
+            marks: Number(q.marks || 1),
+            negative_marks: Number(q.negative_marks || 0),
+            options: Array.isArray(q.options) ? q.options.map((o, oIdx) => ({
+              option_id: Number(o.option_id || (oIdx + 1)),
+              option_text: String(o.option_text || ""),
+              is_correct: Boolean(o.is_correct),
+              position: Number(o.position || (oIdx + 1)),
+            })) : [],
+          }));
+        }
+      }
+    } catch {}
+    if (recovered?.length) {
+      questions = recovered;
+      toast("Using recovered local questions for preview. Save draft/publish to persist.");
+    } else {
+      throw new Error("No questions available for preview. Open Edit Draft and save questions first.");
+    }
+  }
 
   const mapped = questions.map((q) => ({
     question_id: q.question_id,
@@ -9324,6 +9355,7 @@ function bindEvents() {
   });
   $("abSaveDraftBtn")?.addEventListener("click", async () => {
     try {
+      persistAssessmentBuilderCache();
       await createAssessmentFromBuilder(false);
       toast("Assessment draft saved");
       clearAssessmentBuilderCache();
@@ -9335,6 +9367,7 @@ function bindEvents() {
   });
   $("abPublishBtn")?.addEventListener("click", async () => {
     try {
+      persistAssessmentBuilderCache();
       await createAssessmentFromBuilder(true);
       toast("Assessment published");
       clearAssessmentBuilderCache();
