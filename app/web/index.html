@@ -382,6 +382,7 @@
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:10px;">
                   <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
+                  <input id="abDefaultNegativeMarks" class="filter hidden" type="number" min="0" step="0.25" placeholder="Default negative marks/question" />
                   <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions</span></label>
                   <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options</span></label>
                   <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled</span></label>
@@ -391,7 +392,8 @@
                     <option value="assessment">Time per assessment</option>
                     <option value="question">Time per question</option>
                   </select>
-                  <input id="abDurationMinutes" class="filter" type="number" min="1" placeholder="Duration (mins)" />
+                  <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes" />
+                  <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds" />
                   <input id="abTimePerQuestionSeconds" class="filter hidden" type="number" min="5" placeholder="Time/question (sec)" />
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:16px;">

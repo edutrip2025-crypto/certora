@@ -66,6 +66,8 @@ const state = {
   videoDurationByUrl: {},
   assessmentDraftQuestions: [],
   assessmentEditingExamId: null,
+  assessmentQuestionDefaultMarks: null,
+  assessmentQuestionDefaultNegativeMarks: null,
   assessmentPreview: {
     mode: "preview",
     attemptId: null,
@@ -1182,6 +1184,7 @@ const el = {
   abCourseMeta: $("abCourseMeta"),
   abTimingMode: $("abTimingMode"),
   abDurationMinutes: $("abDurationMinutes"),
+  abDurationSeconds: $("abDurationSeconds"),
   abTimePerQuestionSeconds: $("abTimePerQuestionSeconds"),
   abQuestionPoolList: $("abQuestionPoolList"),
   abPoolMeta: $("abPoolMeta"),
@@ -5663,9 +5666,42 @@ function validateAssessmentStep(step) {
       toast("Assessment title is required.", "error");
       return false;
     }
-    if (Number($("abQuestionsPerAttempt")?.value || 0) <= 0) {
+    const passScore = Number($("abPassScore")?.value);
+    const maxAttempts = Number($("abMaxAttempts")?.value);
+    const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
+    if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) {
+      toast("Pass % is required (1 to 100).", "error");
+      return false;
+    }
+    if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) {
+      toast("Max attempts is required and must be greater than 0.", "error");
+      return false;
+    }
+    if (!Number.isFinite(questionsPerAttempt) || questionsPerAttempt <= 0) {
       toast("Questions shown to student must be greater than 0.", "error");
       return false;
+    }
+    const timingMode = $("abTimingMode")?.value || "assessment";
+    if (timingMode === "assessment") {
+      const mins = Number($("abDurationMinutes")?.value || 0);
+      const secs = Number($("abDurationSeconds")?.value || 0);
+      if (!Number.isFinite(mins) || mins < 0 || !Number.isFinite(secs) || secs < 0 || secs >= 60 || (mins === 0 && secs === 0)) {
+        toast("Duration is required. Enter valid minutes and/or seconds.", "error");
+        return false;
+      }
+    } else {
+      const perQ = Number($("abTimePerQuestionSeconds")?.value);
+      if (!Number.isFinite(perQ) || perQ <= 0) {
+        toast("Time per question is required and must be greater than 0.", "error");
+        return false;
+      }
+    }
+    if (Boolean($("abNegativeMarking")?.checked)) {
+      const raw = String($("abDefaultNegativeMarks")?.value || "").trim();
+      if (raw && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+        toast("Default negative marks must be 0 or a positive number.", "error");
+        return false;
+      }
     }
     return true;
   }
@@ -5683,27 +5719,121 @@ function isAssessmentDraftSourceSelected() {
   return raw.startsWith("draft:");
 }
 
+const ASSESSMENT_BUILDER_CACHE_KEY = "certora_assessment_builder_cache_v1";
+
+function persistAssessmentBuilderCache() {
+  try {
+    const payload = {
+      ts: Date.now(),
+      courseFilter: $("abCourseFilter")?.value || "all",
+      courseSelect: $("abCourseSelect")?.value || "",
+      title: $("abTitle")?.value || "",
+      passScore: $("abPassScore")?.value || "",
+      maxAttempts: $("abMaxAttempts")?.value || "",
+      questionsPerAttempt: $("abQuestionsPerAttempt")?.value || "",
+      negativeMarking: Boolean($("abNegativeMarking")?.checked),
+      defaultNegativeMarks: $("abDefaultNegativeMarks")?.value || "",
+      shuffleQuestions: Boolean($("abShuffleQuestions")?.checked),
+      shuffleOptions: Boolean($("abShuffleOptions")?.checked),
+      certificateEnabled: Boolean($("abCertificateEnabled")?.checked),
+      timingMode: $("abTimingMode")?.value || "assessment",
+      durationMinutes: $("abDurationMinutes")?.value || "",
+      durationSeconds: $("abDurationSeconds")?.value || "",
+      timePerQuestionSeconds: $("abTimePerQuestionSeconds")?.value || "",
+      questionType: $("abQuestionType")?.value || "mcq_single_correct",
+      questionMarks: $("abQuestionMarks")?.value || "",
+      questionNegativeMarks: $("abQuestionNegativeMarks")?.value || "",
+      questions: state.assessmentDraftQuestions || [],
+      questionDefaultMarks: state.assessmentQuestionDefaultMarks,
+      questionDefaultNegativeMarks: state.assessmentQuestionDefaultNegativeMarks,
+    };
+    localStorage.setItem(ASSESSMENT_BUILDER_CACHE_KEY, JSON.stringify(payload));
+  } catch {}
+}
+
+function clearAssessmentBuilderCache() {
+  try {
+    localStorage.removeItem(ASSESSMENT_BUILDER_CACHE_KEY);
+  } catch {}
+}
+
+function tryRestoreAssessmentBuilderCache() {
+  try {
+    if (state.assessmentEditingExamId) return;
+    const raw = localStorage.getItem(ASSESSMENT_BUILDER_CACHE_KEY);
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    if (!payload || !Array.isArray(payload.questions) || !payload.questions.length) return;
+    const ageMs = Date.now() - Number(payload.ts || 0);
+    if (!Number.isFinite(ageMs) || ageMs > (24 * 60 * 60 * 1000)) return;
+    if (!window.confirm("Recovered assessment draft found. Restore unsaved work?")) return;
+    $("abCourseFilter").value = String(payload.courseFilter || "all");
+    renderAssessmentCourseOptions();
+    $("abCourseSelect").value = String(payload.courseSelect || "");
+    $("abTitle").value = String(payload.title || "");
+    $("abPassScore").value = String(payload.passScore || "");
+    $("abMaxAttempts").value = String(payload.maxAttempts || "");
+    $("abQuestionsPerAttempt").value = String(payload.questionsPerAttempt || "");
+    $("abNegativeMarking").checked = Boolean(payload.negativeMarking);
+    $("abDefaultNegativeMarks").value = String(payload.defaultNegativeMarks || "");
+    $("abShuffleQuestions").checked = Boolean(payload.shuffleQuestions);
+    $("abShuffleOptions").checked = Boolean(payload.shuffleOptions);
+    $("abCertificateEnabled").checked = Boolean(payload.certificateEnabled);
+    $("abTimingMode").value = String(payload.timingMode || "assessment");
+    $("abDurationMinutes").value = String(payload.durationMinutes || "");
+    $("abDurationSeconds").value = String(payload.durationSeconds || "");
+    $("abTimePerQuestionSeconds").value = String(payload.timePerQuestionSeconds || "");
+    $("abQuestionType").value = String(payload.questionType || "mcq_single_correct");
+    $("abQuestionMarks").value = String(payload.questionMarks || "");
+    $("abQuestionNegativeMarks").value = String(payload.questionNegativeMarks || "");
+    state.assessmentQuestionDefaultMarks = Number.isFinite(Number(payload.questionDefaultMarks))
+      ? Number(payload.questionDefaultMarks)
+      : null;
+    state.assessmentQuestionDefaultNegativeMarks = Number.isFinite(Number(payload.questionDefaultNegativeMarks))
+      ? Number(payload.questionDefaultNegativeMarks)
+      : null;
+    state.assessmentDraftQuestions = payload.questions;
+    applyAssessmentTimingMode();
+    applyAssessmentNegativeMarkingUi();
+    updateAssessmentSourceMeta();
+    renderAssessmentPool();
+  } catch {}
+}
+
+function applyAssessmentNegativeMarkingUi() {
+  const enabled = Boolean($("abNegativeMarking")?.checked);
+  $("abDefaultNegativeMarks")?.classList.toggle("hidden", !enabled);
+  if ($("abQuestionNegativeMarks")) {
+    $("abQuestionNegativeMarks").disabled = !enabled;
+    if (!enabled) $("abQuestionNegativeMarks").value = "";
+  }
+}
+
 function resetAssessmentBuilder() {
   state.assessmentEditingExamId = null;
   state.assessmentDraftQuestions = [];
-  $("abCourseFilter").value = "all";
+  state.assessmentQuestionDefaultMarks = null;
+  state.assessmentQuestionDefaultNegativeMarks = null;
+  $("abCourseFilter").value = "active";
   $("abCourseSelect").value = "";
   $("abCourseMeta").textContent = "No course selected.";
   $("abTitle").value = "";
-  $("abPassScore").value = "60";
-  $("abMaxAttempts").value = "1";
-  $("abQuestionsPerAttempt").value = "10";
+  $("abPassScore").value = "";
+  $("abMaxAttempts").value = "";
+  $("abQuestionsPerAttempt").value = "";
   $("abNegativeMarking").checked = false;
+  $("abDefaultNegativeMarks").value = "";
   $("abShuffleQuestions").checked = true;
   $("abShuffleOptions").checked = true;
   $("abCertificateEnabled").checked = true;
   $("abTimingMode").value = "assessment";
-  $("abDurationMinutes").value = "60";
-  $("abTimePerQuestionSeconds").value = "90";
+  $("abDurationMinutes").value = "";
+  $("abDurationSeconds").value = "";
+  $("abTimePerQuestionSeconds").value = "";
   $("abQuestionType").value = "mcq_single_correct";
   $("abQuestionText").value = "";
-  $("abQuestionMarks").value = "1";
-  $("abQuestionNegativeMarks").value = "0";
+  $("abQuestionMarks").value = "";
+  $("abQuestionNegativeMarks").value = "";
   $("abCourseSelect").disabled = false;
   $("abCourseFilter").disabled = false;
   ["abOption1", "abOption2", "abOption3", "abOption4"].forEach((id) => {
@@ -5716,6 +5846,7 @@ function resetAssessmentBuilder() {
   renderAssessmentPool();
   renderAssessmentCourseOptions();
   applyAssessmentTimingMode();
+  applyAssessmentNegativeMarkingUi();
   const title = $("assessmentBuilderScreen")?.querySelector("h2");
   if (title) title.textContent = "Assessment Builder";
   const saveBtn = $("abSaveDraftBtn");
@@ -5725,9 +5856,10 @@ function resetAssessmentBuilder() {
   setAssessmentBuilderStep(1, { noAnimate: true });
 }
 
-function openAssessmentBuilder() {
+function openAssessmentBuilder(allowRestore = true) {
   resetAssessmentBuilder();
   el.assessmentBuilderScreen?.classList.remove("hidden");
+  if (allowRestore) tryRestoreAssessmentBuilderCache();
   setAssessmentBuilderStep(1, { noAnimate: true });
 }
 
@@ -5804,6 +5936,7 @@ function updateAssessmentSourceMeta() {
 function applyAssessmentTimingMode() {
   const mode = $("abTimingMode")?.value || "assessment";
   $("abDurationMinutes")?.classList.toggle("hidden", mode !== "assessment");
+  $("abDurationSeconds")?.classList.toggle("hidden", mode !== "assessment");
   $("abTimePerQuestionSeconds")?.classList.toggle("hidden", mode !== "question");
 }
 
@@ -5841,6 +5974,13 @@ function renderAssessmentPool() {
         }
       }
       state.assessmentDraftQuestions = state.assessmentDraftQuestions.filter((_, i) => i !== idx);
+      if (!state.assessmentDraftQuestions.length) {
+        state.assessmentQuestionDefaultMarks = null;
+        state.assessmentQuestionDefaultNegativeMarks = null;
+        $("abQuestionMarks").value = "";
+        $("abQuestionNegativeMarks").value = "";
+      }
+      persistAssessmentBuilderCache();
       renderAssessmentPool();
     });
   });
@@ -5848,7 +5988,7 @@ function renderAssessmentPool() {
 
 async function openAssessmentBuilderForEdit(assessment) {
   await Promise.all([refreshProviderContent(), loadProviderDraftsRaw()]);
-  openAssessmentBuilder();
+  openAssessmentBuilder(false);
   state.assessmentEditingExamId = Number(assessment.exam_id);
   const titleNode = $("assessmentBuilderScreen")?.querySelector("h2");
   if (titleNode) titleNode.textContent = `Edit Draft Assessment #${assessment.exam_id}`;
@@ -5862,13 +6002,17 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abMaxAttempts").value = String(assessment.max_attempts ?? 1);
   $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : Math.max(assessment.question_count || 1, 1));
   $("abNegativeMarking").checked = Boolean(assessment.negative_marking);
+  $("abDefaultNegativeMarks").value = "";
   $("abShuffleQuestions").checked = Boolean(assessment.shuffle_questions);
   $("abShuffleOptions").checked = Boolean(assessment.shuffle_options);
   $("abCertificateEnabled").checked = Boolean(assessment.certificate_enabled);
   $("abTimingMode").value = assessment.timing_mode || "assessment";
-  $("abDurationMinutes").value = String(assessment.duration_minutes || 60);
+  const totalDurationSeconds = Math.max(0, Number(assessment.duration_minutes || 0) * 60);
+  $("abDurationMinutes").value = String(Math.floor(totalDurationSeconds / 60));
+  $("abDurationSeconds").value = String(totalDurationSeconds % 60);
   $("abTimePerQuestionSeconds").value = String(assessment.time_per_question_seconds || 90);
   applyAssessmentTimingMode();
+  applyAssessmentNegativeMarkingUi();
 
   renderAssessmentCourseOptions();
   $("abCourseSelect").value = `course:${assessment.course_id}`;
@@ -5889,6 +6033,17 @@ async function openAssessmentBuilderForEdit(assessment) {
       position: o.position,
     })),
   }));
+  if (state.assessmentDraftQuestions.length) {
+    const first = state.assessmentDraftQuestions[0];
+    state.assessmentQuestionDefaultMarks = Number(first?.marks) > 0 ? Number(first.marks) : null;
+    state.assessmentQuestionDefaultNegativeMarks = Number(first?.negative_marks) >= 0 ? Number(first.negative_marks) : null;
+    $("abQuestionMarks").value = state.assessmentQuestionDefaultMarks != null ? String(state.assessmentQuestionDefaultMarks) : "";
+    if (Boolean($("abNegativeMarking")?.checked)) {
+      const suggestedNeg = state.assessmentQuestionDefaultNegativeMarks != null ? state.assessmentQuestionDefaultNegativeMarks : 0;
+      $("abDefaultNegativeMarks").value = String(suggestedNeg);
+      $("abQuestionNegativeMarks").value = String(suggestedNeg);
+    }
+  }
   renderAssessmentPool();
   setAssessmentBuilderStep(1, { noAnimate: true });
 }
@@ -5896,10 +6051,40 @@ async function openAssessmentBuilderForEdit(assessment) {
 function buildQuestionFromAssessmentForm() {
   const questionType = $("abQuestionType")?.value || "mcq_single_correct";
   const questionText = $("abQuestionText")?.value?.trim() || "";
-  const marksRaw = Number($("abQuestionMarks")?.value || 1);
-  const negativeRaw = Number($("abQuestionNegativeMarks")?.value || 0);
-  const marks = Number.isFinite(marksRaw) && marksRaw > 0 ? marksRaw : 1;
-  const negativeMarks = Number.isFinite(negativeRaw) && negativeRaw >= 0 ? negativeRaw : 0;
+  const marksInputRaw = String($("abQuestionMarks")?.value || "").trim();
+  const firstQuestion = (state.assessmentDraftQuestions || []).length === 0;
+  let marks = null;
+  if (marksInputRaw) {
+    const parsed = Number(marksInputRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) throw new Error("Question marks must be greater than 0");
+    marks = parsed;
+  } else if (state.assessmentQuestionDefaultMarks != null) {
+    marks = Number(state.assessmentQuestionDefaultMarks);
+  }
+  if (!Number.isFinite(marks) || marks <= 0) {
+    if (firstQuestion) throw new Error("Marks is required for the first question");
+    throw new Error("Marks is required");
+  }
+
+  const negativeEnabled = Boolean($("abNegativeMarking")?.checked);
+  const defaultNegativeRaw = String($("abDefaultNegativeMarks")?.value || "").trim();
+  const negativeInputRaw = String($("abQuestionNegativeMarks")?.value || "").trim();
+  let negativeMarks = 0;
+  if (negativeEnabled) {
+    if (negativeInputRaw) {
+      const parsed = Number(negativeInputRaw);
+      if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Negative marks cannot be negative");
+      negativeMarks = parsed;
+    } else if (defaultNegativeRaw) {
+      const parsed = Number(defaultNegativeRaw);
+      if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Default negative marks cannot be negative");
+      negativeMarks = parsed;
+    } else if (state.assessmentQuestionDefaultNegativeMarks != null) {
+      negativeMarks = Number(state.assessmentQuestionDefaultNegativeMarks);
+    } else if (firstQuestion) {
+      throw new Error("Set default negative marks or question negative marks");
+    }
+  }
   const optionsText = ["abOption1", "abOption2", "abOption3", "abOption4"]
     .map((id) => ($(id)?.value || "").trim());
   const correctChecks = Array.from(document.querySelectorAll("[data-ab-correct]"));
@@ -5931,21 +6116,28 @@ async function createAssessmentFromBuilder(publishNow) {
   const courseId = getSelectedAssessmentCourseId();
   if (!courseId) throw new Error("Choose an active/inactive course");
   const title = $("abTitle")?.value?.trim() || "";
-  const passScore = Number($("abPassScore")?.value || 60);
-  const maxAttempts = Number($("abMaxAttempts")?.value || 1);
-  const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value || 0);
+  const passScore = Number($("abPassScore")?.value);
+  const maxAttempts = Number($("abMaxAttempts")?.value);
+  const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
   const timingMode = $("abTimingMode")?.value || "assessment";
-  const durationMinutes = Number($("abDurationMinutes")?.value || 60);
-  const timePerQuestionSeconds = Number($("abTimePerQuestionSeconds")?.value || 0);
+  const durationMinutesRaw = Number($("abDurationMinutes")?.value || 0);
+  const durationSecondsRaw = Number($("abDurationSeconds")?.value || 0);
+  const timePerQuestionSeconds = Number($("abTimePerQuestionSeconds")?.value);
   const questionPool = state.assessmentDraftQuestions || [];
 
   if (!title) throw new Error("Assessment title is required");
   if (!questionPool.length) throw new Error("Add at least one question");
+  if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) throw new Error("Pass % is required (1 to 100)");
+  if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) throw new Error("Max attempts is required and must be greater than 0");
   if (questionsPerAttempt <= 0) throw new Error("Questions shown to student must be greater than 0");
   if (questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
   }
-  if (timingMode === "assessment" && durationMinutes <= 0) throw new Error("Assessment duration must be greater than 0");
+  if (!Number.isFinite(durationMinutesRaw) || durationMinutesRaw < 0) throw new Error("Duration minutes is invalid");
+  if (!Number.isFinite(durationSecondsRaw) || durationSecondsRaw < 0 || durationSecondsRaw >= 60) throw new Error("Duration seconds must be between 0 and 59");
+  const durationTotalSeconds = (durationMinutesRaw * 60) + durationSecondsRaw;
+  const durationMinutes = Math.max(1, Math.ceil(durationTotalSeconds / 60));
+  if (timingMode === "assessment" && durationTotalSeconds <= 0) throw new Error("Assessment duration must be greater than 0");
   if (timingMode === "question" && timePerQuestionSeconds <= 0) throw new Error("Time per question must be greater than 0");
   if (questionPool.length < questionsPerAttempt * 2) {
     toast("Recommendation: keep at least 2x pool size for better randomization.");
@@ -9000,17 +9192,55 @@ function bindEvents() {
   $("proctorWarningAcknowledgeBtn")?.addEventListener("click", () => {
     closeProctorWarningModal();
   });
-  $("abCourseFilter")?.addEventListener("change", () => renderAssessmentCourseOptions());
-  $("abCourseSelect")?.addEventListener("change", () => updateAssessmentSourceMeta());
-  $("abTimingMode")?.addEventListener("change", () => applyAssessmentTimingMode());
+  $("abCourseFilter")?.addEventListener("change", () => {
+    renderAssessmentCourseOptions();
+    persistAssessmentBuilderCache();
+  });
+  $("abCourseSelect")?.addEventListener("change", () => {
+    updateAssessmentSourceMeta();
+    persistAssessmentBuilderCache();
+  });
+  $("abTimingMode")?.addEventListener("change", () => {
+    applyAssessmentTimingMode();
+    persistAssessmentBuilderCache();
+  });
+  $("abNegativeMarking")?.addEventListener("change", () => {
+    applyAssessmentNegativeMarkingUi();
+    persistAssessmentBuilderCache();
+  });
   $("abQuestionsPerAttempt")?.addEventListener("input", () => renderAssessmentPool());
+  [
+    "abCourseFilter",
+    "abTitle",
+    "abPassScore",
+    "abMaxAttempts",
+    "abQuestionsPerAttempt",
+    "abDefaultNegativeMarks",
+    "abDurationMinutes",
+    "abDurationSeconds",
+    "abTimePerQuestionSeconds",
+    "abQuestionType",
+    "abQuestionMarks",
+    "abQuestionNegativeMarks",
+    "abQuestionText",
+    "abOption1",
+    "abOption2",
+    "abOption3",
+    "abOption4",
+  ].forEach((id) => {
+    $(id)?.addEventListener("input", () => persistAssessmentBuilderCache());
+  });
+  ["abShuffleQuestions", "abShuffleOptions", "abCertificateEnabled"].forEach((id) => {
+    $(id)?.addEventListener("change", () => persistAssessmentBuilderCache());
+  });
   document.querySelectorAll("[data-ab-correct]").forEach((node) => {
     node.addEventListener("change", () => {
-      if (($("abQuestionType")?.value || "mcq_single_correct") !== "mcq_single_correct") return;
-      if (!node.checked) return;
-      document.querySelectorAll("[data-ab-correct]").forEach((other) => {
-        if (other !== node) other.checked = false;
-      });
+      if (($("abQuestionType")?.value || "mcq_single_correct") === "mcq_single_correct" && node.checked) {
+        document.querySelectorAll("[data-ab-correct]").forEach((other) => {
+          if (other !== node) other.checked = false;
+        });
+      }
+      persistAssessmentBuilderCache();
     });
   });
   $("abQuestionType")?.addEventListener("change", () => {
@@ -9028,8 +9258,22 @@ function bindEvents() {
     try {
       const q = buildQuestionFromAssessmentForm();
       state.assessmentDraftQuestions.push(q);
+      if (state.assessmentQuestionDefaultMarks == null) {
+        state.assessmentQuestionDefaultMarks = Number(q.marks);
+      }
+      if (Boolean($("abNegativeMarking")?.checked) && state.assessmentQuestionDefaultNegativeMarks == null) {
+        state.assessmentQuestionDefaultNegativeMarks = Number(q.negative_marks);
+      }
       $("abQuestionText").value = "";
-      $("abQuestionNegativeMarks").value = "0";
+      $("abQuestionMarks").value = state.assessmentQuestionDefaultMarks != null ? String(state.assessmentQuestionDefaultMarks) : "";
+      if (Boolean($("abNegativeMarking")?.checked)) {
+        const defaultNeg = state.assessmentQuestionDefaultNegativeMarks != null
+          ? state.assessmentQuestionDefaultNegativeMarks
+          : Number($("abDefaultNegativeMarks")?.value || 0);
+        $("abQuestionNegativeMarks").value = Number.isFinite(defaultNeg) ? String(defaultNeg) : "";
+      } else {
+        $("abQuestionNegativeMarks").value = "";
+      }
       ["abOption1", "abOption2", "abOption3", "abOption4"].forEach((id) => {
         if ($(id)) $(id).value = "";
       });
@@ -9037,6 +9281,7 @@ function bindEvents() {
         n.checked = false;
       });
       renderAssessmentPool();
+      persistAssessmentBuilderCache();
       toast("Question added to pool");
     } catch (err) {
       toast(err?.message || "Invalid question", "error");
@@ -9046,6 +9291,7 @@ function bindEvents() {
     try {
       await createAssessmentFromBuilder(false);
       toast("Assessment draft saved");
+      clearAssessmentBuilderCache();
       closeAssessmentBuilder();
       await Promise.all([refreshProviderHome(), refreshProviderAssessments()]);
     } catch (err) {
@@ -9056,6 +9302,7 @@ function bindEvents() {
     try {
       await createAssessmentFromBuilder(true);
       toast("Assessment published");
+      clearAssessmentBuilderCache();
       closeAssessmentBuilder();
       await Promise.all([refreshProviderHome(), refreshProviderAssessments()]);
     } catch (err) {
