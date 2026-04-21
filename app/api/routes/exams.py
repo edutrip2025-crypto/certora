@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
@@ -61,13 +62,17 @@ def create_exam(
         raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
     if payload.questions_per_attempt < 0:
         raise HTTPException(status_code=400, detail="questions_per_attempt cannot be negative")
-    exam = Exam(**payload.model_dump())
-    db.add(exam)
-    db.flush()
-    db.add(ExamRule(exam_id=exam.id))
-    db.commit()
-    db.refresh(exam)
-    return exam
+    try:
+        exam = Exam(**payload.model_dump())
+        db.add(exam)
+        db.flush()
+        db.add(ExamRule(exam_id=exam.id))
+        db.commit()
+        db.refresh(exam)
+        return exam
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create exam: {exc.__class__.__name__}") from exc
 
 
 @router.put("/{exam_id}", response_model=ExamOut)
@@ -96,11 +101,15 @@ def update_exam(
     if questions_per_attempt is not None and questions_per_attempt < 0:
         raise HTTPException(status_code=400, detail="questions_per_attempt cannot be negative")
 
-    for key, value in data.items():
-        setattr(exam, key, value)
-    db.commit()
-    db.refresh(exam)
-    return exam
+    try:
+        for key, value in data.items():
+            setattr(exam, key, value)
+        db.commit()
+        db.refresh(exam)
+        return exam
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update exam: {exc.__class__.__name__}") from exc
 
 
 @router.delete("/{exam_id}")
@@ -136,15 +145,19 @@ def update_exam_rule(
     course = db.get(Course, exam.course_id)
     if not course or course.provider_id != profile.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    rule = db.scalar(select(ExamRule).where(ExamRule.exam_id == exam.id))
-    if not rule:
-        rule = ExamRule(exam_id=exam.id)
-        db.add(rule)
-    for key, value in payload.model_dump().items():
-        setattr(rule, key, value)
-    db.commit()
-    db.refresh(rule)
-    return rule
+    try:
+        rule = db.scalar(select(ExamRule).where(ExamRule.exam_id == exam.id))
+        if not rule:
+            rule = ExamRule(exam_id=exam.id)
+            db.add(rule)
+        for key, value in payload.model_dump().items():
+            setattr(rule, key, value)
+        db.commit()
+        db.refresh(rule)
+        return rule
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save exam rule: {exc.__class__.__name__}") from exc
 
 
 @router.post("/{exam_id}/questions")
@@ -165,32 +178,36 @@ def add_question(
     if payload.question_type != QuestionType.SHORT_ANSWER and not payload.options:
         raise HTTPException(status_code=400, detail="MCQ question requires options")
 
-    question = Question(
-        exam_id=exam.id,
-        question_text=payload.question_text,
-        question_type=payload.question_type,
-        marks=payload.marks,
-        negative_marks=payload.negative_marks,
-    )
-    db.add(question)
-    db.flush()
-    created_options: list[dict] = []
-    for opt in payload.options:
-        option = Option(
-            question_id=question.id,
-            option_text=opt.option_text,
-            is_correct=opt.is_correct,
-            position=opt.position,
+    try:
+        question = Question(
+            exam_id=exam.id,
+            question_text=payload.question_text,
+            question_type=payload.question_type,
+            marks=payload.marks,
+            negative_marks=payload.negative_marks,
         )
-        db.add(option)
+        db.add(question)
         db.flush()
-        created_options.append({"id": option.id, "is_correct": option.is_correct})
-    db.commit()
-    db.refresh(question)
+        created_options: list[dict] = []
+        for opt in payload.options:
+            option = Option(
+                question_id=question.id,
+                option_text=opt.option_text,
+                is_correct=opt.is_correct,
+                position=opt.position,
+            )
+            db.add(option)
+            db.flush()
+            created_options.append({"id": option.id, "is_correct": option.is_correct})
+        db.commit()
+        db.refresh(question)
 
-    exam.total_marks = db.scalar(select(func.coalesce(func.sum(Question.marks), 0)).where(Question.exam_id == exam.id))
-    db.commit()
-    return {"question_id": question.id, "options": created_options}
+        exam.total_marks = db.scalar(select(func.coalesce(func.sum(Question.marks), 0)).where(Question.exam_id == exam.id))
+        db.commit()
+        return {"question_id": question.id, "options": created_options}
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to add question: {exc.__class__.__name__}") from exc
 
 
 @router.get("/{exam_id}/questions")

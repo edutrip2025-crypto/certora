@@ -6194,31 +6194,49 @@ async function createAssessmentFromBuilder(publishNow) {
   };
 
   let examId = state.assessmentEditingExamId;
-  if (examId) {
-    await api("PUT", `/exams/${examId}`, examPayload);
-    for (const q of questionPool) {
-      if (q.question_id) continue;
-      const out = await api("POST", `/exams/${examId}/questions`, q);
-      q.question_id = out.question_id;
+  try {
+    if (examId) {
+      await api("PUT", `/exams/${examId}`, examPayload);
+      for (const q of questionPool) {
+        if (q.question_id) continue;
+        const out = await api("POST", `/exams/${examId}/questions`, q);
+        q.question_id = out.question_id;
+      }
+    } else {
+      const createdExam = await api("POST", "/exams", { course_id: courseId, ...examPayload });
+      examId = createdExam.id;
+      for (const q of questionPool) {
+        const out = await api("POST", `/exams/${examId}/questions`, q);
+        q.question_id = out.question_id;
+      }
     }
-  } else {
-    const createdExam = await api("POST", "/exams", { course_id: courseId, ...examPayload });
-    examId = createdExam.id;
-    for (const q of questionPool) {
-      const out = await api("POST", `/exams/${examId}/questions`, q);
-      q.question_id = out.question_id;
-    }
+  } catch (err) {
+    const parsed = parseApiErrorMessage(err);
+    const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
+    throw new Error(`Assessment save failed at exam/questions step (status=${parsed.status || "n/a"}). ${detail || "Unknown error."}`);
   }
-  await api("POST", `/exams/${examId}/rule`, {
-    min_questions: questionPool.length,
-    min_pass_score: 60,
-    max_easy_ratio: 0.7,
-    min_syllabus_areas: 1,
-    max_duplicate_ratio: 0.1,
-    max_ambiguous_ratio: 0.1,
-  });
+  try {
+    await api("POST", `/exams/${examId}/rule`, {
+      min_questions: questionPool.length,
+      min_pass_score: 60,
+      max_easy_ratio: 0.7,
+      min_syllabus_areas: 1,
+      max_duplicate_ratio: 0.1,
+      max_ambiguous_ratio: 0.1,
+    });
+  } catch (err) {
+    const parsed = parseApiErrorMessage(err);
+    const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
+    throw new Error(`Assessment save failed at exam rule step (status=${parsed.status || "n/a"}). ${detail || "Unknown error."}`);
+  }
   if (publishNow) {
-    await api("POST", `/exams/${examId}/publish`);
+    try {
+      await api("POST", `/exams/${examId}/publish`);
+    } catch (err) {
+      const parsed = parseApiErrorMessage(err);
+      const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
+      throw new Error(`Assessment publish failed (status=${parsed.status || "n/a"}). ${detail || "Unknown error."}`);
+    }
   }
   return { id: examId };
 }
