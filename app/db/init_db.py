@@ -180,6 +180,60 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
             pass
 
 
+def _migrate_exam_schema_sqlite(conn) -> None:
+    _sqlite_add_column_if_missing(conn, "exams", "timing_mode", "TEXT DEFAULT 'assessment'")
+    _sqlite_add_column_if_missing(conn, "exams", "time_per_question_seconds", "INTEGER")
+    _sqlite_add_column_if_missing(conn, "exams", "questions_per_attempt", "INTEGER DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "exams", "negative_marking", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "exams", "shuffle_questions", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "exams", "shuffle_options", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "exams", "max_attempts", "INTEGER DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "exams", "certificate_enabled", "BOOLEAN DEFAULT 1")
+    _sqlite_add_column_if_missing(conn, "exams", "status", "TEXT DEFAULT 'draft'")
+    _sqlite_add_column_if_missing(conn, "exams", "admin_certification_approved", "BOOLEAN DEFAULT 0")
+
+    _sqlite_add_column_if_missing(conn, "exam_attempts", "assigned_question_ids", "JSON")
+
+    _sqlite_add_column_if_missing(conn, "questions", "negative_marks", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "questions", "difficulty_tag", "TEXT")
+
+    _sqlite_add_column_if_missing(conn, "exam_rules", "min_questions", "INTEGER DEFAULT 25")
+    _sqlite_add_column_if_missing(conn, "exam_rules", "min_pass_score", "FLOAT DEFAULT 60")
+    _sqlite_add_column_if_missing(conn, "exam_rules", "max_easy_ratio", "FLOAT DEFAULT 0.70")
+    _sqlite_add_column_if_missing(conn, "exam_rules", "min_syllabus_areas", "INTEGER DEFAULT 3")
+    _sqlite_add_column_if_missing(conn, "exam_rules", "max_duplicate_ratio", "FLOAT DEFAULT 0.10")
+    _sqlite_add_column_if_missing(conn, "exam_rules", "max_ambiguous_ratio", "FLOAT DEFAULT 0.10")
+
+
+def _migrate_exam_schema_postgres(conn) -> None:
+    statements = [
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS timing_mode VARCHAR(20) DEFAULT 'assessment'",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS time_per_question_seconds INTEGER",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS questions_per_attempt INTEGER DEFAULT 0",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS negative_marking BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS shuffle_questions BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS shuffle_options BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 1",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS certificate_enabled BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft'",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS admin_certification_approved BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE exam_attempts ADD COLUMN IF NOT EXISTS assigned_question_ids JSON",
+        "ALTER TABLE questions ADD COLUMN IF NOT EXISTS negative_marks FLOAT DEFAULT 0",
+        "ALTER TABLE questions ADD COLUMN IF NOT EXISTS difficulty_tag VARCHAR(20)",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS min_questions INTEGER DEFAULT 25",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS min_pass_score FLOAT DEFAULT 60",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS max_easy_ratio FLOAT DEFAULT 0.70",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS min_syllabus_areas INTEGER DEFAULT 3",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS max_duplicate_ratio FLOAT DEFAULT 0.10",
+        "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS max_ambiguous_ratio FLOAT DEFAULT 0.10",
+    ]
+    for stmt in statements:
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            pass
+
+
 def _migrate_admin_user_controls_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "users", "phone_number", "TEXT")
     _sqlite_add_column_if_missing(conn, "users", "account_state", "TEXT DEFAULT 'active'")
@@ -245,19 +299,7 @@ def init_db() -> None:
             if "thumbnail_data_url" not in col_names:
                 conn.execute(text("ALTER TABLE lesson_topics ADD COLUMN thumbnail_data_url TEXT"))
 
-            exam_cols = conn.execute(text("PRAGMA table_info(exams)")).fetchall()
-            exam_col_names = {row[1] for row in exam_cols}
-            if "timing_mode" not in exam_col_names:
-                conn.execute(text("ALTER TABLE exams ADD COLUMN timing_mode TEXT DEFAULT 'assessment'"))
-            if "time_per_question_seconds" not in exam_col_names:
-                conn.execute(text("ALTER TABLE exams ADD COLUMN time_per_question_seconds INTEGER"))
-            if "questions_per_attempt" not in exam_col_names:
-                conn.execute(text("ALTER TABLE exams ADD COLUMN questions_per_attempt INTEGER DEFAULT 0"))
-
-            attempt_cols = conn.execute(text("PRAGMA table_info(exam_attempts)")).fetchall()
-            attempt_col_names = {row[1] for row in attempt_cols}
-            if "assigned_question_ids" not in attempt_col_names:
-                conn.execute(text("ALTER TABLE exam_attempts ADD COLUMN assigned_question_ids JSON"))
+            _migrate_exam_schema_sqlite(conn)
 
             _migrate_proctor_training_feedback_nullable_attempt_id(conn)
             _migrate_live_class_schema_sqlite(conn)
@@ -270,6 +312,7 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE proctor_training_feedback ALTER COLUMN attempt_id DROP NOT NULL"))
             except Exception:
                 pass
+            _migrate_exam_schema_postgres(conn)
             _migrate_live_class_schema_postgres(conn)
             _migrate_identity_schema_postgres(conn)
             _migrate_stream_market_schema_postgres(conn)
