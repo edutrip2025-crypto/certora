@@ -1,8 +1,11 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -15,6 +18,33 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 ASSETS_DIR = WEB_DIR / "assets"
 MEDIA_DIR = Path(settings.resolved_media_dir)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+
+if settings.cors_origins_list:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+if settings.trusted_hosts_list:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts_list)
+
+if settings.enable_gzip:
+    app.add_middleware(GZipMiddleware, minimum_size=max(256, int(settings.gzip_minimum_size)))
+
+
+@app.middleware("http")
+async def apply_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    return response
 
 
 @app.on_event("startup")

@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     pricing_stream_delivery_cost_per_minute: float = 0.03
     pricing_platform_fee_pct: float = 0.1
     pricing_creator_margin_floor_pct: float = 0.35
+    cors_allow_origins: str = ""
+    trusted_hosts: str = ""
+    enable_gzip: bool = True
+    gzip_minimum_size: int = 1024
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
@@ -115,6 +119,16 @@ class Settings(BaseSettings):
         if has_firebase_storage:
             return "firebase"
         return "local"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        raw = [x.strip() for x in (self.cors_allow_origins or "").split(",")]
+        return [x for x in raw if x]
+
+    @property
+    def trusted_hosts_list(self) -> list[str]:
+        raw = [x.strip() for x in (self.trusted_hosts or "").split(",")]
+        return [x for x in raw if x]
 
 
 @lru_cache
