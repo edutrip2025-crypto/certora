@@ -1,4 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
   EmailAuthProvider,
   getAuth,
@@ -18,10 +18,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { createAssessmentPrecheckUi } from "./modules/assessment/precheck_ui.js";
 import { createAssessmentTimer } from "./modules/assessment/timer.js";
+import { createAssessmentBuilderUi } from "./modules/assessment/builder_ui.js";
+import { createAssessmentPreviewProctorUi } from "./modules/assessment/preview_proctor_ui.js";
 import { createUiFeedback } from "./modules/core/ui_feedback.js";
 import { createApiClient } from "./modules/core/api_client.js";
 import { createCourseCatalogUi } from "./modules/courses/catalog_ui.js";
 import { createAdminUsersUi } from "./modules/admin/users_ui.js";
+import { createLiveClassroomUi } from "./modules/live/classroom_ui.js";
 
 const state = {
   auth: null,
@@ -423,7 +426,7 @@ function computeFaceMetrics(lm) {
   };
 }
 
-/** Three-layer gaze policy: raw zones → scored suspicion events → rolling-window thresholds (no instant “looked away” warnings). */
+/** Three-layer gaze policy: raw zones â†’ scored suspicion events â†’ rolling-window thresholds (no instant â€œlooked awayâ€ warnings). */
 const GAZE_ROLLING_MS = 120000;
 const GAZE_UI_GRACE_MS = 1800;
 const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 1000;
@@ -1453,6 +1456,57 @@ const assessmentTimer = createAssessmentTimer({
   onQuestionTimeUp: () => onAssessmentQuestionTimerElapsed(),
 });
 
+const assessmentBuilderUi = createAssessmentBuilderUi({
+  state,
+  el,
+  $,
+  toast,
+  api,
+  renderList,
+  getSelectedAssessmentCourseId,
+  isAssessmentDraftSourceSelected,
+  getAssessmentSourceValue,
+  persistAssessmentBuilderCache,
+  resetAssessmentBuilder,
+  tryRestoreAssessmentBuilderCache,
+});
+
+const assessmentPreviewProctorUi = createAssessmentPreviewProctorUi({
+  state,
+  el,
+  $,
+  renderList,
+  beginGazeQuestionGrace,
+  persistCurrentStudentAttemptAnswer,
+  finalizeGazeQuestionForNavigation,
+  showAssessmentPreviewResult,
+  assessmentTimer,
+  api,
+  toast,
+});
+
+const liveClassroomUi = createLiveClassroomUi({
+  state,
+  el,
+  escapeHtmlAttr,
+  renderList,
+  liveParticipantInitials,
+  liveParticipantLabel,
+  liveRtcState,
+  currentLiveUserId,
+  pickProviderPeerId,
+  pickLastJoinedRemotePeerId,
+  streamForPeer,
+  setVideoElementStream,
+  streamHasActiveVideo,
+  setIconButtonLabel,
+  liveUiIcon,
+  refreshLiveLeaveButton,
+  ensureLiveParticipantSelectBinding,
+  runHostAction,
+  toast,
+});
+
 function log(label, payload) {
   console.log(`[${label}]`, payload);
 }
@@ -2345,12 +2399,12 @@ function bindCustomPlayerControls({
   if (!video) return;
 
   const refreshPlayLabel = () => {
-    if (playBtn) playBtn.textContent = video.paused ? "▶" : "❚❚";
+    if (playBtn) playBtn.textContent = video.paused ? "â–¶" : "âšâš";
   };
   const refreshFullscreenIcon = () => {
     if (!fullscreenBtn) return;
     const isFs = document.fullscreenElement === shell;
-    fullscreenBtn.textContent = isFs ? "🗗" : "⛶";
+    fullscreenBtn.textContent = isFs ? "ðŸ——" : "â›¶";
     fullscreenBtn.title = isFs ? "Exit Fullscreen" : "Fullscreen";
     fullscreenBtn.setAttribute("aria-label", isFs ? "Exit Fullscreen" : "Fullscreen");
   };
@@ -3851,21 +3905,7 @@ function setLiveDrawerState(drawer, open) {
 }
 
 function renderLiveQaList() {
-  if (!el.liveRoomQaList) return;
-  const rows = Array.isArray(state.liveRoom.qaItems) ? state.liveRoom.qaItems : [];
-  if (!rows.length) {
-    el.liveRoomQaList.innerHTML = "<div class='item'><span class='meta'>No Q&A items yet.</span></div>";
-    return;
-  }
-  el.liveRoomQaList.innerHTML = rows.map((q, idx) => `
-    <div class="item">
-      <div class="row between">
-        <strong>Q${idx + 1}</strong>
-        <span class="meta">${escapeHtmlAttr(q.author || "")}</span>
-      </div>
-      <div style="margin-top:4px;">${escapeHtmlAttr(q.text || "")}</div>
-    </div>
-  `).join("");
+  return liveClassroomUi.renderLiveQaList();
 }
 
 function setLiveSidePanel(kind = "", open = true) {
@@ -3972,28 +4012,7 @@ function positionLiveParticipantsMenu() {
 }
 
 function initializeLiveIconButtons() {
-  setIconButtonLabel(el.liveRoomToggleToolsBtn, liveUiIcon("tools"), "Tools");
-  setIconButtonLabel(el.liveRoomToggleChatBtn, liveUiIcon("chat"), "Chat");
-  setIconButtonLabel(el.liveRoomReactBtn, liveUiIcon("reaction"), "Reactions");
-  setIconButtonLabel(el.liveRoomFullscreenBtn, liveUiIcon("fullscreen"), "Fullscreen");
-  setIconButtonLabel(el.leaveLiveRoomBtn, liveUiIcon("leave"), "Leave");
-  refreshLiveLeaveButton();
-  if (el.liveRoomParticipantsBtn) {
-    el.liveRoomParticipantsBtn.setAttribute("title", "Participants");
-    el.liveRoomParticipantsBtn.setAttribute("aria-label", "Participants");
-    el.liveRoomParticipantsBtn.dataset.tip = "Participants";
-    const pIcon = el.liveRoomParticipantsBtn.querySelector(".ico");
-    if (pIcon) pIcon.innerHTML = liveUiIcon("participants");
-  }
-  if (el.liveRoomStopShareOverlayBtn) el.liveRoomStopShareOverlayBtn.innerHTML = `<span class="ico">${liveUiIcon("stop-share")}</span><span class="lbl">Stop sharing</span>`;
-  if (el.liveRoomStartRecordingBtn) el.liveRoomStartRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("record")}</span>`;
-  if (el.liveRoomPauseRecordingBtn) el.liveRoomPauseRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("pause")}</span>`;
-  if (el.liveRoomStopRecordingBtn) el.liveRoomStopRecordingBtn.innerHTML = `<span class="ico">${liveUiIcon("stop")}</span>`;
-  if (el.liveRoomOpenWhiteboardBtn) el.liveRoomOpenWhiteboardBtn.querySelector(".ico").innerHTML = liveUiIcon("whiteboard");
-  if (el.liveRoomOpenBreakoutBtn) el.liveRoomOpenBreakoutBtn.querySelector(".ico").innerHTML = liveUiIcon("breakout");
-  if (el.liveRoomOpenPollBtn) el.liveRoomOpenPollBtn.querySelector(".ico").innerHTML = liveUiIcon("poll");
-  if (el.liveRoomOpenQaBtn) el.liveRoomOpenQaBtn.querySelector(".ico").innerHTML = liveUiIcon("qa");
-  if (el.liveRoomSendChatBtn) el.liveRoomSendChatBtn.innerHTML = `<span class="ico">${liveUiIcon("send")}</span><span class="lbl">Send</span>`;
+  return liveClassroomUi.initializeLiveIconButtons();
 }
 
 function refreshLiveFullscreenButton() {
@@ -4171,54 +4190,7 @@ function pickLastJoinedRemotePeerId() {
 }
 
 function updateLiveStageAndFocusVideo() {
-  const selfId = currentLiveUserId();
-  const rtc = liveRtcState();
-  const providerPeer = pickProviderPeerId();
-  const activePeer = state.liveRoom.focusPeerId || pickLastJoinedRemotePeerId();
-  state.liveRoom.focusPeerId = activePeer || "";
-  const focusStream = activePeer ? streamForPeer(activePeer) : null;
-  if (el.liveRoomFocusTile) el.liveRoomFocusTile.classList.toggle("hidden", !activePeer || !focusStream);
-  setVideoElementStream(el.liveRoomFocusVideo, focusStream, { muted: true, mirror: false });
-  if (el.liveRoomFocusLabel) el.liveRoomFocusLabel.textContent = activePeer ? liveParticipantLabel(activePeer) : "Active speaker";
-
-  let stageStream = null;
-  let stageLabel = "";
-  if (state.liveRoom.role === "student") {
-    const preferred = providerPeer || activePeer;
-    stageStream = preferred ? streamForPeer(preferred) : null;
-    stageLabel = preferred ? liveParticipantLabel(preferred) : "Live stage";
-  } else {
-    stageStream = rtc.localStream || null;
-    stageLabel = "You";
-  }
-  if (!stageStream && activePeer) {
-    stageStream = streamForPeer(activePeer);
-    stageLabel = liveParticipantLabel(activePeer);
-  }
-  if (!stageStream && rtc.localStream) {
-    stageStream = rtc.localStream;
-    stageLabel = selfId ? "You" : "Live stage";
-  }
-  const sharingScreen = streamHasActiveVideo(rtc.screenStream);
-  const showingLocalStage = Boolean(stageStream && stageStream === rtc.localStream);
-  if (sharingScreen && showingLocalStage) {
-    // Avoid recursive hall-of-mirrors by not previewing the shared screen on the main stage.
-    stageStream = streamHasActiveVideo(rtc.cameraStream) ? rtc.cameraStream : null;
-    stageLabel = stageStream ? "You" : "You (sharing screen)";
-  }
-  const stageHasVideo = streamHasActiveVideo(stageStream);
-  const stageRenderStream = stageHasVideo ? stageStream : null;
-  const isLocalStage = Boolean(stageRenderStream && stageRenderStream === rtc.localStream);
-  // Some browsers mirror front-camera self view by default; flip local self stage once to compensate.
-  setVideoElementStream(el.liveRoomStageVideo, stageRenderStream, { muted: isLocalStage, mirror: isLocalStage });
-  if (el.liveRoomStagePlaceholder) el.liveRoomStagePlaceholder.classList.toggle("hidden", Boolean(stageRenderStream));
-  if (el.liveRoomMeta) {
-    const base = el.liveRoomMeta.textContent || "";
-    if (stageLabel) {
-      const noSpeaker = base.replace(/\s\|\sSpeaker:.*$/i, "");
-      el.liveRoomMeta.textContent = `${noSpeaker} | Speaker: ${stageLabel}`;
-    }
-  }
+  return liveClassroomUi.updateLiveStageAndFocusVideo();
 }
 
 function setupLiveAudioAnalyzer(peerUserId, stream) {
@@ -4289,26 +4261,7 @@ function stopLiveSpeakerMonitor() {
 }
 
 function renderLiveRemoteVideos() {
-  if (!el.liveRoomRemoteVideoGrid) return;
-  const rtc = liveRtcState();
-  const entries = Object.entries(rtc.remoteStreams || {});
-  if (!entries.length) {
-    el.liveRoomRemoteVideoGrid.innerHTML = "<div class='item'><span class='meta'>Waiting for participants to turn on video.</span></div>";
-    return;
-  }
-  const html = entries.map(([peerId]) => `
-    <div class="live-video-tile" data-live-remote-peer="${escapeHtmlAttr(peerId)}">
-      <video autoplay playsinline class="live-video-el"></video>
-      <div class="live-video-label">${escapeHtmlAttr(liveParticipantLabel(peerId))}</div>
-    </div>
-  `).join("");
-  el.liveRoomRemoteVideoGrid.innerHTML = html;
-  entries.forEach(([peerId, stream]) => {
-    const video = el.liveRoomRemoteVideoGrid.querySelector(`[data-live-remote-peer="${peerId}"] video`);
-    if (!video) return;
-    setVideoElementStream(video, stream, { muted: true, mirror: false });
-  });
-  updateLiveStageAndFocusVideo();
+  return liveClassroomUi.renderLiveRemoteVideos();
 }
 
 function attachLocalVideoPreview() {
@@ -4954,54 +4907,7 @@ function appendLiveRoomMessages(items) {
 }
 
 function renderLiveRoomParticipants(room) {
-  const participants = room?.participants || [];
-  state.liveRoom.participantMap = {};
-  participants.forEach((p) => {
-    state.liveRoom.participantMap[String(Number(p.user_id || 0))] = p;
-  });
-  const isProvider = state.liveRoom.role === "provider";
-  renderList(
-    el.liveRoomParticipantsList,
-    participants,
-    (p) => `
-      <div class="live-participant-row row between" data-live-participant-id="${Number(p.user_id || 0)}">
-        <span class="live-participant-main">
-          <span class="live-participant-avatar">${escapeHtmlAttr(liveParticipantInitials(p.display_name || "User"))}</span>
-          <span class="live-participant-copy">
-            <strong>${escapeHtmlAttr(p.display_name || "User")}${p.raised_hand ? " <span class='live-hand-indicator' aria-label='Raised hand' title='Raised hand'>✋</span>" : ""}</strong>
-            <span class="meta">${escapeHtmlAttr(p.actor_role || "participant")}</span>
-          </span>
-        </span>
-        <span class="actions">
-          <span class='meta'>Active</span>
-          ${isProvider && p.actor_role !== "provider" ? `<button class="btn small" title="Mute ${escapeHtmlAttr(p.display_name || "user")}" data-live-mute="${Number(p.user_id || 0)}">Mute</button><button class="btn small danger" title="Remove ${escapeHtmlAttr(p.display_name || "user")}" data-live-remove="${Number(p.user_id || 0)}">Remove</button>` : ""}
-        </span>
-      </div>
-    `,
-    "No active participants.",
-  );
-  renderList(
-    el.liveRoomHandsList,
-    participants.filter((p) => p.raised_hand),
-    (p) => `<div><strong>${escapeHtmlAttr(p.display_name || "User")}</strong> <span class="meta">(${escapeHtmlAttr(p.actor_role || "participant")})</span></div>`,
-    "No raised hands.",
-  );
-  ensureLiveParticipantSelectBinding();
-  document.querySelectorAll("[data-live-mute]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const uid = Number(btn.getAttribute("data-live-mute") || 0);
-      if (!uid) return;
-      runHostAction("mute", { target_user_id: uid }).catch((err) => toast(err?.message || "Mute failed", "error"));
-    });
-  });
-  document.querySelectorAll("[data-live-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const uid = Number(btn.getAttribute("data-live-remove") || 0);
-      if (!uid) return;
-      runHostAction("remove", { target_user_id: uid }).catch((err) => toast(err?.message || "Remove failed", "error"));
-    });
-  });
-  renderLiveRemoteVideos();
+  return liveClassroomUi.renderLiveRoomParticipants(room);
 }
 
 function renderLivePollPanel(room) {
@@ -5380,83 +5286,15 @@ function getAssessmentSourceValue() {
 }
 
 function setAssessmentBuilderStep(step, options = {}) {
-  const normalized = Math.max(1, Math.min(3, Number(step || 1)));
-  state.assessmentBuilderStep = normalized;
-  const track = $("abStepTrack");
-  if (track) {
-    if (options.noAnimate) track.style.transition = "none";
-    track.style.transform = `translateX(-${(normalized - 1) * (100 / 3)}%)`;
-    if (options.noAnimate) {
-      requestAnimationFrame(() => {
-        track.style.transition = "";
-      });
-    }
-  }
-  document.querySelectorAll("[data-ab-step-indicator]").forEach((node) => {
-    node.classList.toggle("active", Number(node.getAttribute("data-ab-step-indicator") || 0) === normalized);
-  });
+  return assessmentBuilderUi.setAssessmentBuilderStep(step, options);
 }
 
 function goToAssessmentStep(step) {
-  setAssessmentBuilderStep(step);
+  return assessmentBuilderUi.goToAssessmentStep(step);
 }
 
 function validateAssessmentStep(step) {
-  const s = Number(step || 1);
-  if (s === 1) {
-    const courseId = getSelectedAssessmentCourseId();
-    if (!courseId || isAssessmentDraftSourceSelected()) {
-      toast("Select an active/inactive course (draft is not allowed for assessment).", "error");
-      return false;
-    }
-    return true;
-  }
-  if (s === 2) {
-    const title = $("abTitle")?.value?.trim() || "";
-    if (!title) {
-      toast("Assessment title is required.", "error");
-      return false;
-    }
-    const passScore = Number($("abPassScore")?.value);
-    const maxAttempts = Number($("abMaxAttempts")?.value);
-    const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
-    if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) {
-      toast("Pass % is required (1 to 100).", "error");
-      return false;
-    }
-    if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) {
-      toast("Max attempts is required and must be greater than 0.", "error");
-      return false;
-    }
-    if (!Number.isFinite(questionsPerAttempt) || questionsPerAttempt <= 0) {
-      toast("Questions shown to student must be greater than 0.", "error");
-      return false;
-    }
-    const timingMode = $("abTimingMode")?.value || "assessment";
-    if (timingMode === "assessment") {
-      const mins = Number($("abDurationMinutes")?.value || 0);
-      const secs = Number($("abDurationSeconds")?.value || 0);
-      if (!Number.isFinite(mins) || mins < 0 || !Number.isFinite(secs) || secs < 0 || secs >= 60 || (mins === 0 && secs === 0)) {
-        toast("Duration is required. Enter valid minutes and/or seconds.", "error");
-        return false;
-      }
-    } else {
-      const perQ = Number($("abTimePerQuestionSeconds")?.value);
-      if (!Number.isFinite(perQ) || perQ <= 0) {
-        toast("Time per question is required and must be greater than 0.", "error");
-        return false;
-      }
-    }
-    if (Boolean($("abNegativeMarking")?.checked)) {
-      const raw = String($("abDefaultNegativeMarks")?.value || "").trim();
-      if (raw && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
-        toast("Default negative marks must be 0 or a positive number.", "error");
-        return false;
-      }
-    }
-    return true;
-  }
-  return true;
+  return assessmentBuilderUi.validateAssessmentStep(step);
 }
 
 function getSelectedAssessmentCourseId() {
@@ -5644,80 +5482,19 @@ function resetAssessmentBuilder() {
 }
 
 function openAssessmentBuilder(allowRestore = true) {
-  resetAssessmentBuilder();
-  el.assessmentBuilderScreen?.classList.remove("hidden");
-  if (allowRestore) tryRestoreAssessmentBuilderCache();
-  setAssessmentBuilderStep(1, { noAnimate: true });
+  return assessmentBuilderUi.openAssessmentBuilder(allowRestore);
 }
 
 function closeAssessmentBuilder() {
-  el.assessmentBuilderScreen?.classList.add("hidden");
-  resetAssessmentBuilder();
+  return assessmentBuilderUi.closeAssessmentBuilder();
 }
 
 function renderAssessmentCourseOptions() {
-  const selectNode = $("abCourseSelect");
-  if (!selectNode) return;
-  const filter = $("abCourseFilter")?.value || "all";
-  const options = [];
-
-  if (filter !== "draft") {
-    (state.providerCourses || []).forEach((c) => {
-      if (filter === "active" && !c.is_published) return;
-      if (filter === "inactive" && c.is_published) return;
-      options.push({
-        value: `course:${c.id}`,
-        label: `${c.title} (${c.is_published ? "Active" : "Inactive"})`,
-      });
-    });
-  }
-  if (filter === "draft" || filter === "all") {
-    (state.providerDrafts || []).forEach((d) => {
-      options.push({
-        value: `draft:${d.draft_id}`,
-        label: `${d.title || `Draft #${d.draft_id}`} (Draft video)`,
-      });
-    });
-  }
-
-  const previous = selectNode.value;
-  const html = [`<option value="">Select course or draft video</option>`]
-    .concat(options.map((o) => `<option value="${o.value}">${o.label}</option>`))
-    .join("");
-  selectNode.innerHTML = html;
-  if (options.some((o) => o.value === previous)) {
-    selectNode.value = previous;
-  }
-  updateAssessmentSourceMeta();
+  return assessmentBuilderUi.renderAssessmentCourseOptions();
 }
 
 function updateAssessmentSourceMeta() {
-  const meta = $("abCourseMeta");
-  const saveBtn = $("abSaveDraftBtn");
-  const publishBtn = $("abPublishBtn");
-  if (!meta) return;
-  const raw = getAssessmentSourceValue();
-  if (!raw) {
-    meta.textContent = "No course selected.";
-    if (saveBtn) saveBtn.disabled = true;
-    if (publishBtn) publishBtn.disabled = true;
-    return;
-  }
-  if (raw.startsWith("draft:")) {
-    const draftId = Number(raw.split(":")[1] || 0);
-    const d = (state.providerDrafts || []).find((x) => Number(x.draft_id) === draftId);
-    meta.textContent = `Draft selected: ${d?.title || `Draft #${draftId}`}. Publish the course first to create an assessment.`;
-    if (saveBtn) saveBtn.disabled = true;
-    if (publishBtn) publishBtn.disabled = true;
-    return;
-  }
-  const courseId = Number(raw.split(":")[1] || 0);
-  const c = (state.providerCourses || []).find((x) => Number(x.id) === courseId);
-  meta.textContent = c
-    ? `Course selected: ${c.title} (${c.is_published ? "Active" : "Inactive"}).`
-    : "Invalid selection.";
-  if (saveBtn) saveBtn.disabled = false;
-  if (publishBtn) publishBtn.disabled = false;
+  return assessmentBuilderUi.updateAssessmentSourceMeta();
 }
 
 function applyAssessmentTimingMode() {
@@ -5728,49 +5505,7 @@ function applyAssessmentTimingMode() {
 }
 
 function renderAssessmentPool() {
-  const list = state.assessmentDraftQuestions || [];
-  const perAttempt = Number($("abQuestionsPerAttempt")?.value || 0);
-  const recommendedPool = perAttempt > 0 ? perAttempt * 2 : 0;
-  if (el.abPoolMeta) {
-    const recommendation = recommendedPool > 0 ? ` Recommended pool: ${recommendedPool}+` : "";
-    el.abPoolMeta.textContent = `${list.length} questions in pool.${recommendation}`;
-  }
-  renderList(
-    el.abQuestionPoolList,
-    list,
-    (q, idx) => `
-      <div><strong>Q${idx + 1}</strong> (${q.question_type === "mcq_multiple_correct" ? "Multi" : "Single"})</div>
-      <div style="margin-top:4px;">${q.question_text}</div>
-      <div class="meta">Marks: ${q.marks} | Negative: ${q.negative_marks}</div>
-      <div class="meta">Options: ${q.options.length} | Correct: ${q.options.filter((o) => o.is_correct).length}</div>
-      <div class="actions"><button class="btn small danger" data-ab-remove-q="${idx}">Remove</button></div>
-    `,
-    "No questions added yet.",
-  );
-  document.querySelectorAll("[data-ab-remove-q]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const idx = Number(btn.dataset.abRemoveQ || -1);
-      if (idx < 0 || idx >= state.assessmentDraftQuestions.length) return;
-      const q = state.assessmentDraftQuestions[idx];
-      if (state.assessmentEditingExamId && q.question_id) {
-        try {
-          await api("DELETE", `/exams/${state.assessmentEditingExamId}/questions/${q.question_id}`);
-        } catch (err) {
-          toast(err?.message || "Failed to remove question", "error");
-          return;
-        }
-      }
-      state.assessmentDraftQuestions = state.assessmentDraftQuestions.filter((_, i) => i !== idx);
-      if (!state.assessmentDraftQuestions.length) {
-        state.assessmentQuestionDefaultMarks = null;
-        state.assessmentQuestionDefaultNegativeMarks = null;
-        $("abQuestionMarks").value = "";
-        $("abQuestionNegativeMarks").value = "";
-      }
-      persistAssessmentBuilderCache();
-      renderAssessmentPool();
-    });
-  });
+  return assessmentBuilderUi.renderAssessmentPool();
 }
 
 async function openAssessmentBuilderForEdit(assessment) {
@@ -7291,155 +7026,31 @@ function closeAssessmentPreview() {
 }
 
 function readCurrentPreviewAnswer() {
-  const current = state.assessmentPreview.questions[state.assessmentPreview.index];
-  if (!current) return;
-  const checked = Array.from(document.querySelectorAll("[data-ap-opt]:checked")).map((x) => Number(x.value));
-  state.assessmentPreview.answers[current.question_id] = checked;
+  return assessmentPreviewProctorUi.readCurrentPreviewAnswer();
 }
 
 async function onAssessmentQuestionTimerElapsed() {
-  const preview = state.assessmentPreview;
-  if (preview.questionTimeTransitionInFlight) return;
-  preview.questionTimeTransitionInFlight = true;
-  try {
-    readCurrentPreviewAnswer();
-    if (preview.mode === "student_attempt") await persistCurrentStudentAttemptAnswer();
-    const isLast = preview.index >= preview.questions.length - 1;
-    finalizeGazeQuestionForNavigation(preview, true);
-    if (isLast) {
-      showAssessmentPreviewResult("question_timer_expired");
-      return;
-    }
-    preview.index = Math.min(preview.questions.length - 1, preview.index + 1);
-    renderAssessmentPreviewQuestion();
-    assessmentTimer.syncQuestionTimerOnRender();
-  } catch {
-    showAssessmentPreviewResult("question_timer_error");
-  } finally {
-    preview.questionTimeTransitionInFlight = false;
-  }
+  return assessmentPreviewProctorUi.onAssessmentQuestionTimerElapsed();
 }
 
 function renderAssessmentPreviewQuestion() {
-  const preview = state.assessmentPreview;
-  const q = preview.questions[preview.index];
-  if (!q) return;
-  el.apQuestionPanel?.classList.remove("question-enter");
-  requestAnimationFrame(() => el.apQuestionPanel?.classList.add("question-enter"));
-  if (el.apProgressText) el.apProgressText.textContent = `Question ${preview.index + 1}/${preview.questions.length}`;
-  if (el.apQuestionText) el.apQuestionText.textContent = q.question_text;
-  const existing = preview.answers[q.question_id] || [];
-  const inputType = q.question_type === "mcq_multiple_correct" ? "checkbox" : "radio";
-  const name = `ap-q-${q.question_id}`;
-  renderList(
-    el.apOptionsList,
-    q.options || [],
-    (o) => `
-      <label class="preview-option">
-        <input data-ap-opt type="${inputType}" name="${name}" value="${o.option_id}" ${existing.includes(o.option_id) ? "checked" : ""} />
-        <span>${o.option_text}</span>
-      </label>
-    `,
-    "No options.",
-  );
-  if (preview.mode === "student_attempt") {
-    document.querySelectorAll("[data-ap-opt]").forEach((node) => {
-      node.addEventListener("change", async () => {
-        readCurrentPreviewAnswer();
-        try {
-          await persistCurrentStudentAttemptAnswer();
-        } catch {}
-      });
-    });
-  }
-  const prevBtn = $("apPrevBtn");
-  const nextBtn = $("apNextBtn");
-  const submitBtn = $("apSubmitBtn");
-  if (prevBtn) prevBtn.disabled = preview.index <= 0;
-  const isLast = preview.index >= preview.questions.length - 1;
-  if (nextBtn) nextBtn.classList.toggle("hidden", isLast);
-  if (submitBtn) submitBtn.classList.toggle("hidden", !isLast);
-  assessmentTimer.syncQuestionTimerOnRender();
-  requestAnimationFrame(() => beginGazeQuestionGrace(preview.proctor));
+  return assessmentPreviewProctorUi.renderAssessmentPreviewQuestion();
 }
 
 function setTrainingFeedbackChoice(choice) {
-  state.assessmentPreview.trainingFeedbackChoice = choice;
-  el.apTrainingPassBtn?.classList.toggle("primary", choice === "correct");
-  el.apTrainingFailBtn?.classList.toggle("primary", choice === "incorrect");
+  return assessmentPreviewProctorUi.setTrainingFeedbackChoice(choice);
 }
 
 function trainingReviewEligible() {
-  const preview = state.assessmentPreview;
-  if (Boolean(preview.attemptId)) return true;
-  return (
-    preview.mode === "preview" &&
-    Boolean(preview.latestResult) &&
-    Boolean(preview.proctor?.sessionId)
-  );
+  return assessmentPreviewProctorUi.trainingReviewEligible();
 }
 
 function renderTrainingFeedbackPanel(result = null) {
-  if (!el.apTrainingFeedbackPanel) return;
-  const activeResult = result || state.assessmentPreview.latestResult;
-  const showReview = trainingReviewEligible();
-  el.apTrainingFeedbackPanel.classList.toggle("hidden", !showReview);
-  if (!showReview) return;
-  const savedStatus = activeResult?.training_feedback_status || "";
-  const savedComment = activeResult?.training_feedback_comment || "";
-  const feedbackCount = Number(activeResult?.training_feedback_count || 0);
-  if (!state.assessmentPreview.trainingFeedbackChoice && savedStatus) {
-    state.assessmentPreview.trainingFeedbackChoice = savedStatus;
-  }
-  setTrainingFeedbackChoice(state.assessmentPreview.trainingFeedbackChoice || "");
-  if (el.apTrainingComment) {
-    el.apTrainingComment.value = savedComment;
-  }
-  if (el.apTrainingFeedbackStatus) {
-    if (savedStatus) {
-      const label = savedStatus === "correct" ? "Pass (model correct)" : "Fail (model wrong)";
-      el.apTrainingFeedbackStatus.textContent = `Latest saved review: ${label}${feedbackCount > 1 ? ` | total saved: ${feedbackCount}` : ""}`;
-    } else {
-      el.apTrainingFeedbackStatus.textContent =
-        "No training review saved yet. Use the score and proctor lines above, then choose Pass or Fail.";
-    }
-  }
+  return assessmentPreviewProctorUi.renderTrainingFeedbackPanel(result);
 }
 
 async function saveTrainingFeedback() {
-  const preview = state.assessmentPreview;
-  const attemptId = preview.attemptId;
-  const sessionId = preview.proctor?.sessionId;
-  if (!attemptId && !sessionId) {
-    toast("Cannot save: proctor session was lost. Close and re-run the assessment once.", "error");
-    return;
-  }
-  const choice = preview.trainingFeedbackChoice;
-  if (!choice) {
-    toast("Choose Pass or Fail for the model review first.", "error");
-    return;
-  }
-  const comment = el.apTrainingComment?.value?.trim() || "";
-  let out;
-  if (attemptId) {
-    out = await api("POST", `/student/attempts/${attemptId}/proctor-training-feedback`, {
-      training_result: choice,
-      comment,
-    });
-  } else {
-    out = await api("POST", `/proctoring/sessions/${sessionId}/training-feedback`, {
-      training_result: choice,
-      comment,
-    });
-  }
-  state.assessmentPreview.latestResult = {
-    ...(state.assessmentPreview.latestResult || {}),
-    training_feedback_status: out.training_feedback_status,
-    training_feedback_comment: out.training_feedback_comment,
-    training_feedback_count: out.training_feedback_count,
-  };
-  renderTrainingFeedbackPanel(state.assessmentPreview.latestResult);
-  toast("Training review saved");
+  return assessmentPreviewProctorUi.saveTrainingFeedback();
 }
 
 function showAssessmentPreviewResult(reason = "completed") {
@@ -9802,4 +9413,7 @@ function bindEvents() {
   }
   log("ready", { message: "Admin + provider workspace loaded." });
 })();
+
+
+
 
