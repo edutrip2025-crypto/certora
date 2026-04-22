@@ -36,8 +36,8 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
 .workspace-brand {
   position: fixed;
   top: 10px;
-  left: clamp(12px, 2.2vw, 22px);
-  z-index: 1100;
+  left: calc(clamp(16px, 2.6vw, 34px) + 260px + 20px);
+  z-index: 1000;
   margin-bottom: 0;
   pointer-events: none;
 }
@@ -88,7 +88,10 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
   width: 220px;
   height: auto;
   display: block;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
+  transform: scale(1.22);
+  transform-origin: left center;
+  filter: drop-shadow(0 6px 14px rgba(15, 23, 42, 0.14));
 }
 .auth-hero-kicker {
   color: var(--brand);
@@ -2461,5 +2464,16 @@ input:focus, select:focus, textarea:focus {
   .attention-challenge-text {
     font-size: 0.88rem;
     max-width: calc(100% - 56px);
+  }
+}
+
+@media (max-width: 1040px) {
+  .workspace-brand {
+    left: 12px;
+    top: 8px;
+  }
+  .auth-hero-logo {
+    transform: scale(1.14);
+    transform-origin: left center;
   }
 }
