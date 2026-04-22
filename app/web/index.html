@@ -51,7 +51,10 @@
         <label>Password
           <div class="password-field">
             <input id="loginPassword" type="password" placeholder="Password" />
-            <button id="loginShowPasswordBtn" class="btn small ghost" type="button">Show</button>
+            <button id="loginShowPasswordBtn" class="btn small ghost password-toggle-btn" type="button" aria-label="Show password" aria-controls="loginPassword">
+              <span class="material-symbols-rounded" aria-hidden="true">visibility</span>
+              <span class="pwd-toggle-text">Show</span>
+            </button>
           </div>
         </label>
         <div class="row wrap">
@@ -67,7 +70,15 @@
         <p>Create your student or provider account.</p>
         <label>Full Name<input id="signupName" type="text" /></label>
         <label>Email<input id="signupEmail" type="email" /></label>
-        <label>Password<input id="signupPassword" type="password" /></label>
+        <label>Password
+          <div class="password-field">
+            <input id="signupPassword" type="password" />
+            <button id="signupShowPasswordBtn" class="btn small ghost password-toggle-btn" type="button" aria-label="Show password" aria-controls="signupPassword">
+              <span class="material-symbols-rounded" aria-hidden="true">visibility</span>
+              <span class="pwd-toggle-text">Show</span>
+            </button>
+          </div>
+        </label>
         <label>Role
           <select id="signupRole">
             <option value="student">Student</option>
@@ -154,10 +165,10 @@
               <button class="provider-sort-option" type="button" data-provider-sort="status_active">Active First</button>
             </div>
             <button id="refreshProviderCoursesBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
-              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-4.58 7H5.26A7 7 0 1 0 17.65 6.35z"/></svg>
+              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5v5h-5"/><path d="M4 19v-5h5"/><path d="M20 10a8 8 0 0 0-14.9-3"/><path d="M4 14a8 8 0 0 0 14.9 3"/></svg>
             </button>
             <button id="openDraftsPageBtn" class="btn small toolbar-icon-btn" title="Drafts" aria-label="Drafts">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M9.5 12h7"/><path d="M9.5 15.5h7"/></svg>
             </button>
             <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
           </div>

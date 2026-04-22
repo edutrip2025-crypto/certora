@@ -176,6 +176,21 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
 .password-field input {
   margin: 0;
 }
+.password-toggle-btn {
+  min-width: 84px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.password-toggle-btn .material-symbols-rounded {
+  font-size: 1rem;
+}
+.pwd-toggle-text {
+  font-size: .8rem;
+  font-weight: 700;
+  line-height: 1;
+}
 
 label { display: grid; gap: 8px; margin-bottom: 14px; font-size: .88rem; font-weight: 700; }
 input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; font-family: inherit; font-size: .94rem; background: #fff; }
@@ -2526,21 +2541,24 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .provider-sidebar-logo-wrap {
   width: 100%;
-  min-height: 108px;
-  height: 108px;
-  display: block;
-  overflow: hidden;
+  min-height: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
   pointer-events: auto;
 }
 #providerView .provider-sidebar-logo {
-  width: 100%;
-  height: auto;
-  max-height: none;
+  width: auto;
+  height: 100%;
+  max-width: 190px;
+  max-height: 100%;
   object-fit: contain;
-  object-position: left top;
+  object-position: left center;
   display: block;
   margin: 0;
-  transform: translateY(-44px);
+  transform: none;
 }
 #providerView .sidebar h3 {
   margin: 0 0 10px;
@@ -2760,14 +2778,16 @@ input:focus, select:focus, textarea:focus {
     border-radius: 16px;
   }
   #providerView .provider-sidebar-logo {
-    width: 100%;
-    max-height: none;
-    transform: translateY(-30px);
+    width: auto;
+    height: 100%;
+    max-width: 170px;
+    max-height: 100%;
+    transform: none;
   }
   #providerView .provider-sidebar-logo-wrap {
     width: 100%;
-    min-height: 92px;
-    height: 92px;
+    min-height: 82px;
+    height: 82px;
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }

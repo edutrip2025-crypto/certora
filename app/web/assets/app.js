@@ -1164,10 +1164,12 @@ function maybeRunAttentionChallenge() {
 const el = {
   loginEmail: $("loginEmail"),
   loginPassword: $("loginPassword"),
+  loginShowPasswordBtn: $("loginShowPasswordBtn"),
   loginCard: $("loginCard"),
   signupName: $("signupName"),
   signupEmail: $("signupEmail"),
   signupPassword: $("signupPassword"),
+  signupShowPasswordBtn: $("signupShowPasswordBtn"),
   signupRole: $("signupRole"),
   signupVerificationType: $("signupVerificationType"),
   signupVerificationNumber: $("signupVerificationNumber"),
@@ -4031,6 +4033,24 @@ function materialIcon(name, options = {}) {
   const filled = Boolean(options.filled);
   const classes = `material-symbols-rounded${filled ? " is-filled" : ""}`;
   return `<span class="${classes}" aria-hidden="true">${icon}</span>`;
+}
+
+function setPasswordToggleButtonState(button, reveal) {
+  if (!button) return;
+  button.innerHTML = `${materialIcon(reveal ? "visibility_off" : "visibility")}<span class="pwd-toggle-text">${reveal ? "Hide" : "Show"}</span>`;
+  button.setAttribute("aria-pressed", reveal ? "true" : "false");
+  button.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+  button.setAttribute("title", reveal ? "Hide password" : "Show password");
+}
+
+function bindPasswordToggle(input, button) {
+  if (!input || !button) return;
+  setPasswordToggleButtonState(button, input.type === "text");
+  button.addEventListener("click", () => {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    setPasswordToggleButtonState(button, reveal);
+  });
 }
 
 function liveUiIcon(name) {
@@ -7780,8 +7800,8 @@ async function refreshProviderAssessments() {
         ${
   a.status === "published"
     ? ""
-    : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M12 6l4 4"/></svg></button>
-       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M8 7l1 13h6l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+    : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4.2l11-11a1.5 1.5 0 0 0 0-2.1l-2.1-2.1a1.5 1.5 0 0 0-2.1 0l-11 11V21z"/><path d="M13.5 6.5l4 4"/></svg></button>
+       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
 }
       </div>
@@ -8594,14 +8614,8 @@ function bindEvents() {
     });
   });
 
-  $("loginShowPasswordBtn")?.addEventListener("click", () => {
-    const input = $("loginPassword");
-    const btn = $("loginShowPasswordBtn");
-    if (!input || !btn) return;
-    const reveal = input.type === "password";
-    input.type = reveal ? "text" : "password";
-    btn.textContent = reveal ? "Hide" : "Show";
-  });
+  bindPasswordToggle(el.loginPassword, el.loginShowPasswordBtn);
+  bindPasswordToggle(el.signupPassword, el.signupShowPasswordBtn);
 
   document.querySelectorAll(".nav-btn:not(.provider-nav-btn)").forEach((btn) => {
     btn.addEventListener("click", () => activateAdminSubView(btn.dataset.view));
