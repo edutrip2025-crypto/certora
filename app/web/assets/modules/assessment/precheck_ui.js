@@ -4,36 +4,29 @@ export function createAssessmentPrecheckUi({
   labels,
   createDefaultPrecheckChecklist,
 }) {
-  function renderPrecheckChecklist(activeKey = "") {
+  function renderPrecheckLine(text, tone = "pending") {
     if (!el.apPrecheckChecklist) return;
+    el.apPrecheckChecklist.innerHTML = "";
+    const node = document.createElement("div");
+    node.className = `ap-precheck-line ${tone}`;
+    node.textContent = String(text || "").trim();
+    el.apPrecheckChecklist.appendChild(node);
+    requestAnimationFrame(() => node.classList.add("show"));
+  }
+
+  function renderPrecheckChecklist(activeKey = "") {
     const checks = state.assessmentPreview.proctor.precheckChecks || createDefaultPrecheckChecklist();
     const ordered = Object.entries(labels);
-    const activeIndex = activeKey
-      ? ordered.findIndex(([key]) => key === activeKey)
-      : ordered.findIndex(([key]) => !checks[key]);
-    const renderLimit = activeIndex >= 0 ? activeIndex : (state.assessmentPreview.proctor.precheckReady ? ordered.length - 1 : 0);
-    const rows = ordered
-      .filter((_, idx) => idx <= renderLimit)
-      .map(([key, label]) => {
-        const done = Boolean(checks[key]);
-        const active = !done && key === activeKey;
-        return `
-      <div class="ap-precheck-checklist-row${done ? " done" : ""}${active ? " active" : ""}">
-        <span class="ap-precheck-checklist-dot"></span>
-        <span>${done ? "Done" : active ? "In progress" : "Pending"}: ${label}</span>
-      </div>
-    `;
-      });
-    if (state.assessmentPreview.proctor.precheckReady) {
-      rows.push(`
-      <div class="ap-precheck-checklist-row done">
-        <span class="ap-precheck-checklist-dot"></span>
-        <span>Done: All mandatory precheck stages completed.</span>
-      </div>
-    `);
+    const precheckReady = Boolean(state.assessmentPreview.proctor.precheckReady);
+    if (precheckReady) {
+      renderPrecheckLine("Done: All mandatory checks completed.", "done");
+      return;
     }
-    el.apPrecheckChecklist.innerHTML = rows.join("");
-    el.apPrecheckChecklist.scrollTop = el.apPrecheckChecklist.scrollHeight;
+    const fallbackNext = ordered.find(([key]) => !checks[key])?.[0] || "";
+    const currentKey = String(activeKey || fallbackNext || "");
+    const label = labels[currentKey] || "Next check";
+    const done = Boolean(checks[currentKey]);
+    renderPrecheckLine(`${done ? "Done" : "Pending"}: ${label}`, done ? "done" : "pending");
   }
 
   function setPrecheckInstruction(text, activeKey = "", detailText = "", voiceScript = "") {
@@ -95,19 +88,22 @@ export function createAssessmentPrecheckUi({
   function updateAssessmentStartEligibility() {
     const p = state.assessmentPreview.proctor;
     const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
+    const precheckUnlocked = precheckReady && Date.now() >= Number(p.precheckUnlockAtMs || 0);
     const attested = Boolean(p.environmentAttested);
     const readReady = Boolean(p.readAloudReady);
     if (el.apPrecheckNextBtn) {
-      el.apPrecheckNextBtn.disabled = !precheckReady;
+      el.apPrecheckNextBtn.disabled = !precheckUnlocked;
     }
     if (el.apStartTestBtn) {
       el.apStartTestBtn.disabled = !(precheckReady && attested && readReady);
     }
     if (el.apEnvironmentStatus) {
       if (p.precheckInProgress) {
-        el.apEnvironmentStatus.textContent = "Pre-check is in progress. Complete all checks to unlock Next.";
+        el.apEnvironmentStatus.textContent = "Pre-check in progress.";
+      } else if (precheckReady && !precheckUnlocked) {
+        el.apEnvironmentStatus.textContent = "Finalizing checks...";
       } else if (!precheckReady) {
-        el.apEnvironmentStatus.textContent = "Next is blocked until all mandatory proctor checks are completed.";
+        el.apEnvironmentStatus.textContent = "Complete mandatory checks to unlock Next.";
       } else if (!attested) {
         el.apEnvironmentStatus.textContent = "Assessment start remains blocked until you confirm the test machine is local-only.";
       } else if (!readReady) {

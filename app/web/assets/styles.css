@@ -1793,11 +1793,35 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 .assessment-preview .ap-precheck-checklist {
   margin-top: 10px;
-  display: grid;
-  gap: 6px;
-  max-height: 170px;
-  overflow-y: auto;
-  padding-right: 4px;
+  min-height: 44px;
+  display: block;
+}
+.assessment-preview .ap-precheck-line {
+  border: 1px solid #cfe0ff;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #1e3a8a;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 10px 12px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.assessment-preview .ap-precheck-line.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.assessment-preview .ap-precheck-line.done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+.assessment-preview .ap-precheck-line.pending {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
 }
 .assessment-preview .ap-precheck-checklist-row {
   border: 1px solid #dbe4f0;
@@ -1838,6 +1862,18 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 @keyframes ap-checklist-enter {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
+}
+.assessment-preview #apPrecheckNextBtn:disabled {
+  background: #cbd5e1 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.assessment-preview #apPrecheckNextBtn:not(:disabled) {
+  background: linear-gradient(180deg, #1d4ed8, #1e3a8a);
+  border-color: #1e3a8a;
+  color: #ffffff;
 }
 .assessment-preview #apQuestionPanel {
   position: relative;

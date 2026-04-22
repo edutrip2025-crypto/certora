@@ -297,6 +297,7 @@ function defaultProctorState() {
     environmentAttested: false,
     precheckReady: false,
     precheckInProgress: false,
+    precheckUnlockAtMs: 0,
     precheckChecks: createDefaultPrecheckChecklist(),
     readAloudReady: false,
     calibrated: false,
@@ -6632,6 +6633,7 @@ async function runProctoringPrecheck() {
   p.precheckChecks = createDefaultPrecheckChecklist();
   p.precheckReady = false;
   p.precheckInProgress = true;
+  p.precheckUnlockAtMs = 0;
   p.readAloudReady = false;
   showPrecheckChecksPage();
   if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
@@ -6699,6 +6701,8 @@ async function runProctoringPrecheck() {
     "Video check will validate face clarity, lighting, and single-candidate presence.",
   );
   try {
+    const stepDwellMs = 360;
+    const waitStepDwell = () => new Promise((resolve) => setTimeout(resolve, stepDwellMs));
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: "user",
@@ -6749,6 +6753,7 @@ async function runProctoringPrecheck() {
     }
     p.precheckChecks.cameraReady = true;
     renderPrecheckChecklist("audioReady");
+    await waitStepDwell();
 
     setPrecheckInstruction(
       "Step 2/6: Stay quiet for a moment while baseline audio is measured.",
@@ -6769,6 +6774,7 @@ async function runProctoringPrecheck() {
     }
     p.precheckChecks.audioReady = true;
     renderPrecheckChecklist("speakPromptDone");
+    await waitStepDwell();
 
     const calibrated = await runFaceCalibration();
     if (!calibrated) throw new Error("Face calibration failed. Keep one face centered and retry.");
@@ -6783,6 +6789,7 @@ async function runProctoringPrecheck() {
     if (!speechOk) throw new Error("Speech verification failed. Speak clearly and retry.");
     p.precheckChecks.speakPromptDone = true;
     renderPrecheckChecklist("lookLeftDone");
+    await waitStepDwell();
 
     setPrecheckInstruction(
       "Step 4/6: Turn your head LEFT and come back to center.",
@@ -6798,6 +6805,7 @@ async function runProctoringPrecheck() {
     if (!leftOk) throw new Error("Left head-turn check failed. Turn your head clearly and retry.");
     p.precheckChecks.lookLeftDone = true;
     renderPrecheckChecklist("lookRightDone");
+    await waitStepDwell();
 
     setPrecheckInstruction(
       "Step 5/6: Turn your head RIGHT and return to center.",
@@ -6808,6 +6816,7 @@ async function runProctoringPrecheck() {
     if (!rightOk) throw new Error("Right head-turn check failed. Turn your head clearly and retry.");
     p.precheckChecks.lookRightDone = true;
     renderPrecheckChecklist("holdStillDone");
+    await waitStepDwell();
 
     setPrecheckInstruction(
       "Step 6/6: Hold still and look at screen for 3 seconds.",
@@ -6818,7 +6827,9 @@ async function runProctoringPrecheck() {
     if (!stillOk) throw new Error("Hold-still check failed. Keep your head steady and retry.");
     p.precheckChecks.holdStillDone = true;
     p.precheckReady = isPrecheckFullyComplete(p);
+    p.precheckUnlockAtMs = Date.now() + 850;
     renderPrecheckChecklist("");
+    setTimeout(() => updateAssessmentStartEligibility(), 900);
     if (el.apPrecheckStatus) {
       el.apPrecheckStatus.textContent = "Pre-check complete. Click Next to continue.";
     }
@@ -6828,16 +6839,17 @@ async function runProctoringPrecheck() {
     setPrecheckInstruction(
       "All required checks are complete. Continue to the instructions page.",
       "",
-      "Next is enabled only after mandatory checks are completed.",
+      "",
     );
   } catch (err) {
     p.precheckReady = false;
+    p.precheckUnlockAtMs = 0;
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = err?.message || "Pre-check failed. Retry required.";
-    if (el.apProctorHints) el.apProctorHints.textContent = "Follow the guided checks exactly. Start stays locked until all checks pass.";
+    if (el.apProctorHints) el.apProctorHints.textContent = "Re-run checks and follow on-screen prompts.";
     setPrecheckInstruction(
-      "Pre-check failed. Click Re-run checks and complete every step.",
+      "Pre-check failed. Click Re-run checks.",
       "",
-      "Follow each instruction exactly. Assessment start remains blocked until successful completion.",
+      "",
     );
     throw err;
   } finally {
