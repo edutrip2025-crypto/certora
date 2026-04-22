@@ -2343,7 +2343,7 @@ input:focus, select:focus, textarea:focus {
 #providerView .sidebar {
   top: 8px;
   margin-top: 0;
-  padding: 8px 12px 12px;
+  padding: 4px 12px 10px;
   border: 1px solid #d7e3f3;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
@@ -2354,14 +2354,14 @@ input:focus, select:focus, textarea:focus {
 #providerView .provider-sidebar-brand {
   display: grid;
   gap: 2px;
-  margin-bottom: 4px;
+  margin: -6px 0 2px;
 }
 #providerView .provider-sidebar-logo {
   width: min(200px, 100%);
   height: auto;
   object-fit: contain;
   display: block;
-  margin-top: -2px;
+  margin: -4px 0 -6px;
 }
 #providerView .sidebar h3 {
   margin: 0 0 6px;
@@ -2389,7 +2389,7 @@ input:focus, select:focus, textarea:focus {
   color: #0f172a;
 }
 #providerView .content {
-  margin-top: 0;
+  margin-top: 10px;
   background: transparent;
   border: none;
   box-shadow: none;
