@@ -2339,11 +2339,11 @@ input:focus, select:focus, textarea:focus {
 
 #providerView {
   align-items: start;
-  gap: 0;
+  gap: 20px;
 }
 #providerView .sidebar {
-  top: 16px;
-  margin-top: 8px;
+  top: 8px;
+  margin-top: 0;
   padding: 4px 12px 10px;
   border: 1px solid #d7e3f3;
   background: #ffffff;
@@ -2416,7 +2416,7 @@ input:focus, select:focus, textarea:focus {
   max-width: 100%;
 }
 #providerView .content {
-  margin-top: 40px;
+  margin-top: 56px;
   background: transparent;
   border: none;
   box-shadow: none;
