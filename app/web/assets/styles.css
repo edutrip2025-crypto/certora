@@ -2296,7 +2296,7 @@ input:focus, select:focus, textarea:focus {
 }
 .sidebar {
   top: 8px;
-  margin-top: 14px;
+  margin-top: 0;
   padding: 16px 12px 12px;
   border-right: none;
   border-radius: 18px;
