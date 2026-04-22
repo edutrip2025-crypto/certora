@@ -2355,25 +2355,32 @@ input:focus, select:focus, textarea:focus {
   display: grid;
   gap: 0;
   margin: 0 0 2px;
+  position: relative;
 }
 #providerView .provider-sidebar-logo-wrap {
   width: 100%;
-  min-height: 138px;
-  display: flex;
-  align-items: flex-start;
+  min-height: 0;
+  height: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
 }
 #providerView .provider-sidebar-logo {
-  width: min(286px, 100%);
+  width: min(360px, 145%);
   height: auto;
-  max-height: 172px;
+  max-height: none;
   object-fit: contain;
   object-position: left top;
   display: block;
-  margin: 0;
+  margin: -8px 0 0;
+  transform: scale(1.25);
+  transform-origin: left top;
 }
 #providerView .sidebar h3 {
   margin: 0 0 2px;
   color: #0f172a;
+  position: relative;
+  z-index: 2;
 }
 #providerView .nav-btn {
   color: #334155;
@@ -2565,11 +2572,12 @@ input:focus, select:focus, textarea:focus {
     border-radius: 16px;
   }
   #providerView .provider-sidebar-logo {
-    width: 100%;
+    width: min(320px, 140%);
+    transform: scale(1.15);
   }
   #providerView .provider-sidebar-logo-wrap {
-    width: min(210px, 100%);
-    min-height: 112px;
+    width: 100%;
+    min-height: 0;
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
