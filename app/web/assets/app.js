@@ -17,6 +17,7 @@ import {
   updateProfile,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { createAssessmentPrecheckUi } from "./modules/assessment/precheck_ui.js";
+import { createAssessmentTimer } from "./modules/assessment/timer.js";
 import { createUiFeedback } from "./modules/core/ui_feedback.js";
 import { createApiClient } from "./modules/core/api_client.js";
 import { createCourseCatalogUi } from "./modules/courses/catalog_ui.js";
@@ -85,6 +86,9 @@ const state = {
     timerId: null,
     remainingSec: 0,
     timerPaused: false,
+    questionRemainingByIndex: {},
+    questionTimedOutByIndex: {},
+    questionTimeTransitionInFlight: false,
     warningPauseCount: 0,
     proctor: defaultProctorState(),
   },
@@ -1439,6 +1443,14 @@ const adminUsersUi = createAdminUsersUi({
   renderList,
   renderSimpleStats,
   escapeHtmlAttr,
+});
+
+const assessmentTimer = createAssessmentTimer({
+  state,
+  el,
+  formatSecondsToClock,
+  onAssessmentTimeUp: () => showAssessmentPreviewResult("timer_expired"),
+  onQuestionTimeUp: () => onAssessmentQuestionTimerElapsed(),
 });
 
 function log(label, payload) {
@@ -5981,10 +5993,7 @@ async function createAssessmentFromBuilder(publishNow) {
 }
 
 function clearAssessmentPreviewTimer() {
-  if (state.assessmentPreview.timerId) {
-    clearInterval(state.assessmentPreview.timerId);
-    state.assessmentPreview.timerId = null;
-  }
+  assessmentTimer.clearAssessmentPreviewTimer();
 }
 
 function isPrecheckFullyComplete(p) {
@@ -7269,6 +7278,9 @@ function closeAssessmentPreview() {
     timerId: null,
     remainingSec: 0,
     timerPaused: false,
+    questionRemainingByIndex: {},
+    questionTimedOutByIndex: {},
+    questionTimeTransitionInFlight: false,
     warningPauseCount: 0,
     proctor: defaultProctorState(),
   };
@@ -7283,6 +7295,29 @@ function readCurrentPreviewAnswer() {
   if (!current) return;
   const checked = Array.from(document.querySelectorAll("[data-ap-opt]:checked")).map((x) => Number(x.value));
   state.assessmentPreview.answers[current.question_id] = checked;
+}
+
+async function onAssessmentQuestionTimerElapsed() {
+  const preview = state.assessmentPreview;
+  if (preview.questionTimeTransitionInFlight) return;
+  preview.questionTimeTransitionInFlight = true;
+  try {
+    readCurrentPreviewAnswer();
+    if (preview.mode === "student_attempt") await persistCurrentStudentAttemptAnswer();
+    const isLast = preview.index >= preview.questions.length - 1;
+    finalizeGazeQuestionForNavigation(preview, true);
+    if (isLast) {
+      showAssessmentPreviewResult("question_timer_expired");
+      return;
+    }
+    preview.index = Math.min(preview.questions.length - 1, preview.index + 1);
+    renderAssessmentPreviewQuestion();
+    assessmentTimer.syncQuestionTimerOnRender();
+  } catch {
+    showAssessmentPreviewResult("question_timer_error");
+  } finally {
+    preview.questionTimeTransitionInFlight = false;
+  }
 }
 
 function renderAssessmentPreviewQuestion() {
@@ -7324,6 +7359,7 @@ function renderAssessmentPreviewQuestion() {
   const isLast = preview.index >= preview.questions.length - 1;
   if (nextBtn) nextBtn.classList.toggle("hidden", isLast);
   if (submitBtn) submitBtn.classList.toggle("hidden", !isLast);
+  assessmentTimer.syncQuestionTimerOnRender();
   requestAnimationFrame(() => beginGazeQuestionGrace(preview.proctor));
 }
 
@@ -7554,24 +7590,7 @@ function showAssessmentPreviewResult(reason = "completed") {
 }
 
 function startAssessmentPreviewTimer() {
-  clearAssessmentPreviewTimer();
-  const preview = state.assessmentPreview;
-  const exam = preview.exam;
-  if (!exam) return;
-  if (exam.timing_mode === "question") {
-    if (el.apTimerText) el.apTimerText.textContent = `${exam.time_per_question_seconds || 0}s/question`;
-    return;
-  }
-  preview.remainingSec = Math.max(0, Number(exam.duration_minutes || 0) * 60);
-  if (el.apTimerText) el.apTimerText.textContent = formatSecondsToClock(preview.remainingSec);
-  preview.timerId = setInterval(() => {
-    if (preview.timerPaused) return;
-    preview.remainingSec -= 1;
-    if (el.apTimerText) el.apTimerText.textContent = formatSecondsToClock(Math.max(0, preview.remainingSec));
-    if (preview.remainingSec <= 0) {
-      showAssessmentPreviewResult();
-    }
-  }, 1000);
+  assessmentTimer.startAssessmentPreviewTimer();
 }
 
 async function openAssessmentPreview(examId) {
@@ -7638,6 +7657,9 @@ async function openAssessmentPreview(examId) {
     timerId: null,
     remainingSec: 0,
     timerPaused: false,
+    questionRemainingByIndex: {},
+    questionTimedOutByIndex: {},
+    questionTimeTransitionInFlight: false,
     warningPauseCount: 0,
     proctor: defaultProctorState(),
   };
@@ -8051,6 +8073,9 @@ async function openStudentAssessmentAttempt(examId) {
     timerId: null,
     remainingSec: 0,
     timerPaused: false,
+    questionRemainingByIndex: {},
+    questionTimedOutByIndex: {},
+    questionTimeTransitionInFlight: false,
     warningPauseCount: 0,
     proctor: defaultProctorState(),
   };
