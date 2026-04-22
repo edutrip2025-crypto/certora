@@ -492,12 +492,22 @@
 
       <section id="apPrecheckPanel" class="item">
         <h3>Pre-test Proctoring Check</h3>
+        <div id="apPrecheckInstruction" class="ap-precheck-instruction" aria-live="polite">
+          Follow the guided checks. Start will unlock only after all checks are complete.
+        </div>
+        <div id="apPrecheckInstructionDetail" class="ap-precheck-instruction-detail" aria-live="polite">
+          Keep your face centered, eyes on question area, and stay silent unless prompted.
+        </div>
+        <div id="apPrecheckVoiceScript" class="ap-precheck-voice-script hidden" aria-live="polite">
+          Read exactly: "I am ready for this proctored assessment."
+        </div>
         <ul class="meta" style="margin:8px 0 0 18px;">
           <li>No mobile phone or secondary screen usage.</li>
           <li>Do not read questions aloud; avoid external voices.</li>
           <li>Keep your face centered and eyes on screen.</li>
           <li>Tab switching and fullscreen exit are not allowed.</li>
         </ul>
+        <div id="apPrecheckChecklist" class="ap-precheck-checklist" aria-live="polite"></div>
         <div id="apPrecheckStatus" class="meta" style="margin-top:6px;">Requesting camera/microphone permission...</div>
         <div class="row wrap gap-sm" style="margin-top:10px;">
           <video id="apProctorVideo" autoplay muted playsinline style="width:260px;max-width:100%;border-radius:12px;border:1px solid #dbe4f0;background:#0b1220;"></video>

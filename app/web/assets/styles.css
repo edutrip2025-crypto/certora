@@ -1755,6 +1755,82 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: #ffffff;
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
 }
+.assessment-preview .ap-precheck-instruction {
+  margin-top: 10px;
+  border: 1px solid #1d4ed8;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eaf2ff, #ffffff);
+  color: #0f172a;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(1.15rem, 2.15vw, 1.8rem);
+  font-weight: 800;
+  line-height: 1.35;
+  padding: 14px 16px;
+  letter-spacing: 0.2px;
+}
+.assessment-preview .ap-precheck-instruction-detail {
+  margin-top: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #1e3a8a;
+  font-size: clamp(0.95rem, 1.4vw, 1.18rem);
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 10px 12px;
+}
+.assessment-preview .ap-precheck-voice-script {
+  margin-top: 8px;
+  border: 1px dashed #2563eb;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(1rem, 1.6vw, 1.28rem);
+  font-weight: 800;
+  line-height: 1.35;
+  padding: 10px 12px;
+}
+.assessment-preview .ap-precheck-checklist {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+.assessment-preview .ap-precheck-checklist-row {
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+.assessment-preview .ap-precheck-checklist-row.done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #14532d;
+}
+.assessment-preview .ap-precheck-checklist-row.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.assessment-preview .ap-precheck-checklist-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
+  flex: 0 0 auto;
+}
+.assessment-preview .ap-precheck-checklist-row.done .ap-precheck-checklist-dot {
+  background: #16a34a;
+}
+.assessment-preview .ap-precheck-checklist-row.active .ap-precheck-checklist-dot {
+  background: #2563eb;
+}
 .assessment-preview #apQuestionPanel {
   position: relative;
   overflow: hidden;

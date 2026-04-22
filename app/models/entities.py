@@ -529,6 +529,42 @@ class ProctorTrainingFeedback(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ProctorDatasetSource(Base):
+    __tablename__ = "proctor_dataset_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="local_csv")  # local_csv | local_dir | s3_prefix
+    source_path: Mapped[str] = mapped_column(String(1000))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ProctorModelRun(Base):
+    __tablename__ = "proctor_model_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    model_key: Mapped[str] = mapped_column(String(80), default="logistic", index=True)
+    feature_space: Mapped[str] = mapped_column(String(80), default="event_risk_v1")
+    status: Mapped[str] = mapped_column(String(20), default="completed", index=True)  # queued | running | completed | failed
+    sample_count: Mapped[int] = mapped_column(Integer, default=0)
+    validation_count: Mapped[int] = mapped_column(Integer, default=0)
+    precision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    f1_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    roc_auc: Mapped[float | None] = mapped_column(Float, nullable=True)
+    warning_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    manual_review_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    critical_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class Result(Base):
     __tablename__ = "results"
     __table_args__ = (UniqueConstraint("attempt_id", name="uq_attempt_result"),)

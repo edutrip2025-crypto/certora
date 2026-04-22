@@ -16,18 +16,24 @@ from app.models.entities import (
     ProctorEvidence,
     ProctorEvent,
     ProctorSession,
+    ProctorDatasetSource,
+    ProctorModelRun,
     ProctorTrainingFeedback,
     User,
     UserRole,
 )
 from app.schemas import (
+    ProctorDatasetSourceCreate,
+    ProctorDatasetSourceUpdate,
     ProctorEventCreate,
     ProctorFinalizeRequest,
+    ProctorModelTrainRequest,
     ProctorReviewRequest,
     ProctorSessionStartRequest,
     ProctorTrainingFeedbackCreate,
 )
-from app.services.proctoring_ai import evaluate_proctor_session, get_proctor_model_status
+from app.services.proctor_training import TrainConfig, train_proctor_model_from_feedback
+from app.services.proctoring_ai import evaluate_proctor_session, get_proctor_model_status, reset_proctor_model_cache
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/proctoring", tags=["proctoring"])
@@ -104,6 +110,219 @@ def proctor_model_status(
     current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     return get_proctor_model_status()
+
+
+@router.get("/admin/dataset-sources")
+def admin_list_dataset_sources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    rows = list(
+        db.scalars(
+            select(ProctorDatasetSource).order_by(ProctorDatasetSource.created_at.desc(), ProctorDatasetSource.id.desc()),
+        ).all(),
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "source_type": r.source_type,
+                "source_path": r.source_path,
+                "is_enabled": r.is_enabled,
+                "notes": r.notes,
+                "created_by_user_id": r.created_by_user_id,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.post("/admin/dataset-sources", status_code=status.HTTP_201_CREATED)
+def admin_create_dataset_source(
+    payload: ProctorDatasetSourceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    name = str(payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Dataset source name is required")
+    exists = db.scalar(select(ProctorDatasetSource).where(ProctorDatasetSource.name == name))
+    if exists:
+        raise HTTPException(status_code=409, detail="Dataset source name already exists")
+    source_type = str(payload.source_type or "local_csv").strip().lower()
+    if source_type not in {"local_csv", "local_dir", "s3_prefix"}:
+        raise HTTPException(status_code=400, detail="source_type must be local_csv, local_dir, or s3_prefix")
+    item = ProctorDatasetSource(
+        name=name,
+        source_type=source_type,
+        source_path=str(payload.source_path or "").strip(),
+        is_enabled=bool(payload.is_enabled),
+        notes=(payload.notes or "").strip() or None,
+        created_by_user_id=current_user.id,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id,
+        "name": item.name,
+        "source_type": item.source_type,
+        "source_path": item.source_path,
+        "is_enabled": item.is_enabled,
+        "notes": item.notes,
+        "created_by_user_id": item.created_by_user_id,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+@router.patch("/admin/dataset-sources/{source_id}")
+def admin_update_dataset_source(
+    source_id: int,
+    payload: ProctorDatasetSourceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    item = db.get(ProctorDatasetSource, source_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Dataset source not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "source_type" in data:
+        source_type = str(data["source_type"] or "").strip().lower()
+        if source_type not in {"local_csv", "local_dir", "s3_prefix"}:
+            raise HTTPException(status_code=400, detail="source_type must be local_csv, local_dir, or s3_prefix")
+        item.source_type = source_type
+    if "source_path" in data:
+        item.source_path = str(data["source_path"] or "").strip()
+    if "is_enabled" in data:
+        item.is_enabled = bool(data["is_enabled"])
+    if "notes" in data:
+        item.notes = (str(data["notes"] or "").strip() or None)
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id,
+        "name": item.name,
+        "source_type": item.source_type,
+        "source_path": item.source_path,
+        "is_enabled": item.is_enabled,
+        "notes": item.notes,
+        "created_by_user_id": item.created_by_user_id,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+@router.get("/admin/model-runs")
+def admin_model_runs(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    limit = min(max(limit, 1), 100)
+    rows = list(
+        db.scalars(
+            select(ProctorModelRun)
+            .order_by(ProctorModelRun.created_at.desc(), ProctorModelRun.id.desc())
+            .limit(limit),
+        ).all(),
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "model_key": r.model_key,
+                "feature_space": r.feature_space,
+                "status": r.status,
+                "sample_count": r.sample_count,
+                "validation_count": r.validation_count,
+                "precision": r.precision,
+                "recall": r.recall,
+                "f1_score": r.f1_score,
+                "roc_auc": r.roc_auc,
+                "warning_threshold": r.warning_threshold,
+                "manual_review_threshold": r.manual_review_threshold,
+                "critical_threshold": r.critical_threshold,
+                "summary": r.summary_json,
+                "error_message": r.error_message,
+                "created_by_user_id": r.created_by_user_id,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.post("/admin/train-model")
+def admin_train_proctor_model(
+    payload: ProctorModelTrainRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    run = ProctorModelRun(
+        model_key="logistic",
+        feature_space="event_risk_v1",
+        status="running",
+        created_by_user_id=current_user.id,
+        summary_json={
+            "minimum_samples": payload.minimum_samples,
+            "validation_split": payload.validation_split,
+            "target_recall": payload.target_recall,
+            "max_false_positive_rate": payload.max_false_positive_rate,
+            "strict_mode": payload.strict_mode,
+        },
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    try:
+        result = train_proctor_model_from_feedback(
+            db,
+            TrainConfig(
+                minimum_samples=payload.minimum_samples,
+                validation_split=payload.validation_split,
+                target_recall=payload.target_recall,
+                max_false_positive_rate=payload.max_false_positive_rate,
+                strict_mode=payload.strict_mode,
+            ),
+        )
+        run.status = "completed"
+        run.sample_count = int(result.get("sample_count") or 0)
+        run.validation_count = int(result.get("validation_count") or 0)
+        run.precision = float(result.get("precision")) if result.get("precision") is not None else None
+        run.recall = float(result.get("recall")) if result.get("recall") is not None else None
+        run.f1_score = float(result.get("f1_score")) if result.get("f1_score") is not None else None
+        run.roc_auc = float(result.get("roc_auc")) if result.get("roc_auc") is not None else None
+        run.warning_threshold = float(result.get("warning_threshold")) if result.get("warning_threshold") is not None else None
+        run.manual_review_threshold = (
+            float(result.get("manual_review_threshold"))
+            if result.get("manual_review_threshold") is not None
+            else None
+        )
+        run.critical_threshold = float(result.get("critical_threshold")) if result.get("critical_threshold") is not None else None
+        run.summary_json = result.get("summary") or {}
+        run.error_message = None
+        db.commit()
+        reset_proctor_model_cache()
+        return {"status": "ok", "run_id": run.id, **result}
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=400, detail=f"Model training failed: {exc}") from exc
+
+
+@router.post("/admin/model/reload")
+def admin_reload_proctor_model(
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    reset_proctor_model_cache()
+    return {"status": "ok", "message": "Proctor model cache reloaded"}
 
 
 @router.get("/admin/sessions/{session_id}/evaluation")

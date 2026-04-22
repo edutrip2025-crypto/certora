@@ -33,6 +33,23 @@ except Exception:  # pragma: no cover
 
 _MODEL_CACHE: dict[str, Any] = {}
 _RULES_CACHE: dict[str, Any] = {}
+_EVENT_FEATURE_TYPES: list[str] = sorted(
+    [
+        "attention_challenge_failed",
+        "background_voice_detected",
+        "behavior_signature_drift",
+        "face_identity_mismatch",
+        "hand_near_face_repeated",
+        "loud_voice_detected",
+        "mobile_phone_detected",
+        "multiple_faces_detected",
+        "reading_aloud_detected",
+        "side_glance_detected",
+        "side_hand_activity_detected",
+        "window_focus_lost",
+        "gaze_pattern_review_flag",
+    ],
+)
 
 
 def _safe_float(value: Any, default: float) -> float:
@@ -103,12 +120,19 @@ def _load_bundle() -> dict[str, Any] | None:
     return bundle
 
 
+def reset_proctor_model_cache() -> None:
+    _MODEL_CACHE.clear()
+    _RULES_CACHE.clear()
+
+
 def get_proctor_model_status() -> dict[str, Any]:
     bundle_path = Path("data/proctoring/models/supervised/supervised_bundle.joblib")
     rules_path = Path("data/proctoring/models/supervised/deduction_rules.json")
     bundle = _load_bundle()
     rules = _load_rules()
     model_names = sorted(list((bundle or {}).get("models", {}).keys()))
+    feature_space = str((bundle or {}).get("feature_space") or "legacy_image_v1")
+    meta = (bundle or {}).get("meta") or {}
     return {
         "bundle_path": str(bundle_path.resolve()),
         "bundle_exists": bundle_path.exists(),
@@ -116,6 +140,8 @@ def get_proctor_model_status() -> dict[str, Any]:
         "rules_path": str(rules_path.resolve()),
         "rules_exists": rules_path.exists(),
         "selected_model": str(rules.get("model", "logistic")),
+        "feature_space": feature_space,
+        "trained_at": meta.get("trained_at"),
         "available_models": model_names,
         "auto_deduction_enabled": bool(rules.get("auto_deduction_enabled", False)),
         "thresholds": {
@@ -174,6 +200,49 @@ def _session_feature_vector(db: Session, sess: ProctorSession) -> np.ndarray | N
         return None
     mat = np.stack(frame_feats, axis=0)
     return np.concatenate([np.mean(mat, axis=0), np.std(mat, axis=0)], axis=0).astype(np.float32)
+
+
+def _event_feature_vector(db: Session, sess: ProctorSession) -> np.ndarray | None:
+    if np is None:
+        return None
+    rows = db.execute(
+        select(ProctorEvent.event_type, func.count(ProctorEvent.id))
+        .where(ProctorEvent.session_id == sess.id)
+        .group_by(ProctorEvent.event_type),
+    ).all()
+    counts: dict[str, int] = {str(ev_type): int(cnt or 0) for ev_type, cnt in rows}
+    high_risk_events = float(
+        sum(
+            int(counts.get(k, 0))
+            for k in ("mobile_phone_detected", "multiple_faces_detected", "face_identity_mismatch", "attention_challenge_failed")
+        ),
+    )
+    event_signal_score = min(
+        1.0,
+        (
+            (0.55 if counts.get("mobile_phone_detected", 0) else 0.0)
+            + (0.32 if counts.get("attention_challenge_failed", 0) else 0.0)
+            + (0.28 if counts.get("behavior_signature_drift", 0) else 0.0)
+            + (0.30 if counts.get("reading_aloud_detected", 0) else 0.0)
+            + (0.26 if counts.get("background_voice_detected", 0) else 0.0)
+            + (0.35 if counts.get("multiple_faces_detected", 0) else 0.0)
+            + (0.30 if counts.get("face_identity_mismatch", 0) else 0.0)
+        ),
+    )
+    duration_minutes = 0.0
+    if sess.started_at:
+        end = sess.ended_at or sess.started_at
+        duration_minutes = max(0.0, min(180.0, float((end - sess.started_at).total_seconds()) / 60.0))
+    values: list[float] = [
+        float(sess.warning_count or 0),
+        float(max(0.0, min(100.0, float(sess.risk_score or 0.0))) / 100.0),
+        float(duration_minutes),
+        float(high_risk_events),
+        float(event_signal_score),
+    ]
+    for event_type in _EVENT_FEATURE_TYPES:
+        values.append(float(counts.get(event_type, 0)))
+    return np.asarray(values, dtype=np.float32)
 
 
 def _count_high_risk_events(db: Session, sess: ProctorSession) -> int:
@@ -264,10 +333,27 @@ def _predict_probability(feature_vec: np.ndarray, rules: dict[str, Any]) -> tupl
 
     try:
         x = np.asarray(feature_vec, dtype=np.float32).reshape(1, -1)
-        xt = pre.transform(x) if pre is not None else x
+        if isinstance(pre, dict) and pre.get("type") == "standard_scale_v1":
+            mean = np.asarray(pre.get("mean") or [], dtype=np.float32).reshape(1, -1)
+            std = np.asarray(pre.get("std") or [], dtype=np.float32).reshape(1, -1)
+            std = np.where(std <= 1e-7, 1.0, std)
+            if mean.shape[1] == x.shape[1]:
+                xt = (x - mean) / std
+            else:
+                xt = x
+        else:
+            xt = pre.transform(x) if pre is not None else x
         if hasattr(model, "predict_proba"):
             p = float(model.predict_proba(xt)[0][1])
             return p, selected_name
+        if isinstance(model, dict) and model.get("type") == "linear_logistic_v1":
+            w = np.asarray(model.get("weights") or [], dtype=np.float32)
+            b = float(model.get("bias") or 0.0)
+            if w.shape[0] == xt.shape[1]:
+                z = float((xt[0] @ w) + b)
+                z = max(-40.0, min(40.0, z))
+                p = float(1.0 / (1.0 + np.exp(-z)))
+                return p, selected_name
         if torch is not None and hasattr(model, "eval"):
             model.eval()
             with torch.no_grad():
@@ -301,7 +387,12 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
     event_signal_score, event_signal_counts, triggered_signals = _weighted_event_signals(db, sess)
     base_event_score = min(1.0, max(event_signal_score, (warnings * 0.15) + (high_risk_events * 0.04)))
 
-    feature_vec = _session_feature_vector(db, sess)
+    bundle = _load_bundle() or {}
+    feature_space = str(bundle.get("feature_space") or "legacy_image_v1")
+    if feature_space == "event_risk_v1":
+        feature_vec = _event_feature_vector(db, sess)
+    else:
+        feature_vec = _session_feature_vector(db, sess)
     ml_prob, model_name = (None, "not_available")
     if feature_vec is not None:
         ml_prob, model_name = _predict_probability(feature_vec, rules)

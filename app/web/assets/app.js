@@ -223,6 +223,26 @@ let faceLandmarkerCachePromise = null;
 let phoneDetectorCachePromise = null;
 let handLandmarkerCachePromise = null;
 
+const PROCTOR_PRECHECK_TASK_LABELS = {
+  cameraReady: "Camera quality check",
+  audioReady: "Microphone clarity check",
+  speakPromptDone: "Speak verification line",
+  lookLeftDone: "Head turn left check",
+  lookRightDone: "Head turn right check",
+  holdStillDone: "Hold-still check",
+};
+
+function createDefaultPrecheckChecklist() {
+  return {
+    cameraReady: false,
+    audioReady: false,
+    speakPromptDone: false,
+    lookLeftDone: false,
+    lookRightDone: false,
+    holdStillDone: false,
+  };
+}
+
 function defaultProctorState() {
   return {
     sessionId: null,
@@ -264,6 +284,8 @@ function defaultProctorState() {
     challengeFailures: 0,
     environmentAttested: false,
     precheckReady: false,
+    precheckInProgress: false,
+    precheckChecks: createDefaultPrecheckChecklist(),
     calibrated: false,
     audioBaselineRms: 0.03,
     baselineEvidenceReady: false,
@@ -273,7 +295,7 @@ function defaultProctorState() {
     handModel: null,
     handModelReady: false,
     startingUp: false,
-    warnCooldownMs: 8000,
+    warnCooldownMs: 4500,
     lastWarnAt: {},
     visibilityHandler: null,
     blurHandler: null,
@@ -394,14 +416,14 @@ function computeFaceMetrics(lm) {
 /** Three-layer gaze policy: raw zones → scored suspicion events → rolling-window thresholds (no instant “looked away” warnings). */
 const GAZE_ROLLING_MS = 120000;
 const GAZE_UI_GRACE_MS = 1800;
-const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 1400;
+const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 1000;
 const GAZE_QUESTION_OPTIONS_AWAY_REPEAT_COUNT = 2;
-const GAZE_LAPTOP_AWAY_LIMIT_MS = 2500;
-const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 2600;
-const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 3200;
+const GAZE_LAPTOP_AWAY_LIMIT_MS = 1600;
+const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 1800;
+const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 2400;
 const GAZE_STATIC_LOW_VAR = 0.034;
-const GAZE_STATIC_PTS_MS = 2000;
-const GAZE_EVENT_DEBOUNCE_MS = 14000;
+const GAZE_STATIC_PTS_MS = 1600;
+const GAZE_EVENT_DEBOUNCE_MS = 9000;
 
 function computeQuestionPanelAllowedGazeZones() {
   const screenRect = el.assessmentPreviewScreen?.getBoundingClientRect?.();
@@ -536,8 +558,8 @@ function classifyGazeUiZone(p, metrics, ref, allowedZones = null, allowedRect = 
   const target = getSmoothedGazeTarget(p, rawTarget);
   if (!target) return "neutral";
   if (allowedRect) {
-    const marginX = target.confidence >= 0.82 ? 0.018 : target.confidence >= 0.65 ? 0.04 : 0.07;
-    const marginY = target.confidence >= 0.82 ? 0.022 : target.confidence >= 0.65 ? 0.05 : 0.08;
+    const marginX = target.confidence >= 0.82 ? 0.012 : target.confidence >= 0.65 ? 0.028 : 0.045;
+    const marginY = target.confidence >= 0.82 ? 0.016 : target.confidence >= 0.65 ? 0.034 : 0.052;
     const insideRect = (
       target.x >= Number(allowedRect.left ?? 0) &&
       target.x <= Number(allowedRect.right ?? 1) &&
@@ -601,24 +623,24 @@ function addGazeSuspicionPoints(p, pts, code, details = {}) {
 function reapGazeSuspicionEscalation(p) {
   const s = sumGazeSuspicionWindow(p);
   const stage = p.gazeEscalationStageMax || 0;
-  if (s >= 9 && !p.gazeFlagReviewEmitted) {
+  if (s >= 7 && !p.gazeFlagReviewEmitted) {
     p.gazeFlagReviewEmitted = true;
-    p.gazeEscalationStageMax = Math.max(stage, 9);
+    p.gazeEscalationStageMax = Math.max(stage, 7);
     logProctorEvent("warning", "gaze_pattern_review_flag", { rolling_score: s }).catch(() => {});
     pushProctorWarning(
       "Repeated off-screen gaze pattern noted. This session may be reviewed.",
       "gaze_pattern_review",
       "warning",
     );
-  } else if (s >= 7 && stage < 7) {
-    p.gazeEscalationStageMax = 7;
-    toast("Please keep your attention on the test screen.");
-    logProctorEvent("info", "gaze_soft_attention_notice", { rolling_score: s }).catch(() => {});
   } else if (s >= 5 && stage < 5) {
     p.gazeEscalationStageMax = 5;
-    logProctorEvent("info", "gaze_suspicion_internal", { rolling_score: s }).catch(() => {});
+    toast("Please keep your attention on the test screen.");
+    logProctorEvent("info", "gaze_soft_attention_notice", { rolling_score: s }).catch(() => {});
   } else if (s >= 3 && stage < 3) {
     p.gazeEscalationStageMax = 3;
+    logProctorEvent("info", "gaze_suspicion_internal", { rolling_score: s }).catch(() => {});
+  } else if (s >= 2 && stage < 2) {
+    p.gazeEscalationStageMax = 2;
     logProctorEvent("info", "gaze_suspicion_silent_log", { rolling_score: s }).catch(() => {});
   }
 }
@@ -747,12 +769,23 @@ function tickGazeThreeLayerModel(p, metrics, now) {
 
   if (suspicious) {
     p.gazeSuspiciousDwellMs = (p.gazeSuspiciousDwellMs || 0) + dt;
+    if (!p.lookAwaySinceMs) p.lookAwaySinceMs = now;
   } else {
     p.gazeSuspiciousDwellMs = 0;
+    p.lookAwaySinceMs = 0;
     p.gazeQuestionAwayMarked = false;
     p.gazeLaptopAwayMarked = false;
     p.gazeContinuousWarningCount = 0;
     p.gazeNextContinuousWarningMs = 0;
+  }
+  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 2000 && canEmitGazeEvent(p, "look_away_over_2s")) {
+    markGazeEventEmitted(p, "look_away_over_2s");
+    pushProctorWarning(
+      "Eyes moved away from the question area for too long. Keep attention on the question and options.",
+      "look_away_over_2s",
+      "warning",
+    );
+    p.lookAwaySinceMs = now;
   }
   if (
     p.gazeSuspiciousDwellMs >= GAZE_QUESTION_OPTIONS_AWAY_MARK_MS &&
@@ -927,8 +960,8 @@ function detectCandidateSpeech() {
   const audioBase = Number(sig.audioBaselineRms || p.audioBaselineRms || 0.03);
   const mouthBase = Number(sig.mouthOpenRatio || 0.02);
   const mouthNow = Number(metrics.mouthOpenRatio || mouthBase);
-  const voiceActive = rms > Math.max(0.05, audioBase * 1.8);
-  const mouthActive = mouthNow > mouthBase + 0.04;
+  const voiceActive = rms > Math.max(0.035, audioBase * 1.45);
+  const mouthActive = mouthNow > mouthBase + 0.025;
   return voiceActive && mouthActive;
 }
 
@@ -940,8 +973,8 @@ function detectBackgroundVoice() {
   const audioBase = Number(sig?.audioBaselineRms || p.audioBaselineRms || 0.03);
   const mouthBase = Number(sig?.mouthOpenRatio || 0.02);
   const mouthNow = Number(metrics?.mouthOpenRatio || mouthBase);
-  const voiceActive = rms > Math.max(0.05, audioBase * 1.7);
-  const mouthStill = mouthNow <= mouthBase + 0.025;
+  const voiceActive = rms > Math.max(0.035, audioBase * 1.35);
+  const mouthStill = mouthNow <= mouthBase + 0.02;
   return voiceActive && mouthStill;
 }
 
@@ -1192,6 +1225,10 @@ const el = {
   apMeta: $("apMeta"),
   apProctorBadge: $("apProctorBadge"),
   apPrecheckPanel: $("apPrecheckPanel"),
+  apPrecheckInstruction: $("apPrecheckInstruction"),
+  apPrecheckInstructionDetail: $("apPrecheckInstructionDetail"),
+  apPrecheckVoiceScript: $("apPrecheckVoiceScript"),
+  apPrecheckChecklist: $("apPrecheckChecklist"),
   apPrecheckStatus: $("apPrecheckStatus"),
   apProctorVideo: $("apProctorVideo"),
   apProctorHints: $("apProctorHints"),
@@ -6248,18 +6285,156 @@ function clearAssessmentPreviewTimer() {
   }
 }
 
+function renderPrecheckChecklist(activeKey = "") {
+  if (!el.apPrecheckChecklist) return;
+  const checks = state.assessmentPreview.proctor.precheckChecks || createDefaultPrecheckChecklist();
+  const rows = Object.entries(PROCTOR_PRECHECK_TASK_LABELS).map(([key, label]) => {
+    const done = Boolean(checks[key]);
+    const active = !done && key === activeKey;
+    return `
+      <div class="ap-precheck-checklist-row${done ? " done" : ""}${active ? " active" : ""}">
+        <span class="ap-precheck-checklist-dot"></span>
+        <span>${done ? "Done" : active ? "In progress" : "Pending"}: ${label}</span>
+      </div>
+    `;
+  });
+  el.apPrecheckChecklist.innerHTML = rows.join("");
+}
+
+function setPrecheckInstruction(text, activeKey = "", detailText = "", voiceScript = "") {
+  if (el.apPrecheckInstruction) el.apPrecheckInstruction.textContent = text;
+  if (el.apPrecheckInstructionDetail) {
+    el.apPrecheckInstructionDetail.textContent = detailText || "Keep your face centered, eyes on question area, and stay silent unless prompted.";
+  }
+  if (el.apPrecheckVoiceScript) {
+    if (voiceScript) {
+      el.apPrecheckVoiceScript.textContent = `Read exactly: "${voiceScript}"`;
+      el.apPrecheckVoiceScript.classList.remove("hidden");
+    } else {
+      el.apPrecheckVoiceScript.classList.add("hidden");
+    }
+  }
+  renderPrecheckChecklist(activeKey);
+}
+
+function isPrecheckFullyComplete(p) {
+  const checks = p.precheckChecks || {};
+  return [
+    "cameraReady",
+    "audioReady",
+    "speakPromptDone",
+    "lookLeftDone",
+    "lookRightDone",
+    "holdStillDone",
+  ].every((key) => Boolean(checks[key]));
+}
+
+async function waitForPrecheckHeadTurn(expectedSign, timeoutMs = 5500) {
+  const p = state.assessmentPreview.proctor;
+  const baseRatio = Number(p.faceReference?.ratio || 0.5);
+  const threshold = 0.08;
+  const started = Date.now();
+  let hitFrames = 0;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) throw new Error("Video stream not ready");
+      const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
+      const faces = out?.faceLandmarks || [];
+      if (faces.length === 1) {
+        const metrics = computeFaceMetrics(faces[0]);
+        if (metrics) {
+          p.lastFaceMetrics = metrics;
+          const delta = Number(metrics.ratio || baseRatio) - baseRatio;
+          const pass = expectedSign < 0 ? delta <= -threshold : delta >= threshold;
+          if (pass) {
+            hitFrames += 1;
+            if (hitFrames >= 3) return true;
+          } else {
+            hitFrames = Math.max(0, hitFrames - 1);
+          }
+        }
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return false;
+}
+
+async function runGuidedSpeechCheck() {
+  const p = state.assessmentPreview.proctor;
+  const baseMouth = Number(p.faceReference?.mouthOpenRatio || 0.02);
+  const baseRms = Number(p.audioBaselineRms || 0.03);
+  const started = Date.now();
+  let voiceFrames = 0;
+  let mouthFrames = 0;
+  while (Date.now() - started < 6500) {
+    const rms = detectAudioRms();
+    if (rms > Math.max(0.03, baseRms * 1.45)) voiceFrames += 1;
+    try {
+      if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) throw new Error("Video stream not ready");
+      const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
+      const faces = out?.faceLandmarks || [];
+      if (faces.length === 1) {
+        const metrics = computeFaceMetrics(faces[0]);
+        if (metrics) {
+          p.lastFaceMetrics = metrics;
+          const mouthNow = Number(metrics.mouthOpenRatio || baseMouth);
+          if (mouthNow > baseMouth + 0.02) mouthFrames += 1;
+        }
+      }
+    } catch {}
+    if (voiceFrames >= 6 && mouthFrames >= 4) return true;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return false;
+}
+
+async function runHoldStillCheck() {
+  const p = state.assessmentPreview.proctor;
+  const baseRatio = Number(p.faceReference?.ratio || 0.5);
+  const baseX = Number(p.faceReference?.faceCenterX || 0.5);
+  const baseY = Number(p.faceReference?.faceCenterY || 0.5);
+  const started = Date.now();
+  let stableFrames = 0;
+  while (Date.now() - started < 2800) {
+    try {
+      if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) throw new Error("Video stream not ready");
+      const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
+      const faces = out?.faceLandmarks || [];
+      if (faces.length === 1) {
+        const metrics = computeFaceMetrics(faces[0]);
+        if (metrics) {
+          p.lastFaceMetrics = metrics;
+          const stable = Math.abs(Number(metrics.ratio || baseRatio) - baseRatio) <= 0.045
+            && Math.abs(Number(metrics.faceCenterX || baseX) - baseX) <= 0.06
+            && Math.abs(Number(metrics.faceCenterY || baseY) - baseY) <= 0.06;
+          if (stable) stableFrames += 1;
+          else stableFrames = Math.max(0, stableFrames - 1);
+        }
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return stableFrames >= 12;
+}
+
 function updateAssessmentStartEligibility() {
   const p = state.assessmentPreview.proctor;
-  const precheckReady = Boolean(p.precheckReady);
+  const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
   const attested = Boolean(p.environmentAttested);
   if (el.apStartTestBtn) {
-    // Keep start clickable after precheck so users get an explicit toast if attestation is missing.
-    el.apStartTestBtn.disabled = !precheckReady;
+    el.apStartTestBtn.disabled = !(precheckReady && attested);
   }
   if (el.apEnvironmentStatus) {
-    el.apEnvironmentStatus.textContent = attested
-      ? "Environment declaration accepted. Camera and proctoring will start when the assessment starts."
-      : "Assessment start remains blocked until you confirm the test machine is local-only.";
+    if (p.precheckInProgress) {
+      el.apEnvironmentStatus.textContent = "Pre-check is in progress. Complete all checks to unlock assessment start.";
+    } else if (!precheckReady) {
+      el.apEnvironmentStatus.textContent = "Assessment start is blocked until all mandatory proctor checks are completed.";
+    } else {
+      el.apEnvironmentStatus.textContent = attested
+        ? "Environment declaration accepted. You can start the assessment."
+        : "Assessment start remains blocked until you confirm the test machine is local-only.";
+    }
   }
 }
 
@@ -6643,7 +6818,7 @@ function detectAudioAnomaly() {
   const p = state.assessmentPreview.proctor;
   if (!p.analyser) return false;
   const rms = detectAudioRms();
-  const threshold = Math.max(0.06, (p.audioBaselineRms || 0.03) * 2.2);
+  const threshold = Math.max(0.045, (p.audioBaselineRms || 0.03) * 1.8);
   return rms > threshold;
 }
 
@@ -6651,7 +6826,7 @@ function detectLoudSpeechAnomaly() {
   const p = state.assessmentPreview.proctor;
   if (!p.analyser) return false;
   const rms = detectAudioRms();
-  const loudThreshold = Math.max(0.11, (p.audioBaselineRms || 0.03) * 3.4);
+  const loudThreshold = Math.max(0.085, (p.audioBaselineRms || 0.03) * 2.8);
   return rms > loudThreshold;
 }
 
@@ -6659,7 +6834,7 @@ function detectVoicePersistence() {
   const p = state.assessmentPreview.proctor;
   if (!p.analyser) return false;
   const rms = detectAudioRms();
-  const talkThreshold = Math.max(0.05, (p.audioBaselineRms || 0.03) * 1.7);
+  const talkThreshold = Math.max(0.035, (p.audioBaselineRms || 0.03) * 1.35);
   return rms > talkThreshold;
 }
 
@@ -7002,7 +7177,7 @@ function startProctoringMonitoring() {
     const persistentVoice = detectVoicePersistence();
     if (loud || persistentVoice) p.speechFrames += 1;
     else p.speechFrames = Math.max(0, p.speechFrames - 1);
-    if (p.speechFrames >= 3) {
+    if (p.speechFrames >= 2) {
       pushProctorWarning("Continuous external voice/noise detected.", "external_voice_detected", "critical");
       p.speechFrames = 0;
     }
@@ -7020,7 +7195,7 @@ function startProctoringMonitoring() {
     const candidateSpeech = detectCandidateSpeech();
     if (candidateSpeech) p.candidateSpeechFrames += 1;
     else p.candidateSpeechFrames = Math.max(0, p.candidateSpeechFrames - 1);
-    if (p.candidateSpeechFrames >= 3) {
+    if (p.candidateSpeechFrames >= 2) {
       pushProctorWarning(
         "Reading aloud or self-speaking detected. Candidates must remain silent during the test.",
         "reading_aloud_detected",
@@ -7031,7 +7206,7 @@ function startProctoringMonitoring() {
     const backgroundVoice = detectBackgroundVoice();
     if (backgroundVoice) p.backgroundVoiceFrames += 1;
     else p.backgroundVoiceFrames = Math.max(0, p.backgroundVoiceFrames - 1);
-    if (p.backgroundVoiceFrames >= 4) {
+    if (p.backgroundVoiceFrames >= 2) {
       pushProctorWarning(
         "Voice detected near the candidate without matching mouth movement. Possible nearby external speaker.",
         "background_voice_detected",
@@ -7060,10 +7235,20 @@ function startProctoringMonitoring() {
 async function runProctoringPrecheck() {
   const p = state.assessmentPreview.proctor;
   const isMobileDevice = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
+  p.precheckChecks = createDefaultPrecheckChecklist();
+  p.precheckReady = false;
+  p.precheckInProgress = true;
+  renderPrecheckChecklist("");
+  updateAssessmentStartEligibility();
   if (isMobileDevice) {
-    p.precheckReady = false;
+    p.precheckInProgress = false;
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Assessments are blocked on mobile devices. Use a desktop/laptop.";
     if (el.apProctorHints) el.apProctorHints.textContent = "Mobile device usage is not permitted for proctored exams.";
+    setPrecheckInstruction(
+      "Desktop/laptop is required for proctored assessments.",
+      "",
+      "Mobile phones and tablets are blocked for strict proctoring.",
+    );
     if (el.apStartTestBtn) el.apStartTestBtn.disabled = true;
     return;
   }
@@ -7095,7 +7280,7 @@ async function runProctoringPrecheck() {
   p.challengePasses = 0;
   p.challengeFailures = 0;
   p.environmentAttested = Boolean(el.apEnvironmentAttest?.checked);
-  p.precheckReady = true;
+  p.precheckReady = false;
   p.calibrated = false;
   p.audioBaselineRms = 0.03;
   p.baselineEvidenceReady = false;
@@ -7108,9 +7293,160 @@ async function runProctoringPrecheck() {
   updateProctorBadge();
   clearAttentionChallengeOverlay();
   if (el.apProctorVideo) el.apProctorVideo.srcObject = null;
-  if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Pre-check complete. Camera and microphone will turn on only when you click Start Assessment.";
-  if (el.apProctorHints) el.apProctorHints.textContent = "When the assessment starts, keep face visible, stay in frame, and avoid other voices.";
-  updateAssessmentStartEligibility();
+  if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Starting strict pre-check...";
+  if (el.apProctorHints) el.apProctorHints.textContent = "Keep face centered, follow the instruction panel, and complete all checks.";
+  setPrecheckInstruction(
+    "Allow camera and microphone access to begin checks.",
+    "cameraReady",
+    "Video check will validate face clarity, lighting, and single-candidate presence.",
+  );
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { min: 960, ideal: 1280, max: 1920 },
+        height: { min: 540, ideal: 720, max: 1080 },
+        frameRate: { min: 24, ideal: 30, max: 30 },
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    p.stream = stream;
+    if (el.apProctorVideo) {
+      el.apProctorVideo.srcObject = stream;
+      el.apProctorVideo.style.transform = "scaleX(1)";
+      el.apProctorVideo.style.webkitTransform = "scaleX(1)";
+      await el.apProctorVideo.play().catch(() => {});
+    }
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      p.audioContext = audioContext;
+      p.analyser = analyser;
+    } catch {}
+    try {
+      p.faceModel = await ensureFaceLandmarker();
+      p.faceModelError = "";
+    } catch {
+      p.faceModel = null;
+      p.faceModelError = "Face model unavailable";
+    }
+    await new Promise((r) => setTimeout(r, 750));
+    setPrecheckInstruction(
+      "Step 1/6: Stay centered while camera quality is checked.",
+      "cameraReady",
+      "Instruction: Keep shoulders visible, face in center, and no one else in frame.",
+    );
+    const qualitySamples = await collectLivePrecheckQualitySamples(1700);
+    const quality = summarizeLivePrecheckQuality(qualitySamples);
+    renderLivePrecheckQualitySummary(quality);
+    if (!quality.checks.lightingOk || !quality.checks.faceVisibleOk || !quality.checks.faceSizeOk) {
+      throw new Error(getLivePrecheckFailureMessage(quality) || "Camera clarity check failed.");
+    }
+    p.precheckChecks.cameraReady = true;
+    renderPrecheckChecklist("audioReady");
+
+    setPrecheckInstruction(
+      "Step 2/6: Stay quiet for a moment while baseline audio is measured.",
+      "audioReady",
+      "Instruction: Keep silent and avoid background speech/noise during this baseline scan.",
+    );
+    const baselineRmsSamples = [];
+    const baselineAudioStarted = Date.now();
+    while (Date.now() - baselineAudioStarted < 1200) {
+      baselineRmsSamples.push(detectAudioRms());
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    if (baselineRmsSamples.length) {
+      p.audioBaselineRms = baselineRmsSamples.reduce((a, b) => a + b, 0) / baselineRmsSamples.length;
+    }
+    if (!quality.checks.audioSignalOk || !quality.checks.audioNoiseOk) {
+      throw new Error("Microphone clarity check failed. Check microphone permission and background noise.");
+    }
+    p.precheckChecks.audioReady = true;
+    renderPrecheckChecklist("speakPromptDone");
+
+    const calibrated = await runFaceCalibration();
+    if (!calibrated) throw new Error("Face calibration failed. Keep one face centered and retry.");
+
+    setPrecheckInstruction(
+      "Step 3/6: Read clearly for 3 seconds: \"I am ready for this proctored assessment.\"",
+      "speakPromptDone",
+      "Voice check instruction: Read in normal volume while looking at the camera.",
+      "I am ready for this proctored assessment.",
+    );
+    const speechOk = await runGuidedSpeechCheck();
+    if (!speechOk) throw new Error("Speech verification failed. Speak clearly and retry.");
+    p.precheckChecks.speakPromptDone = true;
+    renderPrecheckChecklist("lookLeftDone");
+
+    setPrecheckInstruction(
+      "Step 4/6: Turn your head LEFT and come back to center.",
+      "lookLeftDone",
+      "Direction check: turn clearly to the left, then return to center.",
+    );
+    let leftSign = -1;
+    let leftOk = await waitForPrecheckHeadTurn(leftSign);
+    if (!leftOk) {
+      leftSign = 1;
+      leftOk = await waitForPrecheckHeadTurn(leftSign, 3200);
+    }
+    if (!leftOk) throw new Error("Left head-turn check failed. Turn your head clearly and retry.");
+    p.precheckChecks.lookLeftDone = true;
+    renderPrecheckChecklist("lookRightDone");
+
+    setPrecheckInstruction(
+      "Step 5/6: Turn your head RIGHT and return to center.",
+      "lookRightDone",
+      "Direction check: turn clearly to the right, then return to center.",
+    );
+    const rightOk = await waitForPrecheckHeadTurn(leftSign * -1);
+    if (!rightOk) throw new Error("Right head-turn check failed. Turn your head clearly and retry.");
+    p.precheckChecks.lookRightDone = true;
+    renderPrecheckChecklist("holdStillDone");
+
+    setPrecheckInstruction(
+      "Step 6/6: Hold still and look at screen for 3 seconds.",
+      "holdStillDone",
+      "Stability check: keep eyes on screen and avoid head movement for 3 seconds.",
+    );
+    const stillOk = await runHoldStillCheck();
+    if (!stillOk) throw new Error("Hold-still check failed. Keep your head steady and retry.");
+    p.precheckChecks.holdStillDone = true;
+    p.precheckReady = isPrecheckFullyComplete(p);
+    renderPrecheckChecklist("");
+    if (el.apPrecheckStatus) {
+      el.apPrecheckStatus.textContent = "Pre-check complete. Confirm environment declaration to unlock Start Assessment.";
+    }
+    if (el.apProctorHints) {
+      el.apProctorHints.textContent = "All strict checks passed. Keep the same posture and environment during the assessment.";
+    }
+    setPrecheckInstruction(
+      "All required checks are complete. Confirm environment declaration, then start assessment.",
+      "",
+      "Start is enabled only after mandatory checks and local-only environment confirmation.",
+    );
+  } catch (err) {
+    p.precheckReady = false;
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = err?.message || "Pre-check failed. Retry required.";
+    if (el.apProctorHints) el.apProctorHints.textContent = "Follow the guided checks exactly. Start stays locked until all checks pass.";
+    setPrecheckInstruction(
+      "Pre-check failed. Click Re-run checks and complete every step.",
+      "",
+      "Follow each instruction exactly. Assessment start remains blocked until successful completion.",
+    );
+    throw err;
+  } finally {
+    p.precheckInProgress = false;
+    shutdownProctoringMedia();
+    updateAssessmentStartEligibility();
+  }
 }
 
 async function initializeProctoringForAssessmentStart() {
@@ -7123,9 +7459,9 @@ async function initializeProctoringForAssessmentStart() {
   p.stream = stream;
   if (el.apProctorVideo) {
     el.apProctorVideo.srcObject = stream;
-    // Keep proctor preview non-mirrored for a natural exam camera framing.
-    el.apProctorVideo.style.transform = "scaleX(-1)";
-    el.apProctorVideo.style.webkitTransform = "scaleX(-1)";
+    // Keep proctor preview non-mirrored to match natural camera orientation.
+    el.apProctorVideo.style.transform = "scaleX(1)";
+    el.apProctorVideo.style.webkitTransform = "scaleX(1)";
     await el.apProctorVideo.play().catch(() => {});
   }
   try {

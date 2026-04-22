@@ -1,7 +1,7 @@
 from sqlalchemy import text
 
 from app.db.session import SessionLocal, engine
-from app.models.entities import Base
+from app.models.entities import Base, ProctorDatasetSource
 from app.services.account_rules import sync_existing_accounts
 
 
@@ -321,6 +321,19 @@ def init_db() -> None:
     # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()
     try:
+        default_source = db.query(ProctorDatasetSource).filter(ProctorDatasetSource.name == "oep_video_features").first()
+        if not default_source:
+            db.add(
+                ProctorDatasetSource(
+                    name="oep_video_features",
+                    source_type="local_csv",
+                    source_path="data/proctoring/processed/video_features_labeled.csv",
+                    is_enabled=True,
+                    notes="Baseline labeled dataset reference used for proctor model benchmarking.",
+                    created_by_user_id=None,
+                ),
+            )
+            db.commit()
         sync_existing_accounts(
             db,
             apply_legacy_student_approval_rollback=False,

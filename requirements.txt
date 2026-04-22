@@ -11,3 +11,5 @@ email-validator
 firebase-admin
 reportlab
 boto3
+numpy
+joblib

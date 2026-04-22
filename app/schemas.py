@@ -391,6 +391,29 @@ class ProctorTrainingFeedbackCreate(BaseModel):
     comment: str | None = None
 
 
+class ProctorDatasetSourceCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    source_type: str = "local_csv"  # local_csv | local_dir | s3_prefix
+    source_path: str = Field(min_length=1, max_length=1000)
+    is_enabled: bool = True
+    notes: str | None = None
+
+
+class ProctorDatasetSourceUpdate(BaseModel):
+    source_type: str | None = None
+    source_path: str | None = None
+    is_enabled: bool | None = None
+    notes: str | None = None
+
+
+class ProctorModelTrainRequest(BaseModel):
+    minimum_samples: int = Field(default=30, ge=10, le=50000)
+    validation_split: float = Field(default=0.2, ge=0.1, le=0.5)
+    target_recall: float = Field(default=0.92, ge=0.5, le=0.99)
+    max_false_positive_rate: float = Field(default=0.30, ge=0.05, le=0.8)
+    strict_mode: bool = True
+
+
 class CourseCommentCreate(BaseModel):
     message: str
 
