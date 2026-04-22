@@ -2205,6 +2205,8 @@ body {
     radial-gradient(circle at 8% 12%, rgba(10, 74, 163, 0.15), transparent 45%),
     radial-gradient(circle at 94% 4%, rgba(10, 127, 136, 0.13), transparent 44%),
     linear-gradient(180deg, #f8fbff 0%, #eef4ff 52%, #e9f1ff 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 body::before,
 body::after {
@@ -2223,15 +2225,13 @@ body::before {
   background: rgba(37, 99, 235, 0.14);
 }
 body::after {
-  width: 300px;
-  height: 300px;
-  right: -90px;
-  bottom: 60px;
-  background: rgba(15, 118, 110, 0.12);
+  display: none;
 }
 
 main {
   max-width: 1400px;
+  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
 .panel {
@@ -2344,11 +2344,11 @@ input:focus, select:focus, textarea:focus {
 #providerView .sidebar {
   top: 8px;
   margin-top: 0;
-  padding: 4px 12px 10px;
+  padding: 4px 12px 14px;
   border: 1px solid #d7e3f3;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
-  max-height: calc(100dvh - 20px);
+  max-height: calc(100dvh - 8px);
   overflow: auto;
   scrollbar-gutter: stable;
 }
@@ -2377,7 +2377,7 @@ input:focus, select:focus, textarea:focus {
   transform: translateY(-44px);
 }
 #providerView .sidebar h3 {
-  margin: 0;
+  margin: 0 0 10px;
   color: #0f172a;
   position: static;
   z-index: auto;
