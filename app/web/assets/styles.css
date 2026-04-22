@@ -2353,26 +2353,26 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .provider-sidebar-brand {
   display: grid;
-  gap: 6px;
-  margin: 0 0 6px;
+  gap: 0;
+  margin: 0 0 2px;
 }
 #providerView .provider-sidebar-logo-wrap {
   width: 100%;
-  min-height: 96px;
+  min-height: 138px;
   display: flex;
   align-items: flex-start;
 }
 #providerView .provider-sidebar-logo {
-  width: min(236px, 100%);
+  width: min(286px, 100%);
   height: auto;
-  max-height: 124px;
+  max-height: 172px;
   object-fit: contain;
   object-position: left top;
   display: block;
   margin: 0;
 }
 #providerView .sidebar h3 {
-  margin: 0 0 6px;
+  margin: 0 0 2px;
   color: #0f172a;
 }
 #providerView .nav-btn {
@@ -2569,7 +2569,7 @@ input:focus, select:focus, textarea:focus {
   }
   #providerView .provider-sidebar-logo-wrap {
     width: min(210px, 100%);
-    min-height: 84px;
+    min-height: 112px;
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
