@@ -7841,12 +7841,6 @@ function renderProviderAssessmentsList() {
        <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
 }
-
-async function refreshProviderAssessments() {
-  const list = await api("GET", "/provider/workspace/assessments");
-  state.providerAssessments = Array.isArray(list) ? list : [];
-  renderProviderAssessmentsList();
-}
       </div>
     `,
     "No assessments yet.",
@@ -8003,6 +7997,12 @@ function renderProviderFeedbackDetail() {
       }
     });
   });
+}
+
+async function refreshProviderAssessments() {
+  const list = await api("GET", "/provider/workspace/assessments");
+  state.providerAssessments = Array.isArray(list) ? list : [];
+  renderProviderAssessmentsList();
 }
 
 function renderProviderComplaintsDetail() {
