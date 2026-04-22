@@ -7895,13 +7895,23 @@ function renderProviderAssessmentsList() {
 }
 
 function setProviderFeedbackTab(tab) {
-  state.providerFeedbackTab = tab === "complaints" ? "complaints" : "feedback";
+  const nextTab = tab === "complaints" ? "complaints" : "feedback";
+  const prevTab = state.providerFeedbackTab;
+  state.providerFeedbackTab = nextTab;
   document.querySelectorAll("[data-provider-fc-tab]").forEach((btn) => {
     btn.classList.toggle("active", btn.getAttribute("data-provider-fc-tab") === state.providerFeedbackTab);
   });
   el.providerFeedbackTiles?.classList.toggle("hidden", state.providerFeedbackTab !== "feedback");
   el.providerComplaintTiles?.classList.toggle("hidden", state.providerFeedbackTab !== "complaints");
-  if (!state.providerFeedbackDetailMode) {
+  if (prevTab !== nextTab) {
+    state.providerFeedbackDetailMode = "";
+    state.providerComplaintsDetailStatus = "";
+    el.providerFeedbackHub?.classList.remove("hidden");
+    el.providerFeedbackDetailPage?.classList.add("hidden");
+    el.providerComplaintsDetailPage?.classList.add("hidden");
+    return;
+  }
+  if (!state.providerFeedbackDetailMode && !state.providerComplaintsDetailStatus) {
     el.providerFeedbackHub?.classList.remove("hidden");
     el.providerFeedbackDetailPage?.classList.add("hidden");
     el.providerComplaintsDetailPage?.classList.add("hidden");
