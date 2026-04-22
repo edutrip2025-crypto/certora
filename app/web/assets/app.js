@@ -16,6 +16,9 @@ import {
   updatePassword,
   updateProfile,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { createAssessmentPrecheckUi } from "./modules/assessment/precheck_ui.js";
+import { createUiFeedback } from "./modules/core/ui_feedback.js";
+import { createApiClient } from "./modules/core/api_client.js";
 
 const state = {
   auth: null,
@@ -1384,77 +1387,31 @@ const el = {
   toastStack: $("toastStack"),
 };
 
+const assessmentPrecheckUi = createAssessmentPrecheckUi({
+  state,
+  el,
+  labels: PROCTOR_PRECHECK_TASK_LABELS,
+  createDefaultPrecheckChecklist,
+});
+
+const renderPrecheckChecklist = (...args) => assessmentPrecheckUi.renderPrecheckChecklist(...args);
+const setPrecheckInstruction = (...args) => assessmentPrecheckUi.setPrecheckInstruction(...args);
+const showPrecheckChecksPage = (...args) => assessmentPrecheckUi.showPrecheckChecksPage(...args);
+const showPrecheckRulesPage = (...args) => assessmentPrecheckUi.showPrecheckRulesPage(...args);
+const runRulesReadAloudVerification = (...args) => assessmentPrecheckUi.runRulesReadAloudVerification(...args);
+const updateAssessmentStartEligibility = (...args) => assessmentPrecheckUi.updateAssessmentStartEligibility(...args);
+
+const uiFeedback = createUiFeedback({ state, el });
+const toast = (...args) => uiFeedback.toast(...args);
+const showAuthProgress = (...args) => uiFeedback.showAuthProgress(...args);
+const hideAuthProgress = (...args) => uiFeedback.hideAuthProgress(...args);
+
+const apiClient = createApiClient({ state });
+const getHeaders = (...args) => apiClient.getHeaders(...args);
+const api = (...args) => apiClient.api(...args);
+
 function log(label, payload) {
   console.log(`[${label}]`, payload);
-}
-
-function toast(message, type = "ok") {
-  if (!el.toastStack) return;
-  const node = document.createElement("div");
-  node.className = `toast ${type === "error" ? "error" : ""}`;
-  node.textContent = message;
-  el.toastStack.appendChild(node);
-  setTimeout(() => node.remove(), 2600);
-}
-
-function showAuthProgress(title = "Signing you in", detail = "Please wait while we load your workspace.") {
-  if (el.authProgressTitle) el.authProgressTitle.textContent = title;
-  if (el.authProgressDetail) el.authProgressDetail.textContent = detail;
-  if (state.authProgressTimer) {
-    clearTimeout(state.authProgressTimer);
-    state.authProgressTimer = null;
-  }
-  state.authProgressVisible = true;
-  el.authProgressOverlay?.classList.remove("hidden");
-}
-
-function hideAuthProgress() {
-  if (state.authProgressTimer) {
-    clearTimeout(state.authProgressTimer);
-    state.authProgressTimer = null;
-  }
-  state.authProgressVisible = false;
-  el.authProgressOverlay?.classList.add("hidden");
-}
-
-async function getHeaders(authRequired = true) {
-  const headers = { "Content-Type": "application/json" };
-  if (!authRequired) return headers;
-  if (!state.auth?.currentUser) throw new Error("Please login first.");
-  headers.Authorization = `Bearer ${await state.auth.currentUser.getIdToken()}`;
-  return headers;
-}
-
-async function api(method, path, body, authRequired = true) {
-  const request = async (forceRefreshToken = false) => fetch(path, {
-    method,
-    cache: "no-store",
-    headers: authRequired
-      ? {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${await state.auth.currentUser.getIdToken(forceRefreshToken)}`,
-      }
-      : await getHeaders(false),
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  let res = await request(false);
-  if (authRequired && res.status === 401 && state.auth?.currentUser) {
-    // Retry once with forced token refresh to handle transient auth races.
-    res = await request(true);
-  }
-  const raw = await res.text();
-  let data = null;
-  if (raw) {
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      data = { text: raw };
-    }
-  } else {
-    data = {};
-  }
-  if (!res.ok) throw new Error(JSON.stringify({ status: res.status, data }, null, 2));
-  return data;
 }
 
 function showView(mode) {
@@ -6293,54 +6250,6 @@ function clearAssessmentPreviewTimer() {
   }
 }
 
-function renderPrecheckChecklist(activeKey = "") {
-  if (!el.apPrecheckChecklist) return;
-  const checks = state.assessmentPreview.proctor.precheckChecks || createDefaultPrecheckChecklist();
-  const ordered = Object.entries(PROCTOR_PRECHECK_TASK_LABELS);
-  const activeIndex = activeKey
-    ? ordered.findIndex(([key]) => key === activeKey)
-    : ordered.findIndex(([key]) => !checks[key]);
-  const renderLimit = activeIndex >= 0 ? activeIndex : (state.assessmentPreview.proctor.precheckReady ? ordered.length - 1 : 0);
-  const rows = ordered
-    .filter((_, idx) => idx <= renderLimit)
-    .map(([key, label]) => {
-    const done = Boolean(checks[key]);
-    const active = !done && key === activeKey;
-    return `
-      <div class="ap-precheck-checklist-row${done ? " done" : ""}${active ? " active" : ""}">
-        <span class="ap-precheck-checklist-dot"></span>
-        <span>${done ? "Done" : active ? "In progress" : "Pending"}: ${label}</span>
-      </div>
-    `;
-    });
-  if (state.assessmentPreview.proctor.precheckReady) {
-    rows.push(`
-      <div class="ap-precheck-checklist-row done">
-        <span class="ap-precheck-checklist-dot"></span>
-        <span>Done: All mandatory precheck stages completed.</span>
-      </div>
-    `);
-  }
-  el.apPrecheckChecklist.innerHTML = rows.join("");
-  el.apPrecheckChecklist.scrollTop = el.apPrecheckChecklist.scrollHeight;
-}
-
-function setPrecheckInstruction(text, activeKey = "", detailText = "", voiceScript = "") {
-  if (el.apPrecheckInstruction) el.apPrecheckInstruction.textContent = text;
-  if (el.apPrecheckInstructionDetail) {
-    el.apPrecheckInstructionDetail.textContent = detailText || "Keep your face centered, eyes on question area, and stay silent unless prompted.";
-  }
-  if (el.apPrecheckVoiceScript) {
-    if (voiceScript) {
-      el.apPrecheckVoiceScript.textContent = `Read exactly: "${voiceScript}"`;
-      el.apPrecheckVoiceScript.classList.remove("hidden");
-    } else {
-      el.apPrecheckVoiceScript.classList.add("hidden");
-    }
-  }
-  renderPrecheckChecklist(activeKey);
-}
-
 function isPrecheckFullyComplete(p) {
   const checks = p.precheckChecks || {};
   return [
@@ -6440,76 +6349,6 @@ async function runHoldStillCheck() {
     await new Promise((r) => setTimeout(r, 120));
   }
   return stableFrames >= 12;
-}
-
-function showPrecheckChecksPage() {
-  el.apPrecheckChecksPage?.classList.remove("hidden");
-  el.apPrecheckRulesPage?.classList.add("hidden");
-}
-
-function showPrecheckRulesPage() {
-  el.apPrecheckChecksPage?.classList.add("hidden");
-  el.apPrecheckRulesPage?.classList.remove("hidden");
-}
-
-async function runRulesReadAloudVerification() {
-  const p = state.assessmentPreview.proctor;
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  let audioContext = null;
-  let analyser = null;
-  try {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioContext.createMediaStreamSource(stream);
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024;
-    source.connect(analyser);
-    const arr = new Uint8Array(analyser.fftSize);
-    const start = Date.now();
-    let activeFrames = 0;
-    while (Date.now() - start < 4800) {
-      analyser.getByteTimeDomainData(arr);
-      let sum = 0;
-      for (let i = 0; i < arr.length; i += 1) {
-        const d = (arr[i] - 128) / 128;
-        sum += d * d;
-      }
-      const rms = Math.sqrt(sum / arr.length);
-      if (rms > Math.max(0.03, (p.audioBaselineRms || 0.03) * 1.35)) activeFrames += 1;
-      await new Promise((r) => setTimeout(r, 110));
-    }
-    return activeFrames >= 9;
-  } finally {
-    stream.getTracks().forEach((t) => t.stop());
-    if (audioContext) audioContext.close().catch(() => {});
-  }
-}
-
-function updateAssessmentStartEligibility() {
-  const p = state.assessmentPreview.proctor;
-  const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
-  const attested = Boolean(p.environmentAttested);
-  const readReady = Boolean(p.readAloudReady);
-  if (el.apPrecheckNextBtn) {
-    el.apPrecheckNextBtn.disabled = !precheckReady;
-  }
-  if (el.apStartTestBtn) {
-    el.apStartTestBtn.disabled = !(precheckReady && attested && readReady);
-  }
-  if (el.apEnvironmentStatus) {
-    if (p.precheckInProgress) {
-      el.apEnvironmentStatus.textContent = "Pre-check is in progress. Complete all checks to unlock Next.";
-    } else if (!precheckReady) {
-      el.apEnvironmentStatus.textContent = "Next is blocked until all mandatory proctor checks are completed.";
-    } else {
-      if (!attested) {
-        el.apEnvironmentStatus.textContent = "Assessment start remains blocked until you confirm the test machine is local-only.";
-      } else if (!readReady) {
-        el.apEnvironmentStatus.textContent = "Assessment start remains blocked until read-aloud verification is complete.";
-      } else {
-        el.apEnvironmentStatus.textContent = "All checks completed. You can start the assessment.";
-      }
-    }
-  }
 }
 
 function pauseAssessmentTimer() {
