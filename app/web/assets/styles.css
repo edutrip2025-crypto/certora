@@ -2347,6 +2347,9 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid #d7e3f3;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
+  max-height: calc(100dvh - 20px);
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 #providerView .provider-sidebar-brand {
   display: grid;
@@ -2366,6 +2369,8 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .nav-btn {
   color: #334155;
+  padding: 9px 10px;
+  margin-bottom: 3px;
 }
 #providerView .nav-btn:hover {
   background: #eef4ff;
@@ -2385,7 +2390,10 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .content {
   margin-top: 0;
-  background: #ffffff;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 .content {
@@ -2454,6 +2462,31 @@ input:focus, select:focus, textarea:focus {
 }
 .toast.error {
   border-left-color: #b91c1c;
+}
+
+/* Premium scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #7da6dd #e8f0fb;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #eef4ff 0%, #e2ecfa 100%);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7aa4de 0%, #4f7fc5 100%);
+  border-radius: 999px;
+  border: 2px solid #e8f0fb;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #628fd2 0%, #3f6eb6 100%);
+}
+*::-webkit-scrollbar-corner {
+  background: #e8f0fb;
 }
 
 @media (max-width: 1040px) {
