@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Certora API"
+    app_name: str = "Classagon API"
     app_base_url: str = "http://localhost:8000"
     database_url: str = "sqlite:///./certora.db"
     jwt_secret_key: str = "change_me"

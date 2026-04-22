@@ -147,6 +147,26 @@ The report includes:
 - risk-tag coverage (phone, reading aloud, look-away, etc.)
 - minimum-threshold gaps and recommendations
 
+## 9) Curated hard-negative ingestion (real sessions)
+
+Use admin API to ingest false-positive sessions (model marked suspicious, reviewer marked incorrect) into:
+
+- `data/proctoring/processed/hard_negatives.json`
+
+This dataset is consumed automatically during training with elevated weight so the model reduces false positives over time.
+
+Example:
+
+```http
+POST /proctoring/admin/hard-negatives/ingest
+{
+  "lookback_days": 45,
+  "limit": 1000,
+  "min_model_probability": 0.45,
+  "include_preview_sessions": false
+}
+```
+
 ## Outputs
 
 - Model: `data/proctoring/models/proctor_risk_baseline.joblib`

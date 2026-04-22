@@ -3616,7 +3616,7 @@ async function refreshStudentLiveClasses() {
       toast(msg);
       if ("Notification" in window) {
         if (Notification.permission === "granted") {
-          try { new Notification("Certora Class Reminder", { body: msg }); } catch {}
+          try { new Notification("Classagon Class Reminder", { body: msg }); } catch {}
         } else if (Notification.permission === "default") {
           Notification.requestPermission().catch(() => {});
         }

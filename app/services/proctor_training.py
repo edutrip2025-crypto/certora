@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import ProctorEvent, ProctorSession, ProctorTrainingFeedback
+from app.services.proctor_hard_negative import load_curated_hard_negative_records
 from app.services.proctoring_ai import evaluate_proctor_session
 
 try:
@@ -55,6 +56,8 @@ class TrainConfig:
     hard_negative_weight: float = 2.0
     hard_positive_weight: float = 1.6
     hard_example_min_prob: float = 0.55
+    curated_hard_negative_weight: float = 2.6
+    max_curated_hard_negatives: int = 800
 
 
 def _sigmoid(x):
@@ -293,6 +296,47 @@ def _collect_event_counts(db: Session, session_ids: list[int]) -> dict[int, dict
     return out
 
 
+def _append_curated_hard_negative_rows(
+    x_rows: list[list[float]],
+    y_rows: list[int],
+    sample_w: list[float],
+    weight: float,
+    max_rows: int,
+) -> int:
+    rows = load_curated_hard_negative_records(limit=max_rows)
+    if not rows:
+        return 0
+    added = 0
+    safe_w = float(max(1.0, min(12.0, weight)))
+    for row in rows:
+        counts_raw = row.get("event_counts") if isinstance(row, dict) else {}
+        counts = counts_raw if isinstance(counts_raw, dict) else {}
+        warning_count = float(row.get("warning_count") or 0.0)
+        risk_score = float(row.get("risk_score") or 0.0)
+        duration_seconds = float(row.get("duration_seconds") or 0.0)
+        duration_minutes = max(0.0, min(180.0, duration_seconds / 60.0))
+        high_risk_events = float(
+            sum(
+                int(counts.get(k, 0) or 0)
+                for k in ("mobile_phone_detected", "multiple_faces_detected", "face_identity_mismatch", "attention_challenge_failed")
+            ),
+        )
+        feature_row: list[float] = [
+            warning_count,
+            float(max(0.0, min(100.0, risk_score)) / 100.0),
+            duration_minutes,
+            high_risk_events,
+            _event_signal_score({str(k): int(v or 0) for k, v in counts.items()}),
+        ]
+        for event_type in FEATURE_EVENT_TYPES:
+            feature_row.append(float(int(counts.get(event_type, 0) or 0)))
+        x_rows.append(feature_row)
+        y_rows.append(0)
+        sample_w.append(safe_w)
+        added += 1
+    return added
+
+
 def _load_latest_feedback_per_session(db: Session) -> list[tuple[ProctorTrainingFeedback, ProctorSession]]:
     rows = db.execute(
         select(ProctorTrainingFeedback, ProctorSession)
@@ -385,6 +429,7 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
 
     rows = _load_latest_feedback_per_session(db)
     feedback_only_count = len(rows)
+    curated_hard_negative_count = 0
 
     session_ids = [int(sess.id) for _, sess in rows]
     event_counts_by_session = _collect_event_counts(db, session_ids)
@@ -412,6 +457,14 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             sample_w.append(0.35)
             if len(x_rows) >= config.minimum_samples:
                 break
+
+    curated_hard_negative_count = _append_curated_hard_negative_rows(
+        x_rows,
+        y_rows,
+        sample_w,
+        config.curated_hard_negative_weight,
+        config.max_curated_hard_negatives,
+    )
 
     if len(x_rows) < config.minimum_samples:
         raise RuntimeError(
@@ -454,6 +507,7 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "class_distribution": {"0": negatives, "1": positives},
             "feedback_only_samples": int(feedback_only_count),
             "pseudo_labeled_samples": int(max(0, len(X) - feedback_only_count)),
+            "curated_hard_negative_samples": int(curated_hard_negative_count),
             "thresholds": recal["thresholds"],
             "distribution": recal["distribution"],
         }
@@ -545,7 +599,8 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "samples": int(len(X)),
             "validation_samples": int(len(X_val)),
             "feedback_only_samples": int(feedback_only_count),
-            "pseudo_labeled_samples": int(max(0, len(X) - feedback_only_count)),
+            "pseudo_labeled_samples": int(max(0, len(X) - feedback_only_count - curated_hard_negative_count)),
+            "curated_hard_negative_samples": int(curated_hard_negative_count),
             "positives": positives,
             "negatives": negatives,
             "target_recall": float(config.target_recall),
@@ -554,6 +609,8 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "hard_negative_weight": float(config.hard_negative_weight),
             "hard_positive_weight": float(config.hard_positive_weight),
             "hard_example_min_prob": float(config.hard_example_min_prob),
+            "curated_hard_negative_weight": float(config.curated_hard_negative_weight),
+            "max_curated_hard_negatives": int(config.max_curated_hard_negatives),
             "hard_examples": {
                 "hard_negatives": int(hard_negatives),
                 "hard_positives": int(hard_positives),
@@ -591,7 +648,8 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
         "rows_test": int(len(X_val)),
         "class_distribution": {"0": negatives, "1": positives},
         "feedback_only_samples": int(feedback_only_count),
-        "pseudo_labeled_samples": int(max(0, len(X) - feedback_only_count)),
+        "pseudo_labeled_samples": int(max(0, len(X) - feedback_only_count - curated_hard_negative_count)),
+        "curated_hard_negative_samples": int(curated_hard_negative_count),
         "chosen_model": "logistic",
         "feature_space": "event_risk_v1",
         "metrics": {
@@ -605,6 +663,8 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "hard_negative_weight": float(config.hard_negative_weight),
             "hard_positive_weight": float(config.hard_positive_weight),
             "hard_example_min_prob": float(config.hard_example_min_prob),
+            "curated_hard_negative_weight": float(config.curated_hard_negative_weight),
+            "max_curated_hard_negatives": int(config.max_curated_hard_negatives),
             "hard_examples": {
                 "hard_negatives": int(hard_negatives),
                 "hard_positives": int(hard_positives),

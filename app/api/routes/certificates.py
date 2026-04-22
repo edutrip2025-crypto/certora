@@ -94,7 +94,7 @@ def verify_certificate(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Certificate Verification - Certora</title>
+  <title>Certificate Verification - Classagon</title>
   <style>
     :root {{ --bg:#f6f3ea; --card:#fffdf8; --ink:#0f172a; --muted:#475569; --line:#d6b35d; --accent:#8a6a1f; }}
     * {{ box-sizing: border-box; }}
@@ -112,9 +112,9 @@ def verify_certificate(
 <body>
   <div class="wrap">
     <div class="card">
-      <img class="logo" src="/assets/certora_logo.png" alt="Certora" />
+      <img class="logo" src="/assets/classagon_logo.png" alt="Classagon" />
       <h1>Certificate Verified</h1>
-      <div class="sub">This certificate is active and issued by Certora.</div>
+      <div class="sub">This certificate is active and issued by Classagon.</div>
       <div class="grid">
         <div><div class="k">Certificate ID</div><div class="v">{certificate_id}</div></div>
         <div><div class="k">Issued On</div><div class="v">{issued_at}</div></div>

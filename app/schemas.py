@@ -416,6 +416,15 @@ class ProctorModelTrainRequest(BaseModel):
     hard_negative_weight: float = Field(default=2.0, ge=1.0, le=6.0)
     hard_positive_weight: float = Field(default=1.6, ge=1.0, le=6.0)
     hard_example_min_prob: float = Field(default=0.55, ge=0.5, le=0.9)
+    curated_hard_negative_weight: float = Field(default=2.6, ge=1.0, le=10.0)
+    max_curated_hard_negatives: int = Field(default=800, ge=0, le=50000)
+
+
+class ProctorHardNegativeIngestRequest(BaseModel):
+    lookback_days: int = Field(default=45, ge=1, le=3650)
+    limit: int = Field(default=1000, ge=1, le=20000)
+    min_model_probability: float = Field(default=0.45, ge=0.0, le=1.0)
+    include_preview_sessions: bool = False
 
 
 class CourseCommentCreate(BaseModel):

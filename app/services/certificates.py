@@ -32,7 +32,11 @@ def _certificate_media_dir() -> Path:
 
 
 def _certificate_logo_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "web" / "assets" / "certora_logo.png"
+    assets_dir = Path(__file__).resolve().parent.parent / "web" / "assets"
+    primary = assets_dir / "classagon_logo.png"
+    if primary.exists():
+        return primary
+    return assets_dir / "certora_logo.png"
 
 
 def _certificate_pdf_relpath(certificate_id: str) -> str:
@@ -224,7 +228,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
 
     c.setFillColor(colors.HexColor("#334155"))
     c.setFont("Helvetica", 11.5)
-    c.drawCentredString(page_width / 2, page_height - 332, f"Issued by {provider.display_name} through Certora")
+    c.drawCentredString(page_width / 2, page_height - 332, f"Issued by {provider.display_name} through Classagon")
 
     # Pass/result block (aligned card)
     score_y = page_height - 380
@@ -278,7 +282,7 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
 
     # Signature (centered)
     sig_y = 92
-    sig_label = "Certora"
+    sig_label = "Classagon"
     sig_font_name = "Times-Italic"
     sig_font_size = 30
     sig_width = c.stringWidth(sig_label, sig_font_name, sig_font_size)

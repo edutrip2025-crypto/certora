@@ -27,10 +27,15 @@ from app.schemas import (
     ProctorDatasetSourceUpdate,
     ProctorEventCreate,
     ProctorFinalizeRequest,
+    ProctorHardNegativeIngestRequest,
     ProctorModelTrainRequest,
     ProctorReviewRequest,
     ProctorSessionStartRequest,
     ProctorTrainingFeedbackCreate,
+)
+from app.services.proctor_hard_negative import (
+    ingest_hard_negative_sessions_from_feedback,
+    summarize_curated_hard_negatives,
 )
 from app.services.proctor_training import TrainConfig, train_proctor_model_from_feedback
 from app.services.proctoring_ai import evaluate_proctor_session, get_proctor_model_status, reset_proctor_model_cache
@@ -279,6 +284,8 @@ def admin_train_proctor_model(
             "hard_negative_weight": payload.hard_negative_weight,
             "hard_positive_weight": payload.hard_positive_weight,
             "hard_example_min_prob": payload.hard_example_min_prob,
+            "curated_hard_negative_weight": payload.curated_hard_negative_weight,
+            "max_curated_hard_negatives": payload.max_curated_hard_negatives,
         },
     )
     db.add(run)
@@ -297,6 +304,8 @@ def admin_train_proctor_model(
                 hard_negative_weight=payload.hard_negative_weight,
                 hard_positive_weight=payload.hard_positive_weight,
                 hard_example_min_prob=payload.hard_example_min_prob,
+                curated_hard_negative_weight=payload.curated_hard_negative_weight,
+                max_curated_hard_negatives=payload.max_curated_hard_negatives,
             ),
         )
         run.status = "completed"
@@ -323,6 +332,29 @@ def admin_train_proctor_model(
         run.error_message = str(exc)
         db.commit()
         raise HTTPException(status_code=400, detail=f"Model training failed: {exc}") from exc
+
+
+@router.get("/admin/hard-negatives/summary")
+def admin_hard_negative_summary(
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    return summarize_curated_hard_negatives()
+
+
+@router.post("/admin/hard-negatives/ingest")
+def admin_ingest_hard_negatives(
+    payload: ProctorHardNegativeIngestRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    out = ingest_hard_negative_sessions_from_feedback(
+        db,
+        lookback_days=payload.lookback_days,
+        limit=payload.limit,
+        min_model_probability=payload.min_model_probability,
+        include_preview_sessions=payload.include_preview_sessions,
+    )
+    return out
 
 
 @router.post("/admin/model/reload")
