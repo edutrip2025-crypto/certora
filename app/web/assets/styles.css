@@ -2339,10 +2339,11 @@ input:focus, select:focus, textarea:focus {
 
 #providerView {
   align-items: start;
+  gap: 0;
 }
 #providerView .sidebar {
-  top: 8px;
-  margin-top: 0;
+  top: 16px;
+  margin-top: 8px;
   padding: 4px 12px 10px;
   border: 1px solid #d7e3f3;
   background: #ffffff;
@@ -2382,6 +2383,7 @@ input:focus, select:focus, textarea:focus {
   z-index: auto;
 }
 #providerView .nav-btn {
+  width: 100%;
   color: #334155;
   padding: 10px 10px;
   margin-bottom: 7px;
@@ -2404,6 +2406,14 @@ input:focus, select:focus, textarea:focus {
   border-color: #cbd5e1;
   background: #f8fafc;
   color: #0f172a;
+}
+#providerView .settings-menu {
+  left: 0;
+  right: 0;
+  bottom: 52px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 #providerView .content {
   margin-top: 40px;
