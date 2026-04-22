@@ -2354,33 +2354,32 @@ input:focus, select:focus, textarea:focus {
 #providerView .provider-sidebar-brand {
   display: grid;
   gap: 0;
-  margin: 0 0 2px;
-  position: relative;
+  margin: 0;
+  position: static;
 }
 #providerView .provider-sidebar-logo-wrap {
   width: 100%;
   min-height: 0;
-  height: 0;
+  height: auto;
   display: block;
-  overflow: visible;
-  pointer-events: none;
+  overflow: hidden;
+  pointer-events: auto;
 }
 #providerView .provider-sidebar-logo {
-  width: min(360px, 145%);
+  width: 100%;
   height: auto;
-  max-height: none;
+  max-height: 170px;
   object-fit: contain;
   object-position: left top;
   display: block;
-  margin: -8px 0 0;
-  transform: scale(1.25);
-  transform-origin: left top;
+  margin: 0;
+  transform: none;
 }
 #providerView .sidebar h3 {
-  margin: 0 0 2px;
+  margin: 0;
   color: #0f172a;
-  position: relative;
-  z-index: 2;
+  position: static;
+  z-index: auto;
 }
 #providerView .nav-btn {
   color: #334155;
@@ -2388,7 +2387,7 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 3px;
 }
 #providerView .provider-nav-btn[data-provider-view="home"] {
-  margin-top: 14px;
+  margin-top: 0;
 }
 #providerView .nav-btn:hover {
   background: #eef4ff;
@@ -2572,12 +2571,12 @@ input:focus, select:focus, textarea:focus {
     border-radius: 16px;
   }
   #providerView .provider-sidebar-logo {
-    width: min(320px, 140%);
-    transform: scale(1.15);
+    width: 100%;
+    max-height: 138px;
   }
   #providerView .provider-sidebar-logo-wrap {
     width: 100%;
-    min-height: 0;
+    min-height: auto;
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
