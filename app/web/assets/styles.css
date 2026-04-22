@@ -2358,14 +2358,14 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .provider-sidebar-logo-wrap {
   width: 100%;
-  min-height: 74px;
+  min-height: 96px;
   display: flex;
   align-items: flex-start;
 }
 #providerView .provider-sidebar-logo {
-  width: min(220px, 100%);
+  width: min(236px, 100%);
   height: auto;
-  max-height: 96px;
+  max-height: 124px;
   object-fit: contain;
   object-position: left top;
   display: block;
@@ -2405,6 +2405,56 @@ input:focus, select:focus, textarea:focus {
   border: none;
   box-shadow: none;
   padding: 0;
+}
+
+.settings-menu {
+  min-width: 250px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #cfdcf0;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+  gap: 10px;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: .92rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.settings-session {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+.settings-session .badge {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-actions {
+  display: grid;
+  gap: 7px;
+}
+.settings-actions .btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  font-size: .82rem;
+}
+.settings-actions .btn.ghost {
+  border-color: #f3c2c2;
+  color: #9f1239;
+  background: linear-gradient(180deg, #fff7f7 0%, #ffeaea 100%);
 }
 
 .content {
@@ -2518,7 +2568,8 @@ input:focus, select:focus, textarea:focus {
     width: 100%;
   }
   #providerView .provider-sidebar-logo-wrap {
-    width: min(180px, 100%);
+    width: min(210px, 100%);
+    min-height: 84px;
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .stats.small { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
