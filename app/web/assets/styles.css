@@ -2348,6 +2348,7 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid #d7e3f3;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
+  min-height: calc(100dvh - 10px);
   max-height: calc(100dvh - 8px);
   overflow: auto;
   scrollbar-gutter: stable;
@@ -2400,7 +2401,12 @@ input:focus, select:focus, textarea:focus {
   color: #0f172a;
 }
 #providerView .sidebar-tools {
+  margin-top: auto;
+  padding-top: 12px;
   border-top-color: #e2e8f0;
+  background: #ffffff;
+  position: sticky;
+  bottom: 0;
 }
 #providerView .settings-toggle {
   border-color: #cbd5e1;
