@@ -492,20 +492,22 @@
 
       <section id="apPrecheckPanel" class="item">
         <div id="apPrecheckChecksPage">
-          <div id="apPrecheckInstruction" class="ap-precheck-instruction" aria-live="polite">
-            Follow the guided checks. Continue to the next page only after all checks are complete.
-          </div>
-          <div id="apPrecheckInstructionDetail" class="ap-precheck-instruction-detail" aria-live="polite">
-            Keep your face centered, eyes on question area, and stay silent unless prompted.
-          </div>
-          <div id="apPrecheckVoiceScript" class="ap-precheck-voice-script hidden" aria-live="polite">
-            Read exactly: "I am ready for this proctored assessment."
-          </div>
           <div id="apPrecheckChecklist" class="ap-precheck-checklist" aria-live="polite"></div>
           <div id="apPrecheckStatus" class="meta" style="margin-top:6px;">Requesting camera/microphone permission...</div>
-          <div class="row wrap gap-sm" style="margin-top:10px;">
+          <div class="row wrap gap-sm ap-precheck-layout" style="margin-top:10px;">
             <video id="apProctorVideo" autoplay muted playsinline style="width:260px;max-width:100%;border-radius:12px;border:1px solid #dbe4f0;background:#0b1220;"></video>
-            <div id="apProctorHints" class="meta" style="min-width:260px;">Keep face visible, adequate lighting, and quiet environment.</div>
+            <div class="ap-precheck-side">
+              <div id="apPrecheckInstruction" class="ap-precheck-instruction" aria-live="polite">
+                Follow the guided checks. Continue to the next page only after all checks are complete.
+              </div>
+              <div id="apPrecheckInstructionDetail" class="ap-precheck-instruction-detail" aria-live="polite">
+                Keep your face centered, eyes on question area, and stay silent unless prompted.
+              </div>
+              <div id="apPrecheckVoiceScript" class="ap-precheck-voice-script hidden" aria-live="polite">
+                Read exactly: "I am ready for this proctored assessment."
+              </div>
+              <div id="apProctorHints" class="meta" style="min-width:260px;">Keep face visible, adequate lighting, and quiet environment.</div>
+            </div>
           </div>
           <div class="row wrap gap-sm" style="margin-top:12px;">
             <button id="apRerunChecksBtn" class="btn small">Re-run checks</button>

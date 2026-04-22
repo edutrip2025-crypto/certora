@@ -6797,7 +6797,7 @@ async function runProctoringPrecheck() {
       "Stability check: keep eyes on screen and avoid head movement for 3 seconds.",
     );
     const stillOk = await runHoldStillCheck();
-    if (!stillOk) throw new Error("Hold-still check failed. Keep your head steady and retry.");
+    if (!stillOk) throw new Error("Final stability check failed. Please re-run checks.");
     p.precheckChecks.holdStillDone = true;
     p.precheckReady = isPrecheckFullyComplete(p);
     p.precheckUnlockAtMs = Date.now() + 850;
