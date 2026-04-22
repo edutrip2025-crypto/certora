@@ -1034,6 +1034,33 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   position: relative;
   align-items: center;
 }
+#provider-view-courses .course-grid-controls .search {
+  width: min(460px, 48vw);
+  min-width: 220px;
+}
+.provider-course-actions {
+  position: relative;
+}
+.toolbar-icon-btn {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+}
+.toolbar-icon-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+.toolbar-icon-btn.is-spinning svg {
+  animation: toolbar-refresh-spin .8s linear infinite;
+}
+@keyframes toolbar-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .icon-filter-btn {
   width: 34px;
   min-height: 34px;
@@ -1106,6 +1133,18 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border: 1px solid #dbe4f0;
   background: #eef2ff;
   overflow: hidden;
+}
+.course-difficulty-meter {
+  margin-top: 4px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #dbe4f0;
+  background: #eef2ff;
+  overflow: hidden;
+}
+.course-difficulty-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e 0%, #eab308 55%, #ef4444 100%);
 }
 .course-tile-progress-bar {
   height: 100%;

@@ -58,7 +58,13 @@
     const q = String(searchRaw || "").trim().toLowerCase();
     let out = Array.isArray(items) ? [...items] : [];
     if (q) {
-      out = out.filter((c) => String(c?.title || "").toLowerCase().includes(q));
+      out = out.filter((c) => {
+        const hay = [
+          c?.title || "",
+          c?.provider_name || "",
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      });
     }
     const key = String(sortKey || "latest").toLowerCase();
     out.sort((a, b) => {
@@ -76,6 +82,23 @@
       return safeCourseTime(b?.created_at) - safeCourseTime(a?.created_at);
     });
     return out;
+  }
+
+  function providerCourseStatusLabel(course) {
+    const raw = String(course?.status || "").trim().toLowerCase();
+    if (raw === "draft" || course?.is_draft || course?.draft_id) return "Draft";
+    if (course?.is_published) return "Active";
+    return "Inactive";
+  }
+
+  function providerCourseDifficultyPct(course) {
+    const explicit = Number(course?.difficulty_pct ?? course?.difficulty_percent ?? course?.difficulty_score);
+    if (Number.isFinite(explicit)) return Math.max(0, Math.min(100, explicit));
+    const level = String(course?.level || "").toLowerCase();
+    if (level.includes("begin")) return 35;
+    if (level.includes("inter")) return 65;
+    if (level.includes("adv")) return 88;
+    return 55;
   }
 
   function toggleFilterPopover(menu, trigger, show) {
@@ -188,13 +211,23 @@
           ? formatSecondsToClock(state.videoDurationByUrl[firstLesson.recorded_video_url])
           : "Loading...")
         : "-";
+      const statusLabel = providerCourseStatusLabel(c);
+      const postedDate = safeCourseTime(c.created_at) ? new Date(c.created_at).toLocaleDateString() : "-";
+      const difficultyPct = providerCourseDifficultyPct(c);
       return `
         <article class="course-tile">
           ${thumb ? `<img src="${escapeHtmlAttr(thumb)}" alt="" class="course-tile-thumb" />` : `<div class="course-tile-thumb"></div>`}
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">Provider: You</div>
-            <div class="course-tile-meta">Status: ${c.is_published ? "Active" : "Inactive"} | Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
+            <div class="course-tile-meta">Status: ${statusLabel}</div>
+            <div class="course-tile-meta">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
+            <div class="course-tile-meta">Posted: ${escapeHtmlAttr(postedDate)}</div>
+            <div class="course-tile-meta">Difficulty</div>
+            <div class="course-difficulty-meter">
+              <div class="course-difficulty-fill" style="width:${difficultyPct}%;"></div>
+            </div>
+            <div class="course-tile-meta">${difficultyPct.toFixed(0)}%</div>
             <div class="course-tile-meta">${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
             <div class="actions">
               <button class="btn small" data-view-course="${c.id}">View Course</button>

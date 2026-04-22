@@ -9111,7 +9111,17 @@ function bindEvents() {
     }
   });
 
-  $("refreshProviderCoursesBtn")?.addEventListener("click", () => refreshProviderContent().catch(() => toast("Failed to refresh courses", "error")));
+  $("refreshProviderCoursesBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshProviderCoursesBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshProviderContent();
+    } catch {
+      toast("Failed to refresh courses", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
   $("refreshStudentDashboardBtn")?.addEventListener("click", () =>
     Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]).catch(() => toast("Failed to refresh dashboard", "error")));
   $("studentAvailableSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());

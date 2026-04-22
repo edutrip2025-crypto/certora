@@ -118,24 +118,30 @@
       <section class="panel content hidden" id="provider-view-courses">
         <h2>Courses</h2>
         <div class="row between" id="providerCoursesHeader">
-          <h3>Your Courses (Active / Inactive)</h3>
-          <div class="row">
-            <button id="refreshProviderCoursesBtn" class="btn small">Refresh</button>
-            <button id="openDraftsPageBtn" class="btn small">Drafts</button>
+          <div></div>
+          <div class="row provider-course-actions">
+            <button id="providerCoursesFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
+            </button>
+            <div id="providerCoursesFilterMenu" class="filter-popover hidden">
+              <select id="providerCoursesSort" class="filter">
+                <option value="latest">Latest</option>
+                <option value="rating_desc">Top Rated</option>
+                <option value="title_asc">Course Name (A-Z)</option>
+                <option value="status_active">Active First</option>
+              </select>
+            </div>
+            <button id="refreshProviderCoursesBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.7 9h2.1A5 5 0 1 0 12 7c1.3 0 2.5.5 3.4 1.3L13 10h7V3l-2.1 2.1A9 9 0 1 0 21 12h-2a7 7 0 0 1-7 7 7 7 0 0 1 0-14z"/></svg>
+            </button>
+            <button id="openDraftsPageBtn" class="btn small toolbar-icon-btn" title="Drafts" aria-label="Drafts">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm8 1v5h5"/></svg>
+            </button>
             <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
           </div>
         </div>
         <div class="row wrap gap-sm course-grid-controls">
-          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course name" />
-          <button id="providerCoursesFilterBtn" class="btn small icon-filter-btn" type="button" title="Filter" aria-label="Filter">&#9776;</button>
-          <div id="providerCoursesFilterMenu" class="filter-popover hidden">
-            <select id="providerCoursesSort" class="filter">
-              <option value="latest">Latest</option>
-              <option value="rating_desc">Top Rated</option>
-              <option value="title_asc">Course Name (A-Z)</option>
-              <option value="status_active">Active First</option>
-            </select>
-          </div>
+          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course or provider" />
         </div>
         <div id="providerCoursesList" class="list"></div>
         <section id="providerCourseViewer" class="moderation-toolbar hidden">
