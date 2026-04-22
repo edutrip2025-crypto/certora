@@ -2353,21 +2353,23 @@ input:focus, select:focus, textarea:focus {
 }
 #providerView .provider-sidebar-brand {
   display: grid;
-  gap: 2px;
-  margin: -6px 0 2px;
+  gap: 6px;
+  margin: 0 0 6px;
 }
 #providerView .provider-sidebar-logo-wrap {
-  width: min(200px, 100%);
-  max-width: 100%;
-  height: 78px;
-  overflow: hidden;
+  width: 100%;
+  min-height: 74px;
+  display: flex;
+  align-items: flex-start;
 }
 #providerView .provider-sidebar-logo {
-  width: 100%;
+  width: min(220px, 100%);
   height: auto;
+  max-height: 96px;
   object-fit: contain;
+  object-position: left top;
   display: block;
-  margin: -2px 0 -6px;
+  margin: 0;
 }
 #providerView .sidebar h3 {
   margin: 0 0 6px;
