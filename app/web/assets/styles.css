@@ -2343,21 +2343,22 @@ input:focus, select:focus, textarea:focus {
 #providerView .sidebar {
   top: 8px;
   margin-top: 0;
-  padding: 14px 12px 12px;
+  padding: 8px 12px 12px;
   border: 1px solid #d7e3f3;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
 }
 #providerView .provider-sidebar-brand {
   display: grid;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 2px;
+  margin-bottom: 4px;
 }
 #providerView .provider-sidebar-logo {
   width: min(200px, 100%);
   height: auto;
   object-fit: contain;
   display: block;
+  margin-top: -2px;
 }
 #providerView .sidebar h3 {
   margin: 0 0 6px;
