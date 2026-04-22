@@ -175,7 +175,7 @@
     const recommendedPool = perAttempt > 0 ? perAttempt * 2 : 0;
     if (el.abPoolMeta) {
       const recommendation = recommendedPool > 0 ? ` Recommended pool: ${recommendedPool}+` : "";
-      el.abPoolMeta.textContent = `${list.length} questions in pool.${recommendation}`;
+      el.abPoolMeta.textContent = `${list.length} questions.${recommendation}`;
     }
     renderList(
       el.abQuestionPoolList,

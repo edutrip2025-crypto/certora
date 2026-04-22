@@ -7766,8 +7766,8 @@ async function refreshProviderAssessments() {
     state.providerAssessments,
     (a) => `
       <div><strong>${a.title}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${a.status}</span></div>
-      <div class='meta'>Exam #${a.exam_id} | ${a.course_title}</div>
-      <div class='meta'>Pool: ${a.question_count} | Student gets: ${a.questions_per_attempt > 0 ? a.questions_per_attempt : a.question_count}</div>
+      <div class='meta'>Assessment ID: ${a.exam_id}</div>
+      <div class='meta'>Questions: ${a.question_count} | Student gets: ${a.questions_per_attempt > 0 ? a.questions_per_attempt : a.question_count}</div>
       <div class='meta'>Pass: ${a.pass_score}% | Attempts: ${a.max_attempts}</div>
       <div class='meta'>Timing: ${a.timing_mode === "question" ? `${a.time_per_question_seconds || 0}s/question` : `${a.duration_minutes} mins/assessment`}</div>
       <div class='actions'>
@@ -7775,8 +7775,8 @@ async function refreshProviderAssessments() {
         ${
   a.status === "published"
     ? ""
-    : `<button class="btn small" data-assessment-edit="${a.exam_id}">Edit Draft</button>
-       <button class="btn small danger" data-assessment-delete="${a.exam_id}">Delete Draft</button>
+    : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0L15.13 5.13l3.75 3.75 1.82-1.84z"/></svg></button>
+       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
 }
       </div>
