@@ -516,8 +516,8 @@
         </div>
 
         <div id="apPrecheckRulesPage" class="hidden">
-          <div class="ap-precheck-instruction">Read and follow all instructions before starting assessment.</div>
-          <ul class="meta" style="margin:10px 0 0 18px; line-height:1.8;">
+          <div class="ap-rules-heading">Read and follow all instructions before starting assessment.</div>
+          <ul class="ap-rules-list">
             <li>Avoid mobile phone or secondary screen usage.</li>
             <li>Do not read questions aloud; avoid external voices.</li>
             <li>Keep your face centered and eyes on screen.</li>
@@ -526,12 +526,13 @@
             <li>Closing your eyes briefly is permitted.</li>
             <li>Look at the dot that randomly appears on the screen.</li>
           </ul>
-          <div id="apRulesReadScript" class="ap-precheck-voice-script" style="margin-top:10px;">
+          <div id="apRulesReadScript" class="ap-precheck-voice-script ap-rules-read-script">
             Read exactly: "I understand and agree to follow all proctoring instructions."
           </div>
           <div class="row wrap gap-sm" style="margin-top:10px;">
-            <button id="apRulesReadAloudBtn" class="btn small">Verify Read Aloud</button>
-            <div id="apRulesReadStatus" class="meta">Read-aloud verification required.</div>
+            <button id="apRulesSpeakBtn" class="btn small ap-rules-speak-btn">Read Instructions</button>
+            <button id="apRulesReadAloudBtn" class="btn small ap-rules-verify-btn">Verify Read Aloud</button>
+            <div id="apRulesReadStatus" class="meta"></div>
           </div>
           <label class="checkbox-row" style="margin-top:12px;">
             <input id="apEnvironmentAttest" type="checkbox" />

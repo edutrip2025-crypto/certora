@@ -235,6 +235,43 @@ let faceLandmarkerCachePromise = null;
 let phoneDetectorCachePromise = null;
 let handLandmarkerCachePromise = null;
 
+function speakAssessmentRules() {
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    toast("Text-to-speech is not supported in this browser.", "error");
+    return;
+  }
+  const synth = window.speechSynthesis;
+  if (synth.speaking) {
+    synth.cancel();
+    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
+    return;
+  }
+  const lines = Array.from(document.querySelectorAll("#apPrecheckRulesPage .ap-rules-list li"))
+    .map((node) => String(node.textContent || "").trim())
+    .filter(Boolean);
+  const script = String($("apRulesReadScript")?.textContent || "")
+    .replace(/^Read exactly:\s*/i, "")
+    .replace(/^"|"$/g, "")
+    .trim();
+  const text = [...lines, script].filter(Boolean).join(". ");
+  if (!text) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.95;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  utterance.onstart = () => {
+    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Reading instructions...";
+  };
+  utterance.onend = () => {
+    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
+  };
+  utterance.onerror = () => {
+    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
+  };
+  synth.cancel();
+  synth.speak(utterance);
+}
+
 const PROCTOR_PRECHECK_TASK_LABELS = {
   cameraReady: "Camera quality check",
   audioReady: "Microphone clarity check",
@@ -6626,7 +6663,7 @@ async function runProctoringPrecheck() {
   p.precheckUnlockAtMs = 0;
   p.readAloudReady = false;
   showPrecheckChecksPage();
-  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
   renderPrecheckChecklist("");
   updateAssessmentStartEligibility();
   if (isMobileDevice) {
@@ -7258,7 +7295,7 @@ async function openAssessmentPreview(examId) {
     proctor: defaultProctorState(),
   };
   if (el.apEnvironmentAttest) el.apEnvironmentAttest.checked = false;
-  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
   showPrecheckChecksPage();
   updateAssessmentStartEligibility();
   if (el.apMeta) el.apMeta.textContent = `${exam.title} | ${exam.course_title}`;
@@ -7674,7 +7711,7 @@ async function openStudentAssessmentAttempt(examId) {
     proctor: defaultProctorState(),
   };
   if (el.apEnvironmentAttest) el.apEnvironmentAttest.checked = false;
-  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
   showPrecheckChecksPage();
   updateAssessmentStartEligibility();
   if (el.apMeta) el.apMeta.textContent = `${paper.title}`;
@@ -8854,13 +8891,16 @@ function bindEvents() {
     if (el.apRulesReadStatus) {
       el.apRulesReadStatus.textContent = p.readAloudReady
         ? "Read-aloud verification completed."
-        : "Read-aloud verification required.";
+        : "";
     }
     updateAssessmentStartEligibility();
   });
   $("apBackToChecksBtn")?.addEventListener("click", () => {
     showPrecheckChecksPage();
     updateAssessmentStartEligibility();
+  });
+  $("apRulesSpeakBtn")?.addEventListener("click", () => {
+    speakAssessmentRules();
   });
   $("apRulesReadAloudBtn")?.addEventListener("click", () => {
     (async () => {
