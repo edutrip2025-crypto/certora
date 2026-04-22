@@ -5806,18 +5806,29 @@ async function runGuidedSpeechCheck() {
 
 async function runMicrophoneClarityCheck() {
   const p = state.assessmentPreview.proctor;
-  const baseRms = Number(p.audioBaselineRms || 0.03);
-  const threshold = Math.max(0.03, baseRms * 1.35);
+  const warmupStarted = Date.now();
+  const floorSamples = [];
+  while (Date.now() - warmupStarted < 900) {
+    floorSamples.push(detectAudioRms());
+    await new Promise((r) => setTimeout(r, 90));
+  }
+  const avgFloor = floorSamples.length
+    ? floorSamples.reduce((a, b) => a + b, 0) / floorSamples.length
+    : 0;
+  const baseRms = Math.max(0.008, Number(p.audioBaselineRms || 0), avgFloor);
+  const activeThreshold = Math.max(0.018, baseRms * 1.8);
+  const peakThreshold = Math.max(0.028, baseRms * 2.3);
+
   const started = Date.now();
   let voiceFrames = 0;
   let peak = 0;
-  while (Date.now() - started < 3600) {
+  while (Date.now() - started < 3800) {
     const rms = detectAudioRms();
     peak = Math.max(peak, rms);
-    if (rms > threshold) voiceFrames += 1;
-    await new Promise((r) => setTimeout(r, 110));
+    if (rms > activeThreshold) voiceFrames += 1;
+    await new Promise((r) => setTimeout(r, 105));
   }
-  return voiceFrames >= 8 && peak >= Math.max(0.04, threshold);
+  return voiceFrames >= 7 && peak >= peakThreshold;
 }
 
 async function runHoldStillCheck() {
@@ -6709,7 +6720,7 @@ async function runProctoringPrecheck() {
   updateProctorBadge();
   clearAttentionChallengeOverlay();
   if (el.apProctorVideo) el.apProctorVideo.srcObject = null;
-  if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Starting strict pre-check...";
+  if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "";
   if (el.apProctorHints) el.apProctorHints.textContent = "Keep face centered, follow the instruction panel, and complete all checks.";
   setPrecheckInstruction(
     "Allow camera and microphone access to begin checks.",
@@ -6791,7 +6802,10 @@ async function runProctoringPrecheck() {
       "Say this line clearly: My microphone is clear.",
       "My microphone is clear.",
     );
-    const micOk = await runMicrophoneClarityCheck();
+    let micOk = await runMicrophoneClarityCheck();
+    if (!micOk) {
+      micOk = await runRulesReadAloudVerification(p.audioBaselineRms).catch(() => false);
+    }
     if (!micOk) {
       throw new Error("Microphone clarity check failed. Speak clearly for 2-3 seconds and retry.");
     }
@@ -6853,9 +6867,7 @@ async function runProctoringPrecheck() {
     p.precheckUnlockAtMs = Date.now() + 850;
     renderPrecheckChecklist("");
     setTimeout(() => updateAssessmentStartEligibility(), 900);
-    if (el.apPrecheckStatus) {
-      el.apPrecheckStatus.textContent = "Pre-check complete. Click Next to continue.";
-    }
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "";
     if (el.apProctorHints) {
       el.apProctorHints.textContent = "All strict checks passed. Keep the same posture and environment during the assessment.";
     }
@@ -6867,8 +6879,8 @@ async function runProctoringPrecheck() {
   } catch (err) {
     p.precheckReady = false;
     p.precheckUnlockAtMs = 0;
-    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = err?.message || "Pre-check failed. Retry required.";
-    if (el.apProctorHints) el.apProctorHints.textContent = "Re-run checks and follow on-screen prompts.";
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "";
+    if (el.apProctorHints) el.apProctorHints.textContent = err?.message || "Re-run checks and follow on-screen prompts.";
     setPrecheckInstruction(
       "Pre-check failed. Click Re-run checks.",
       "",
