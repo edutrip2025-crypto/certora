@@ -2373,7 +2373,7 @@ input:focus, select:focus, textarea:focus {
   object-position: left top;
   display: block;
   margin: 0;
-  transform: translateY(-24px);
+  transform: translateY(-44px);
 }
 #providerView .sidebar h3 {
   margin: 0;
@@ -2573,7 +2573,7 @@ input:focus, select:focus, textarea:focus {
   #providerView .provider-sidebar-logo {
     width: 100%;
     max-height: none;
-    transform: translateY(-16px);
+    transform: translateY(-30px);
   }
   #providerView .provider-sidebar-logo-wrap {
     width: 100%;
