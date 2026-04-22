@@ -427,7 +427,7 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
     else:
         decision = "clear"
 
-    is_flagged = bool(decision in {"critical", "manual_review"} or warnings >= 3)
+    is_flagged = bool(decision in {"critical", "manual_review"} or warnings >= 5)
     hard_fail = bool(mobile_events >= 1 or voice_events >= 3)
     hard_fail_reason = None
     if mobile_events >= 1:
@@ -459,7 +459,7 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
     else:
         # Conservative but enforceable fallback: if behavior is critical or reaches max warnings,
         # apply a fixed provisional deduction and force manual review.
-        if decision == "critical" or warnings >= 3:
+        if decision == "critical" or warnings >= 5:
             deduction_pct = 10.0
             if event_signal_counts.get("behavior_signature_drift", 0) >= 1:
                 deduction_pct = max(deduction_pct, 12.0)

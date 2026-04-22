@@ -412,6 +412,10 @@ class ProctorModelTrainRequest(BaseModel):
     target_recall: float = Field(default=0.92, ge=0.5, le=0.99)
     max_false_positive_rate: float = Field(default=0.30, ge=0.05, le=0.8)
     strict_mode: bool = True
+    class_balance_strength: float = Field(default=1.0, ge=0.0, le=1.5)
+    hard_negative_weight: float = Field(default=2.0, ge=1.0, le=6.0)
+    hard_positive_weight: float = Field(default=1.6, ge=1.0, le=6.0)
+    hard_example_min_prob: float = Field(default=0.55, ge=0.5, le=0.9)
 
 
 class CourseCommentCreate(BaseModel):

@@ -88,7 +88,7 @@ def _risk_weight(severity: str) -> tuple[float, int]:
 
 
 def _recompute_flag(item: ProctorSession) -> None:
-    item.is_flagged = bool(item.warning_count >= 3 or item.risk_score >= 20)
+    item.is_flagged = bool(item.warning_count >= 5 or item.risk_score >= 20)
 
 
 def _active_session_for_user(db: Session, user_id: int) -> ProctorSession | None:
@@ -275,6 +275,10 @@ def admin_train_proctor_model(
             "target_recall": payload.target_recall,
             "max_false_positive_rate": payload.max_false_positive_rate,
             "strict_mode": payload.strict_mode,
+            "class_balance_strength": payload.class_balance_strength,
+            "hard_negative_weight": payload.hard_negative_weight,
+            "hard_positive_weight": payload.hard_positive_weight,
+            "hard_example_min_prob": payload.hard_example_min_prob,
         },
     )
     db.add(run)
@@ -289,6 +293,10 @@ def admin_train_proctor_model(
                 target_recall=payload.target_recall,
                 max_false_positive_rate=payload.max_false_positive_rate,
                 strict_mode=payload.strict_mode,
+                class_balance_strength=payload.class_balance_strength,
+                hard_negative_weight=payload.hard_negative_weight,
+                hard_positive_weight=payload.hard_positive_weight,
+                hard_example_min_prob=payload.hard_example_min_prob,
             ),
         )
         run.status = "completed"

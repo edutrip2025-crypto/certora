@@ -241,19 +241,10 @@ function speakAssessmentRules() {
     return;
   }
   const synth = window.speechSynthesis;
-  if (synth.speaking) {
-    synth.cancel();
-    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
-    return;
-  }
   const lines = Array.from(document.querySelectorAll("#apPrecheckRulesPage .ap-rules-list li"))
     .map((node) => String(node.textContent || "").trim())
     .filter(Boolean);
-  const script = String($("apRulesReadScript")?.textContent || "")
-    .replace(/^Read exactly:\s*/i, "")
-    .replace(/^"|"$/g, "")
-    .trim();
-  const text = [...lines, script].filter(Boolean).join(". ");
+  const text = lines.filter(Boolean).join(". ");
   if (!text) return;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 0.95;
@@ -292,7 +283,7 @@ function defaultProctorState() {
   return {
     sessionId: null,
     warnings: 0,
-    maxWarnings: 3,
+    maxWarnings: 5,
     penaltyPerWarningPct: 5,
     stream: null,
     audioContext: null,
@@ -332,7 +323,7 @@ function defaultProctorState() {
     precheckInProgress: false,
     precheckUnlockAtMs: 0,
     precheckChecks: createDefaultPrecheckChecklist(),
-    readAloudReady: false,
+    readAloudReady: true,
     calibrated: false,
     audioBaselineRms: 0.03,
     baselineEvidenceReady: false,
@@ -462,15 +453,15 @@ function computeFaceMetrics(lm) {
 
 /** Three-layer gaze policy: raw zones â†’ scored suspicion events â†’ rolling-window thresholds (no instant â€œlooked awayâ€ warnings). */
 const GAZE_ROLLING_MS = 120000;
-const GAZE_UI_GRACE_MS = 900;
-const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 700;
+const GAZE_UI_GRACE_MS = 700;
+const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 520;
 const GAZE_QUESTION_OPTIONS_AWAY_REPEAT_COUNT = 2;
-const GAZE_LAPTOP_AWAY_LIMIT_MS = 1100;
-const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 1300;
-const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 1800;
-const GAZE_STATIC_LOW_VAR = 0.034;
-const GAZE_STATIC_PTS_MS = 1100;
-const GAZE_EVENT_DEBOUNCE_MS = 6000;
+const GAZE_LAPTOP_AWAY_LIMIT_MS = 850;
+const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 900;
+const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 1400;
+const GAZE_STATIC_LOW_VAR = 0.03;
+const GAZE_STATIC_PTS_MS = 900;
+const GAZE_EVENT_DEBOUNCE_MS = 4200;
 
 function computeQuestionPanelAllowedGazeZones() {
   const screenRect = el.assessmentPreviewScreen?.getBoundingClientRect?.();
@@ -500,15 +491,15 @@ function computeQuestionPanelAllowedGazeZones() {
   const right = clamp(panelRect.right - screenRect.left, 0, screenRect.width);
   const top = clamp(panelRect.top - screenRect.top, 0, screenRect.height || 1);
   const bottom = clamp(panelRect.bottom - screenRect.top, 0, screenRect.height || 1);
-  const padX = Math.min(12, screenRect.width * 0.012);
-  const padY = Math.min(10, (screenRect.height || 1) * 0.015);
+  const padX = Math.min(9, screenRect.width * 0.009);
+  const padY = Math.min(8, (screenRect.height || 1) * 0.012);
   const zoneLeft = Math.max(0, left - padX);
   const zoneRight = Math.min(screenRect.width, right + padX);
   const zoneTop = Math.max(0, top - padY);
   const zoneBottom = Math.min(screenRect.height || 1, bottom + padY);
   const third = screenRect.width / 3;
   const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
-  const minimumOverlap = Math.max(24, third * 0.22);
+  const minimumOverlap = Math.max(26, third * 0.26);
   const secondary = overlap(zoneLeft, zoneRight, 0, third) >= minimumOverlap;
   const primary = overlap(zoneLeft, zoneRight, third, third * 2) >= minimumOverlap;
   const tertiary = overlap(zoneLeft, zoneRight, third * 2, screenRect.width) >= minimumOverlap;
@@ -605,8 +596,8 @@ function classifyGazeUiZone(p, metrics, ref, allowedZones = null, allowedRect = 
   const target = getSmoothedGazeTarget(p, rawTarget);
   if (!target) return "neutral";
   if (allowedRect) {
-    const marginX = target.confidence >= 0.82 ? 0.006 : target.confidence >= 0.65 ? 0.012 : 0.02;
-    const marginY = target.confidence >= 0.82 ? 0.01 : target.confidence >= 0.65 ? 0.018 : 0.028;
+    const marginX = target.confidence >= 0.82 ? 0.004 : target.confidence >= 0.65 ? 0.008 : 0.014;
+    const marginY = target.confidence >= 0.82 ? 0.007 : target.confidence >= 0.65 ? 0.013 : 0.02;
     const insideRect = (
       target.x >= Number(allowedRect.left ?? 0) &&
       target.x <= Number(allowedRect.right ?? 1) &&
@@ -619,9 +610,9 @@ function classifyGazeUiZone(p, metrics, ref, allowedZones = null, allowedRect = 
       target.y >= Number(allowedRect.top ?? 0) - marginY &&
       target.y <= Number(allowedRect.bottom ?? 1) + marginY
     );
-    if (!insideRect && nearRect && target.confidence < 0.5) return "neutral";
+    if (!insideRect && nearRect && target.confidence < 0.4) return "neutral";
     if (!insideRect) return "suspicious";
-    if (target.confidence < 0.45) return "neutral";
+    if (target.confidence < 0.38) return "neutral";
   }
   let zone = "primary";
   if (target.x < 1 / 3) zone = "secondary";
@@ -670,24 +661,24 @@ function addGazeSuspicionPoints(p, pts, code, details = {}) {
 function reapGazeSuspicionEscalation(p) {
   const s = sumGazeSuspicionWindow(p);
   const stage = p.gazeEscalationStageMax || 0;
-  if (s >= 7 && !p.gazeFlagReviewEmitted) {
+  if (s >= 6 && !p.gazeFlagReviewEmitted) {
     p.gazeFlagReviewEmitted = true;
-    p.gazeEscalationStageMax = Math.max(stage, 7);
+    p.gazeEscalationStageMax = Math.max(stage, 6);
     logProctorEvent("warning", "gaze_pattern_review_flag", { rolling_score: s }).catch(() => {});
     pushProctorWarning(
       "Repeated off-screen gaze pattern noted. This session may be reviewed.",
       "gaze_pattern_review",
       "warning",
     );
-  } else if (s >= 5 && stage < 5) {
-    p.gazeEscalationStageMax = 5;
+  } else if (s >= 4 && stage < 4) {
+    p.gazeEscalationStageMax = 4;
     toast("Please keep your attention on the test screen.");
     logProctorEvent("info", "gaze_soft_attention_notice", { rolling_score: s }).catch(() => {});
-  } else if (s >= 3 && stage < 3) {
-    p.gazeEscalationStageMax = 3;
-    logProctorEvent("info", "gaze_suspicion_internal", { rolling_score: s }).catch(() => {});
   } else if (s >= 2 && stage < 2) {
     p.gazeEscalationStageMax = 2;
+    logProctorEvent("info", "gaze_suspicion_internal", { rolling_score: s }).catch(() => {});
+  } else if (s >= 1 && stage < 1) {
+    p.gazeEscalationStageMax = 1;
     logProctorEvent("info", "gaze_suspicion_silent_log", { rolling_score: s }).catch(() => {});
   }
 }
@@ -825,7 +816,7 @@ function tickGazeThreeLayerModel(p, metrics, now) {
     p.gazeContinuousWarningCount = 0;
     p.gazeNextContinuousWarningMs = 0;
   }
-  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 1200 && canEmitGazeEvent(p, "look_away_over_2s")) {
+  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 900 && canEmitGazeEvent(p, "look_away_over_2s")) {
     markGazeEventEmitted(p, "look_away_over_2s");
     pushProctorWarning(
       "Eyes moved away from the question area for too long. Keep attention on the question and options.",
@@ -869,16 +860,26 @@ function tickGazeThreeLayerModel(p, metrics, now) {
     p.gazeSuspiciousDwellMs >= GAZE_CONTINUOUS_WARNING_INITIAL_MS &&
     (p.gazeNextContinuousWarningMs || 0) <= p.gazeSuspiciousDwellMs
   ) {
-    p.gazeContinuousWarningCount = 1;
+    p.gazeContinuousWarningCount = (p.gazeContinuousWarningCount || 0) + 1;
     p.gazeNextContinuousWarningMs = p.gazeSuspiciousDwellMs + GAZE_CONTINUOUS_WARNING_REPEAT_MS;
     logProctorEvent("info", "continuous_question_area_gaze_detail", {
-      continuous_warning_count: 1,
+      continuous_warning_count: p.gazeContinuousWarningCount,
       dwell_ms: Math.round(p.gazeSuspiciousDwellMs),
     }).catch(() => {});
+    if (p.gazeContinuousWarningCount === 1 || p.gazeContinuousWarningCount % 2 === 0) {
+      pushProctorWarning(
+        "Extended off-question gaze detected. Keep eyes on the question and options area.",
+        "continuous_question_area_gaze",
+        "warning",
+      );
+    }
   }
 
   const lg = Number(metrics.leftGazeX);
   const rg = Number(metrics.rightGazeX);
+  const ref = p.faceReference || {};
+  const baseLG = Number(ref.leftGazeX);
+  const baseRG = Number(ref.rightGazeX);
   if (Number.isFinite(lg) && Number.isFinite(rg)) {
     const g = (lg + rg) / 2;
     const samples = p.gazeVarianceSamples || [];
@@ -897,6 +898,22 @@ function tickGazeThreeLayerModel(p, metrics, now) {
       markGazeEventEmitted(p, "static_gaze_suspicious");
       addGazeSuspicionPoints(p, 1, "static_gaze_suspicious_zone", {});
       p.gazeStaticSuspiciousMs = 0;
+    }
+    const pupilDrift = Math.max(Math.abs(lg - baseLG), Math.abs(rg - baseRG));
+    if (
+      suspicious
+      && Number.isFinite(baseLG)
+      && Number.isFinite(baseRG)
+      && pupilDrift >= 0.13
+      && canEmitGazeEvent(p, "pupil_drift_non_text_zone")
+    ) {
+      markGazeEventEmitted(p, "pupil_drift_non_text_zone");
+      addGazeSuspicionPoints(p, 2, "pupil_drift_non_text_zone", {
+        pupil_drift: Number(pupilDrift.toFixed(4)),
+      });
+      logProctorEvent("warning", "pupil_drift_non_text_zone", {
+        pupil_drift: Number(pupilDrift.toFixed(4)),
+      }).catch(() => {});
     }
   }
 
@@ -967,8 +984,8 @@ function evaluateBehaviorDrift() {
   const leftNow = Number(metrics.leftGazeX || leftBase);
   const rightNow = Number(metrics.rightGazeX || rightBase);
   const gazeDrift = Math.max(Math.abs(leftNow - leftBase), Math.abs(rightNow - rightBase));
-  if (gazeDrift > 0.2) {
-    score += 1.1;
+  if (gazeDrift > 0.13) {
+    score += 1.35;
     reasons.push("gaze_drift");
   }
 
@@ -6639,9 +6656,9 @@ function startProctoringMonitoring() {
       p.backgroundVoiceFrames = 0;
     }
     const drift = evaluateBehaviorDrift();
-    if (drift.score >= 2.3 && drift.reasons.length >= 2) p.behaviorDriftFrames += 1;
+    if (drift.score >= 1.9 && drift.reasons.length >= 2) p.behaviorDriftFrames += 1;
     else p.behaviorDriftFrames = Math.max(0, p.behaviorDriftFrames - 1);
-    if (p.behaviorDriftFrames >= 4) {
+    if (p.behaviorDriftFrames >= 3) {
       pushProctorWarning(
         "Behavior pattern drift detected. Your gaze, posture, and interaction pattern no longer match the verified exam baseline.",
         "behavior_signature_drift",
@@ -6663,7 +6680,7 @@ async function runProctoringPrecheck() {
   p.precheckReady = false;
   p.precheckInProgress = true;
   p.precheckUnlockAtMs = 0;
-  p.readAloudReady = false;
+  p.readAloudReady = true;
   showPrecheckChecksPage();
   if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "";
   renderPrecheckChecklist("");
@@ -6708,7 +6725,7 @@ async function runProctoringPrecheck() {
   p.challengePasses = 0;
   p.challengeFailures = 0;
   p.environmentAttested = Boolean(el.apEnvironmentAttest?.checked);
-  p.readAloudReady = false;
+  p.readAloudReady = true;
   p.precheckReady = false;
   p.calibrated = false;
   p.audioBaselineRms = 0.03;
@@ -6969,10 +6986,6 @@ async function startAssessmentAfterPrecheck() {
     toast("Run pre-check before starting the assessment.", "error");
     return;
   }
-  if (!p.readAloudReady) {
-    toast("Complete read-aloud verification on the instructions page before starting.", "error");
-    return;
-  }
   p.startingUp = true;
   if (el.apStartTestBtn) el.apStartTestBtn.disabled = true;
   try {
@@ -7175,7 +7188,7 @@ function showAssessmentPreviewResult(reason = "completed") {
     if (el.apQuestionPanel) el.apQuestionPanel.classList.add("hidden");
     if (el.apResultPanel) el.apResultPanel.classList.remove("hidden");
     if (el.apResultSummary) {
-      const fairnessVerdict = warnings >= 3 ? "REVIEW REQUIRED" : "FAIR";
+      const fairnessVerdict = warnings >= 5 ? "REVIEW REQUIRED" : "FAIR";
       el.apResultSummary.innerHTML = `
       <div><strong>${pass ? "PASS" : "FAIL"}</strong></div>
       <div style="margin-top:8px;">Percentage: ${finalPercentage.toFixed(2)}%</div>
@@ -8912,11 +8925,10 @@ function bindEvents() {
       return;
     }
     showPrecheckRulesPage();
-    if (el.apRulesReadStatus) {
-      el.apRulesReadStatus.textContent = p.readAloudReady
-        ? "Read-aloud verification completed."
-        : "";
-    }
+    if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Reading instructions...";
+    setTimeout(() => {
+      speakAssessmentRules();
+    }, 120);
     updateAssessmentStartEligibility();
   });
   $("apBackToChecksBtn")?.addEventListener("click", () => {
@@ -8925,23 +8937,6 @@ function bindEvents() {
   });
   $("apRulesSpeakBtn")?.addEventListener("click", () => {
     speakAssessmentRules();
-  });
-  $("apRulesReadAloudBtn")?.addEventListener("click", () => {
-    (async () => {
-      if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Listening... read the line clearly now.";
-      const ok = await runRulesReadAloudVerification();
-      state.assessmentPreview.proctor.readAloudReady = Boolean(ok);
-      if (el.apRulesReadStatus) {
-        el.apRulesReadStatus.textContent = ok
-          ? "Read-aloud verification completed."
-          : "Voice not detected clearly. Read the line again.";
-      }
-      updateAssessmentStartEligibility();
-    })().catch(() => {
-      state.assessmentPreview.proctor.readAloudReady = false;
-      if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Microphone access failed. Allow mic and retry.";
-      updateAssessmentStartEligibility();
-    });
   });
   $("apStartTestBtn")?.addEventListener("click", () => startAssessmentAfterPrecheck());
   $("apPrevBtn")?.addEventListener("click", () => {

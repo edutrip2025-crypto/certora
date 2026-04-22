@@ -90,12 +90,11 @@ export function createAssessmentPrecheckUi({
     const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
     const precheckUnlocked = precheckReady && Date.now() >= Number(p.precheckUnlockAtMs || 0);
     const attested = Boolean(p.environmentAttested);
-    const readReady = Boolean(p.readAloudReady);
     if (el.apPrecheckNextBtn) {
       el.apPrecheckNextBtn.disabled = !precheckUnlocked;
     }
     if (el.apStartTestBtn) {
-      el.apStartTestBtn.disabled = !(precheckReady && attested && readReady);
+      el.apStartTestBtn.disabled = !(precheckReady && attested);
     }
     if (el.apEnvironmentStatus) {
       if (p.precheckInProgress) {
@@ -106,8 +105,6 @@ export function createAssessmentPrecheckUi({
         el.apEnvironmentStatus.textContent = "Complete mandatory checks to unlock Next.";
       } else if (!attested) {
         el.apEnvironmentStatus.textContent = "Assessment start remains blocked until you confirm the test machine is local-only.";
-      } else if (!readReady) {
-        el.apEnvironmentStatus.textContent = "Assessment start remains blocked until read-aloud verification is complete.";
       } else {
         el.apEnvironmentStatus.textContent = "All checks completed. You can start the assessment.";
       }

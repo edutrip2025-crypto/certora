@@ -51,6 +51,10 @@ class TrainConfig:
     max_false_positive_rate: float = 0.30
     strict_mode: bool = True
     seed: int = 42
+    class_balance_strength: float = 1.0
+    hard_negative_weight: float = 2.0
+    hard_positive_weight: float = 1.6
+    hard_example_min_prob: float = 0.55
 
 
 def _sigmoid(x):
@@ -198,7 +202,8 @@ def _stratified_split(y, validation_split: float, seed: int):
     pos_val = max(1, int(math.ceil(len(pos) * validation_split))) if len(pos) > 1 else 1
     neg_val = max(1, int(math.ceil(len(neg) * validation_split))) if len(neg) > 1 else 1
     val_idx = np.concatenate([pos[:pos_val], neg[:neg_val]])
-    train_idx = np.array([i for i in idx if i not in set(val_idx.tolist())], dtype=np.int64)
+    val_set = set(int(i) for i in val_idx.tolist())
+    train_idx = np.array([i for i in idx if int(i) not in val_set], dtype=np.int64)
     if len(train_idx) < 4 or len(val_idx) < 2:
         # Fallback to simple split if classes are tiny.
         rng.shuffle(idx)
@@ -226,6 +231,49 @@ def _train_logistic_model(X_train, y_train, sample_w):
         w -= lr * grad_w
         b -= lr * grad_b
     return w, b
+
+
+def _class_balance_weights(y, strength: float):
+    if np is None:
+        raise RuntimeError("numpy is required")
+    weights = np.ones((len(y),), dtype=np.float64)
+    pos = max(1, int(np.sum(y == 1)))
+    neg = max(1, int(np.sum(y == 0)))
+    if pos == 0 or neg == 0:
+        return weights
+    ratio = float(max(pos, neg) / max(1, min(pos, neg)))
+    ratio = float(max(1.0, min(8.0, ratio)))
+    if strength <= 0:
+        return weights
+    scale = float(ratio ** max(0.0, min(1.5, strength)))
+    if pos < neg:
+        weights[y == 1] *= scale
+    else:
+        weights[y == 0] *= scale
+    return weights
+
+
+def _apply_hard_example_boost(
+    X_train,
+    y_train,
+    sample_w,
+    w,
+    b,
+    hard_negative_weight: float,
+    hard_positive_weight: float,
+    min_prob: float,
+):
+    if np is None:
+        raise RuntimeError("numpy is required")
+    train_prob = _sigmoid((X_train @ w) + b)
+    boosted = sample_w.copy()
+    hard_neg = (y_train == 0) & (train_prob >= min_prob)
+    hard_pos = (y_train == 1) & (train_prob <= (1.0 - min_prob))
+    if np.any(hard_neg):
+        boosted[hard_neg] *= max(1.0, float(hard_negative_weight))
+    if np.any(hard_pos):
+        boosted[hard_pos] *= max(1.0, float(hard_positive_weight))
+    return boosted, int(np.sum(hard_neg)), int(np.sum(hard_pos))
 
 
 def _collect_event_counts(db: Session, session_ids: list[int]) -> dict[int, dict[str, int]]:
@@ -439,7 +487,20 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
     X_train_n = (X_train - mean) / std
     X_val_n = (X_val - mean) / std
 
-    w, b = _train_logistic_model(X_train_n, y_train, sw_train)
+    class_weights = _class_balance_weights(y_train, config.class_balance_strength)
+    sw_train_stage1 = sw_train * class_weights
+    w_stage1, b_stage1 = _train_logistic_model(X_train_n, y_train, sw_train_stage1)
+    sw_train_stage2, hard_negatives, hard_positives = _apply_hard_example_boost(
+        X_train_n,
+        y_train,
+        sw_train_stage1,
+        w_stage1,
+        b_stage1,
+        config.hard_negative_weight,
+        config.hard_positive_weight,
+        config.hard_example_min_prob,
+    )
+    w, b = _train_logistic_model(X_train_n, y_train, sw_train_stage2)
     val_prob = _sigmoid((X_val_n @ w) + b)
     threshold_metrics = _choose_threshold(y_val, val_prob, config.target_recall, config.max_false_positive_rate)
 
@@ -489,6 +550,14 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "negatives": negatives,
             "target_recall": float(config.target_recall),
             "max_false_positive_rate": float(config.max_false_positive_rate),
+            "class_balance_strength": float(config.class_balance_strength),
+            "hard_negative_weight": float(config.hard_negative_weight),
+            "hard_positive_weight": float(config.hard_positive_weight),
+            "hard_example_min_prob": float(config.hard_example_min_prob),
+            "hard_examples": {
+                "hard_negatives": int(hard_negatives),
+                "hard_positives": int(hard_positives),
+            },
         },
     }
     joblib.dump(bundle, bundle_path)
@@ -530,6 +599,16 @@ def train_proctor_model_from_feedback(db: Session, config: TrainConfig) -> dict[
             "warning_threshold": warning_metrics,
             "manual_review_threshold": threshold_metrics,
             "critical_threshold": critical_metrics,
+        },
+        "training_strategy": {
+            "class_balance_strength": float(config.class_balance_strength),
+            "hard_negative_weight": float(config.hard_negative_weight),
+            "hard_positive_weight": float(config.hard_positive_weight),
+            "hard_example_min_prob": float(config.hard_example_min_prob),
+            "hard_examples": {
+                "hard_negatives": int(hard_negatives),
+                "hard_positives": int(hard_positives),
+            },
         },
     }
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")

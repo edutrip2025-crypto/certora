@@ -132,6 +132,21 @@ This script pulls from:
 It writes a dataset manifest at:
 - `data/proctoring/audio_pack/download_manifest.json`
 
+## 8) Dataset gap analysis (before retraining)
+
+Run this before every training cycle to see class/risk-tag coverage gaps:
+
+```powershell
+python ml\proctoring\scripts\analyze_dataset_gaps.py `
+  --manifest data\proctoring\processed\manifest_labeled.csv `
+  --output data\proctoring\processed\dataset_gap_report.json
+```
+
+The report includes:
+- class balance (`label=0` vs `label=1`)
+- risk-tag coverage (phone, reading aloud, look-away, etc.)
+- minimum-threshold gaps and recommendations
+
 ## Outputs
 
 - Model: `data/proctoring/models/proctor_risk_baseline.joblib`
@@ -139,6 +154,7 @@ It writes a dataset manifest at:
 - Supervised bundle: `data/proctoring/models/supervised/supervised_bundle.joblib`
 - Holdout metrics: `data/proctoring/models/supervised/evaluation_report.json`
 - Conservative policy rules: `data/proctoring/models/supervised/deduction_rules.json`
+- Dataset gap report: `data/proctoring/processed/dataset_gap_report.json`
 
 ## Cost / storage note
 
