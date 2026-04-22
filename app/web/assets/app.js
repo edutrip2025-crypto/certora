@@ -5804,6 +5804,22 @@ async function runGuidedSpeechCheck() {
   return false;
 }
 
+async function runMicrophoneClarityCheck() {
+  const p = state.assessmentPreview.proctor;
+  const baseRms = Number(p.audioBaselineRms || 0.03);
+  const threshold = Math.max(0.03, baseRms * 1.35);
+  const started = Date.now();
+  let voiceFrames = 0;
+  let peak = 0;
+  while (Date.now() - started < 3600) {
+    const rms = detectAudioRms();
+    peak = Math.max(peak, rms);
+    if (rms > threshold) voiceFrames += 1;
+    await new Promise((r) => setTimeout(r, 110));
+  }
+  return voiceFrames >= 8 && peak >= Math.max(0.04, threshold);
+}
+
 async function runHoldStillCheck() {
   const p = state.assessmentPreview.proctor;
   const baseRatio = Number(p.faceReference?.ratio || 0.5);
@@ -6769,8 +6785,15 @@ async function runProctoringPrecheck() {
     if (baselineRmsSamples.length) {
       p.audioBaselineRms = baselineRmsSamples.reduce((a, b) => a + b, 0) / baselineRmsSamples.length;
     }
-    if (!quality.checks.audioSignalOk || !quality.checks.audioNoiseOk) {
-      throw new Error("Microphone clarity check failed. Check microphone permission and background noise.");
+    setPrecheckInstruction(
+      "Step 2/6: Microphone check - speak clearly for 2-3 seconds.",
+      "audioReady",
+      "Say this line clearly: My microphone is clear.",
+      "My microphone is clear.",
+    );
+    const micOk = await runMicrophoneClarityCheck();
+    if (!micOk) {
+      throw new Error("Microphone clarity check failed. Speak clearly for 2-3 seconds and retry.");
     }
     p.precheckChecks.audioReady = true;
     renderPrecheckChecklist("speakPromptDone");
