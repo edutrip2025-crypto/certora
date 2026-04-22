@@ -9140,8 +9140,26 @@ function bindEvents() {
   $("studentEnrolledFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("providerCoursesSearch")?.addEventListener("input", () => renderProviderCourseCatalog());
   $("providerCoursesSort")?.addEventListener("change", () => renderProviderCourseCatalog());
+  const syncProviderSortOptionState = () => {
+    const current = String($("providerCoursesSort")?.value || "latest");
+    document.querySelectorAll("[data-provider-sort]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-provider-sort") === current);
+    });
+  };
+  document.querySelectorAll("[data-provider-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-provider-sort") || "latest");
+      if ($("providerCoursesSort")) $("providerCoursesSort").value = next;
+      syncProviderSortOptionState();
+      renderProviderCourseCatalog();
+      if (el.providerCoursesFilterMenu) el.providerCoursesFilterMenu.classList.add("hidden");
+      el.providerCoursesFilterBtn?.classList.remove("active");
+    });
+  });
+  syncProviderSortOptionState();
   $("providerCoursesFilterBtn")?.addEventListener("click", (event) => {
     event.stopPropagation();
+    syncProviderSortOptionState();
     toggleFilterPopover(el.providerCoursesFilterMenu, el.providerCoursesFilterBtn);
   });
   $("providerCoursesFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());

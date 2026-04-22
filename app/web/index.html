@@ -19,7 +19,6 @@
     <section id="authView" class="auth-wrap">
       <article class="panel auth-hero">
         <img src="/assets/classagon_logo.png?v=20260422b" alt="Classagon" class="auth-hero-logo" />
-        <div class="auth-hero-kicker">Classagon</div>
         <h1>Secure Learning. Verified Outcomes.</h1>
         <p>Courses, assessments, proctoring, and certificates on one controlled platform.</p>
       </article>
@@ -117,19 +116,18 @@
 
       <section class="panel content hidden" id="provider-view-courses">
         <h2>Courses</h2>
-        <div class="row between" id="providerCoursesHeader">
-          <div></div>
+        <div class="row between provider-courses-toolbar" id="providerCoursesHeader">
+          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course or provider" />
           <div class="row provider-course-actions">
             <button id="providerCoursesFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
             </button>
             <div id="providerCoursesFilterMenu" class="filter-popover hidden">
-              <select id="providerCoursesSort" class="filter">
-                <option value="latest">Latest</option>
-                <option value="rating_desc">Top Rated</option>
-                <option value="title_asc">Course Name (A-Z)</option>
-                <option value="status_active">Active First</option>
-              </select>
+              <input id="providerCoursesSort" type="hidden" value="latest" />
+              <button class="provider-sort-option active" type="button" data-provider-sort="latest">Latest</button>
+              <button class="provider-sort-option" type="button" data-provider-sort="rating_desc">Top Rated</button>
+              <button class="provider-sort-option" type="button" data-provider-sort="title_asc">Course Name (A-Z)</button>
+              <button class="provider-sort-option" type="button" data-provider-sort="status_active">Active First</button>
             </div>
             <button id="refreshProviderCoursesBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.7 9h2.1A5 5 0 1 0 12 7c1.3 0 2.5.5 3.4 1.3L13 10h7V3l-2.1 2.1A9 9 0 1 0 21 12h-2a7 7 0 0 1-7 7 7 7 0 0 1 0-14z"/></svg>
@@ -139,9 +137,6 @@
             </button>
             <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
           </div>
-        </div>
-        <div class="row wrap gap-sm course-grid-controls">
-          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course or provider" />
         </div>
         <div id="providerCoursesList" class="list"></div>
         <section id="providerCourseViewer" class="moderation-toolbar hidden">

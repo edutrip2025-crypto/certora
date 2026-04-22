@@ -1038,6 +1038,15 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   width: min(460px, 48vw);
   min-width: 220px;
 }
+.provider-courses-toolbar {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.provider-courses-toolbar .search {
+  width: min(460px, 48vw);
+  min-width: 220px;
+}
 .provider-course-actions {
   position: relative;
 }
@@ -1076,17 +1085,40 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .filter-popover {
   position: absolute;
   top: 38px;
-  right: 0;
+  right: auto;
+  left: 0;
   z-index: 8;
-  min-width: 180px;
-  padding: 8px;
+  min-width: 148px;
+  padding: 6px;
   border-radius: 10px;
   border: 1px solid #dbe4f0;
   background: #ffffff;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+  display: grid;
+  gap: 4px;
 }
 .filter-popover .filter {
   width: 100%;
+}
+.provider-sort-option {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #1f2937;
+  border-radius: 8px;
+  text-align: left;
+  font: inherit;
+  font-size: .8rem;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+.provider-sort-option:hover {
+  background: #eef4ff;
+}
+.provider-sort-option.active {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  font-weight: 700;
 }
 .course-tile-grid {
   display: grid;

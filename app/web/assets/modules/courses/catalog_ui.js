@@ -201,7 +201,7 @@
     );
     if (!el.providerCoursesList) return;
     if (!courses.length) {
-      el.providerCoursesList.innerHTML = `<div class="item"><div class="meta">No items</div><div style="margin-top:4px;">No courses found for current search/filter.</div></div>`;
+      el.providerCoursesList.innerHTML = `<div class="item"><div style="margin-top:4px;">No courses found for current search/filter.</div></div>`;
       return;
     }
     const cards = courses.map((c) => {
