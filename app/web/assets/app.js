@@ -239,8 +239,6 @@ const PROCTOR_PRECHECK_TASK_LABELS = {
   cameraReady: "Camera quality check",
   audioReady: "Microphone clarity check",
   speakPromptDone: "Speak verification line",
-  lookLeftDone: "Head turn left check",
-  lookRightDone: "Head turn right check",
   holdStillDone: "Hold-still check",
 };
 
@@ -249,8 +247,6 @@ function createDefaultPrecheckChecklist() {
     cameraReady: false,
     audioReady: false,
     speakPromptDone: false,
-    lookLeftDone: false,
-    lookRightDone: false,
     holdStillDone: false,
   };
 }
@@ -5738,41 +5734,8 @@ function isPrecheckFullyComplete(p) {
     "cameraReady",
     "audioReady",
     "speakPromptDone",
-    "lookLeftDone",
-    "lookRightDone",
     "holdStillDone",
   ].every((key) => Boolean(checks[key]));
-}
-
-async function waitForPrecheckHeadTurn(expectedSign, timeoutMs = 5500) {
-  const p = state.assessmentPreview.proctor;
-  const baseRatio = Number(p.faceReference?.ratio || 0.5);
-  const threshold = 0.08;
-  const started = Date.now();
-  let hitFrames = 0;
-  while (Date.now() - started < timeoutMs) {
-    try {
-      if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) throw new Error("Video stream not ready");
-      const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
-      const faces = out?.faceLandmarks || [];
-      if (faces.length === 1) {
-        const metrics = computeFaceMetrics(faces[0]);
-        if (metrics) {
-          p.lastFaceMetrics = metrics;
-          const delta = Number(metrics.ratio || baseRatio) - baseRatio;
-          const pass = expectedSign < 0 ? delta <= -threshold : delta >= threshold;
-          if (pass) {
-            hitFrames += 1;
-            if (hitFrames >= 3) return true;
-          } else {
-            hitFrames = Math.max(0, hitFrames - 1);
-          }
-        }
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 120));
-  }
-  return false;
 }
 
 async function runGuidedSpeechCheck() {
@@ -6768,7 +6731,7 @@ async function runProctoringPrecheck() {
     }
     await new Promise((r) => setTimeout(r, 750));
     setPrecheckInstruction(
-      "Step 1/6: Stay centered while camera quality is checked.",
+      "Step 1/4: Stay centered while camera quality is checked.",
       "cameraReady",
       "Instruction: Keep shoulders visible, face in center, and no one else in frame.",
     );
@@ -6783,7 +6746,7 @@ async function runProctoringPrecheck() {
     await waitStepDwell();
 
     setPrecheckInstruction(
-      "Step 2/6: Stay quiet for a moment while baseline audio is measured.",
+      "Step 2/4: Stay quiet for a moment while baseline audio is measured.",
       "audioReady",
       "Instruction: Keep silent and avoid background speech/noise during this baseline scan.",
     );
@@ -6797,7 +6760,7 @@ async function runProctoringPrecheck() {
       p.audioBaselineRms = baselineRmsSamples.reduce((a, b) => a + b, 0) / baselineRmsSamples.length;
     }
     setPrecheckInstruction(
-      "Step 2/6: Microphone check - speak clearly for 2-3 seconds.",
+      "Step 2/4: Microphone check - speak clearly for 2-3 seconds.",
       "audioReady",
       "Say this line clearly: My microphone is clear.",
       "My microphone is clear.",
@@ -6817,7 +6780,7 @@ async function runProctoringPrecheck() {
     if (!calibrated) throw new Error("Face calibration failed. Keep one face centered and retry.");
 
     setPrecheckInstruction(
-      "Step 3/6: Read clearly for 3 seconds: \"I am ready for this proctored assessment.\"",
+      "Step 3/4: Read clearly for 3 seconds: \"I am ready for this proctored assessment.\"",
       "speakPromptDone",
       "Voice check instruction: Read in normal volume while looking at the camera.",
       "I am ready for this proctored assessment.",
@@ -6825,38 +6788,11 @@ async function runProctoringPrecheck() {
     const speechOk = await runGuidedSpeechCheck();
     if (!speechOk) throw new Error("Speech verification failed. Speak clearly and retry.");
     p.precheckChecks.speakPromptDone = true;
-    renderPrecheckChecklist("lookLeftDone");
-    await waitStepDwell();
-
-    setPrecheckInstruction(
-      "Step 4/6: Turn your head LEFT and come back to center.",
-      "lookLeftDone",
-      "Direction check: turn clearly to the left, then return to center.",
-    );
-    let leftSign = -1;
-    let leftOk = await waitForPrecheckHeadTurn(leftSign);
-    if (!leftOk) {
-      leftSign = 1;
-      leftOk = await waitForPrecheckHeadTurn(leftSign, 3200);
-    }
-    if (!leftOk) throw new Error("Left head-turn check failed. Turn your head clearly and retry.");
-    p.precheckChecks.lookLeftDone = true;
-    renderPrecheckChecklist("lookRightDone");
-    await waitStepDwell();
-
-    setPrecheckInstruction(
-      "Step 5/6: Turn your head RIGHT and return to center.",
-      "lookRightDone",
-      "Direction check: turn clearly to the right, then return to center.",
-    );
-    const rightOk = await waitForPrecheckHeadTurn(leftSign * -1);
-    if (!rightOk) throw new Error("Right head-turn check failed. Turn your head clearly and retry.");
-    p.precheckChecks.lookRightDone = true;
     renderPrecheckChecklist("holdStillDone");
     await waitStepDwell();
 
     setPrecheckInstruction(
-      "Step 6/6: Hold still and look at screen for 3 seconds.",
+      "Step 4/4: Hold still and look at screen for 3 seconds.",
       "holdStillDone",
       "Stability check: keep eyes on screen and avoid head movement for 3 seconds.",
     );
