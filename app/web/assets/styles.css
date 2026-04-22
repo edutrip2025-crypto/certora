@@ -30,15 +30,16 @@ main { width: calc(100% - clamp(16px, 2.6vw, 34px)); margin-left: auto; margin-r
 .top-right { display: flex; gap: 8px; align-items: center; }
 .badge { border: 1px solid #d1d5db; border-radius: 999px; background: #fff; padding: 6px 10px; font-size: .82rem; font-weight: 700; }
 
-main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top: 18px; }
+main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top: 10px; }
 .panel { background: var(--surface); border: none; border-radius: 0; box-shadow: none; }
 
 .workspace-brand {
-  position: relative;
-  top: auto;
-  left: auto;
-  z-index: 10;
-  margin-bottom: 8px;
+  position: fixed;
+  top: 10px;
+  left: clamp(12px, 2.2vw, 22px);
+  z-index: 1100;
+  margin-bottom: 0;
+  pointer-events: none;
 }
 .workspace-expand-fab {
   position: fixed;
@@ -2444,7 +2445,7 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 620px) {
   .stats, .stats.small { grid-template-columns: 1fr; }
   .course-tile-grid { grid-template-columns: 1fr; }
-  .workspace-brand { margin-bottom: 4px; }
+  .workspace-brand { top: 8px; left: 10px; }
   .content { padding: 14px; }
   .settings-menu {
     position: static;
@@ -2452,7 +2453,7 @@ input:focus, select:focus, textarea:focus {
     bottom: auto;
     right: auto;
   }
-  main { padding-top: 12px; }
+  main { padding-top: 8px; }
   .attention-challenge {
     inset: 10px 10px auto 10px;
     min-height: 98px;
