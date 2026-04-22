@@ -89,8 +89,16 @@ class Settings(BaseSettings):
             raw = "postgresql+psycopg://" + raw[len("postgresql://"):]
         if not self.is_vercel:
             return raw
-        if raw.startswith("sqlite:///./") or raw == "sqlite:///./certora.db":
-            return "sqlite:////tmp/certora.db"
+        if raw.startswith("sqlite"):
+            raise RuntimeError(
+                "On Vercel, DATABASE_URL must be a Postgres connection string (for example Neon). "
+                "SQLite is not supported for deployment.",
+            )
+        if not raw.startswith("postgresql+psycopg://"):
+            raise RuntimeError(
+                "On Vercel, DATABASE_URL must resolve to 'postgresql+psycopg://...'. "
+                "Please verify the DATABASE_URL environment variable.",
+            )
         return raw
 
     @property
