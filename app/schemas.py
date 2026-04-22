@@ -435,6 +435,14 @@ class CourseCommentReply(BaseModel):
     reply: str
 
 
+class ProviderComplaintStatusUpdate(BaseModel):
+    status: str
+
+
+class ProviderFeedbackSeenUpdate(BaseModel):
+    seen: bool = True
+
+
 class CourseFeedbackCreate(BaseModel):
     valuable_time_rating: int = Field(ge=1, le=5)
     content_quality_rating: int = Field(ge=1, le=5)

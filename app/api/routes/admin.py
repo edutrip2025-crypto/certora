@@ -14,6 +14,8 @@ from app.models.entities import (
     ApprovalStatus,
     Certificate,
     ComplaintItem,
+    Course,
+    CourseComment,
     Enrollment,
     Exam,
     ExamStatus,
@@ -791,6 +793,50 @@ def list_complaints(
             },
         )
     return {"count": len(items), "by_type": counts, "by_status": status_counts, "items": items, "page": page, "page_size": page_size, "total": total}
+
+
+@router.get("/provider-complaints")
+def list_provider_complaints(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    status: str | None = None,
+    search: str | None = None,
+):
+    query = (
+        select(CourseComment, Course, User)
+        .join(Course, Course.id == CourseComment.course_id)
+        .join(User, User.id == CourseComment.student_id, isouter=True)
+    )
+    if status:
+        query = query.where(CourseComment.provider_status == str(status).strip().lower())
+    if search:
+        like = f"%{str(search).strip()}%"
+        query = query.where(
+            (CourseComment.message.ilike(like))
+            | (Course.title.ilike(like))
+            | (User.full_name.ilike(like))
+            | (User.email.ilike(like)),
+        )
+    rows = db.execute(query.order_by(CourseComment.created_at.desc())).all()
+    out = []
+    for comment, course, student in rows:
+        out.append(
+            {
+                "comment_id": comment.id,
+                "course_id": course.id,
+                "course_title": course.title,
+                "student_id": comment.student_id,
+                "student_name": student.full_name if student else None,
+                "student_email": student.email if student else None,
+                "message": comment.message,
+                "provider_status": comment.provider_status or "new",
+                "provider_reply": comment.provider_reply,
+                "provider_seen_at": comment.provider_seen_at,
+                "created_at": comment.created_at,
+                "replied_at": comment.replied_at,
+            },
+        )
+    return {"count": len(out), "items": out}
 
 
 @router.post("/reports/{report_id}/status")

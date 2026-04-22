@@ -1200,6 +1200,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   background: #fff;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+  position: relative;
 }
 .course-tile-thumb {
   width: 100%;
@@ -1259,6 +1260,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 .course-tile .actions {
   margin-top: 9px;
+}
+.course-tile-delete-corner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
 }
 .icon-action-btn {
   width: 34px;
@@ -2966,6 +2973,12 @@ main {
 .item,
 .stat {
   border-radius: 16px;
+}
+
+.provider-tile-action {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
 }
 
 .content {

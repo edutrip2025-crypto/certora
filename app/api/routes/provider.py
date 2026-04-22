@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import and_, case, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -51,6 +51,8 @@ from app.schemas import (
     LiveClassScheduleUpdate,
     ProviderDocumentCreate,
     ProviderDocumentOut,
+    ProviderComplaintStatusUpdate,
+    ProviderFeedbackSeenUpdate,
     ProviderHomeOut,
     ProviderProfileCreate,
     ProviderProfileOut,
@@ -1646,17 +1648,29 @@ def complete_live_class(
 
 @router.get("/workspace/feedback/comments")
 def provider_comments(
+    status_filter: str | None = Query(default=None, alias="status"),
+    search: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    rows = db.execute(
+    query = (
         select(CourseComment, Course, User)
         .join(Course, Course.id == CourseComment.course_id)
         .join(User, User.id == CourseComment.student_id)
         .where(Course.provider_id == provider.id)
-        .order_by(CourseComment.created_at.desc()),
-    ).all()
+    )
+    if status_filter:
+        query = query.where(CourseComment.provider_status == str(status_filter).strip().lower())
+    if search:
+        like = f"%{str(search).strip()}%"
+        query = query.where(
+            (CourseComment.message.ilike(like))
+            | (Course.title.ilike(like))
+            | (User.full_name.ilike(like))
+            | (User.email.ilike(like)),
+        )
+    rows = db.execute(query.order_by(CourseComment.created_at.desc())).all()
     return [
         {
             "comment_id": comment.id,
@@ -1665,6 +1679,8 @@ def provider_comments(
             "student_name": student.full_name,
             "student_email": student.email,
             "message": comment.message,
+            "provider_status": comment.provider_status or "new",
+            "provider_seen_at": comment.provider_seen_at,
             "provider_reply": comment.provider_reply,
             "created_at": comment.created_at,
             "replied_at": comment.replied_at,
@@ -1689,23 +1705,77 @@ def provider_reply_comment(
         raise HTTPException(status_code=403, detail="Access denied")
     comment.provider_reply = payload.reply
     comment.replied_at = datetime.now(timezone.utc)
+    comment.provider_seen_at = comment.provider_seen_at or datetime.now(timezone.utc)
+    if (comment.provider_status or "new") == "new":
+        comment.provider_status = "pending"
     db.commit()
     return {"comment_id": comment.id, "replied": True}
 
 
-@router.get("/workspace/feedback/ratings")
-def provider_course_feedback(
+@router.post("/workspace/feedback/comments/{comment_id}/status")
+def provider_update_comment_status(
+    comment_id: int,
+    payload: ProviderComplaintStatusUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    rows = db.execute(
+    comment = db.get(CourseComment, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    course = db.get(Course, comment.course_id)
+    if not course or course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    status_value = str(payload.status or "").strip().lower()
+    if status_value not in {"new", "pending", "closed"}:
+        raise HTTPException(status_code=400, detail="status must be new, pending, or closed")
+    comment.provider_status = status_value
+    comment.provider_seen_at = comment.provider_seen_at or datetime.now(timezone.utc)
+    db.commit()
+    return {"comment_id": comment.id, "status": comment.provider_status}
+
+
+@router.post("/workspace/feedback/comments/{comment_id}/seen")
+def provider_mark_comment_seen(
+    comment_id: int,
+    payload: ProviderFeedbackSeenUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    comment = db.get(CourseComment, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    course = db.get(Course, comment.course_id)
+    if not course or course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if payload.seen:
+        comment.provider_seen_at = datetime.now(timezone.utc)
+    else:
+        comment.provider_seen_at = None
+        comment.provider_status = "new"
+    db.commit()
+    return {"comment_id": comment.id, "seen": bool(comment.provider_seen_at)}
+
+
+@router.get("/workspace/feedback/ratings")
+def provider_course_feedback(
+    state: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    query = (
         select(CourseFeedback, Course, User)
         .join(Course, Course.id == CourseFeedback.course_id)
         .join(User, User.id == CourseFeedback.student_id)
         .where(Course.provider_id == provider.id)
-        .order_by(CourseFeedback.created_at.desc()),
-    ).all()
+    )
+    if state == "new":
+        query = query.where(CourseFeedback.provider_seen_at.is_(None))
+    elif state == "old":
+        query = query.where(CourseFeedback.provider_seen_at.is_not(None))
+    rows = db.execute(query.order_by(CourseFeedback.created_at.desc())).all()
     return [
         {
             "feedback_id": fb.id,
@@ -1716,11 +1786,66 @@ def provider_course_feedback(
             "content_quality_rating": fb.content_quality_rating,
             "instructor_clarity_rating": fb.instructor_clarity_rating,
             "practical_usefulness_rating": fb.practical_usefulness_rating,
+            "overall_rating": round(
+                (
+                    float(fb.valuable_time_rating or 0)
+                    + float(fb.content_quality_rating or 0)
+                    + float(fb.instructor_clarity_rating or 0)
+                    + float(fb.practical_usefulness_rating or 0)
+                ) / 4,
+                2,
+            ),
             "comment": fb.comment,
+            "provider_seen_at": fb.provider_seen_at,
+            "provider_reply": fb.provider_reply,
+            "provider_replied_at": fb.provider_replied_at,
             "created_at": fb.created_at,
         }
         for fb, course, student in rows
     ]
+
+
+@router.post("/workspace/feedback/ratings/{feedback_id}/reply")
+def provider_reply_feedback(
+    feedback_id: int,
+    payload: CourseCommentReply,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    feedback = db.get(CourseFeedback, feedback_id)
+    if not feedback:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    course = db.get(Course, feedback.course_id)
+    if not course or course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    feedback.provider_reply = payload.reply
+    feedback.provider_replied_at = datetime.now(timezone.utc)
+    feedback.provider_seen_at = feedback.provider_seen_at or datetime.now(timezone.utc)
+    db.commit()
+    return {"feedback_id": feedback.id, "replied": True}
+
+
+@router.post("/workspace/feedback/ratings/{feedback_id}/seen")
+def provider_mark_feedback_seen(
+    feedback_id: int,
+    payload: ProviderFeedbackSeenUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    feedback = db.get(CourseFeedback, feedback_id)
+    if not feedback:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    course = db.get(Course, feedback.course_id)
+    if not course or course.provider_id != provider.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if payload.seen:
+        feedback.provider_seen_at = datetime.now(timezone.utc)
+    else:
+        feedback.provider_seen_at = None
+    db.commit()
+    return {"feedback_id": feedback.id, "seen": bool(feedback.provider_seen_at)}
 
 
 @router.get("/workspace/notifications")

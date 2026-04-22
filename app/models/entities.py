@@ -668,6 +668,8 @@ class CourseComment(Base):
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
     student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     message: Mapped[str] = mapped_column(Text)
+    provider_status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new | pending | closed
+    provider_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -685,6 +687,9 @@ class CourseFeedback(Base):
     instructor_clarity_rating: Mapped[int] = mapped_column(Integer, default=5)
     practical_usefulness_rating: Mapped[int] = mapped_column(Integer, default=5)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

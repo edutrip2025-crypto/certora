@@ -47,6 +47,11 @@ const state = {
   providerDrafts: [],
   wizardLocalVideoObjectUrl: "",
   providerAssessments: [],
+  providerFeedbackRatings: [],
+  providerComplaints: [],
+  providerFeedbackTab: "feedback",
+  providerFeedbackDetailMode: "",
+  providerComplaintsDetailStatus: "",
   providerLiveSessions: [],
   providerLiveEditSessionId: null,
   studentLiveSessions: [],
@@ -1277,6 +1282,28 @@ const el = {
   cwMarkerTooltip: $("cwMarkerTooltip"),
   providerDraftsList: $("providerDraftsList"),
   providerAssessmentsList: $("providerAssessmentsList"),
+  providerAssessmentsSearch: $("providerAssessmentsSearch"),
+  providerFeedbackHub: $("providerFeedbackHub"),
+  providerFeedbackTiles: $("providerFeedbackTiles"),
+  providerComplaintTiles: $("providerComplaintTiles"),
+  providerFeedbackTileNew: $("providerFeedbackTileNew"),
+  providerFeedbackTileOld: $("providerFeedbackTileOld"),
+  providerComplaintTileNew: $("providerComplaintTileNew"),
+  providerComplaintTilePending: $("providerComplaintTilePending"),
+  providerComplaintTileClosed: $("providerComplaintTileClosed"),
+  providerFeedbackNewCount: $("providerFeedbackNewCount"),
+  providerFeedbackAvgBadge: $("providerFeedbackAvgBadge"),
+  providerComplaintNewCount: $("providerComplaintNewCount"),
+  providerComplaintPendingCount: $("providerComplaintPendingCount"),
+  providerComplaintClosedCount: $("providerComplaintClosedCount"),
+  providerFeedbackDetailPage: $("providerFeedbackDetailPage"),
+  providerFeedbackDetailTitle: $("providerFeedbackDetailTitle"),
+  providerFeedbackDetailList: $("providerFeedbackDetailList"),
+  providerFeedbackBackBtn: $("providerFeedbackBackBtn"),
+  providerComplaintsDetailPage: $("providerComplaintsDetailPage"),
+  providerComplaintsDetailTitle: $("providerComplaintsDetailTitle"),
+  providerComplaintsDetailList: $("providerComplaintsDetailList"),
+  providerComplaintsBackBtn: $("providerComplaintsBackBtn"),
   assessmentBuilderScreen: $("assessmentBuilderScreen"),
   abCourseFilter: $("abCourseFilter"),
   abCourseSelect: $("abCourseSelect"),
@@ -1879,6 +1906,11 @@ function activateProviderSubView(name) {
   if (pane) pane.classList.remove("hidden");
   if (name === "live") {
     refreshProviderLiveClasses().catch(() => toast("Failed to load live classes", "error"));
+  }
+  if (name === "feedback") {
+    setProviderFeedbackTab(state.providerFeedbackTab || "feedback");
+    if (!state.providerFeedbackDetailMode && !state.providerComplaintsDetailStatus) closeProviderFeedbackDetails();
+    refreshProviderFeedback().catch(() => toast("Failed to load feedback", "error"));
   }
 }
 
@@ -7783,12 +7815,17 @@ async function persistCurrentStudentAttemptAnswer() {
   });
 }
 
-async function refreshProviderAssessments() {
-  const list = await api("GET", "/provider/workspace/assessments");
-  state.providerAssessments = Array.isArray(list) ? list : [];
+function renderProviderAssessmentsList() {
+  const q = String(el.providerAssessmentsSearch?.value || "").trim().toLowerCase();
+  const rows = q
+    ? state.providerAssessments.filter((a) => {
+      const blob = `${a.title || ""} ${a.exam_id || ""} ${a.status || ""}`.toLowerCase();
+      return blob.includes(q);
+    })
+    : state.providerAssessments;
   renderList(
     el.providerAssessmentsList,
-    state.providerAssessments,
+    rows,
     (a) => `
       <div><strong>${a.title}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${a.status}</span></div>
       <div class='meta'>Assessment ID: ${a.exam_id}</div>
@@ -7803,6 +7840,12 @@ async function refreshProviderAssessments() {
     : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4.2l11-11a1.5 1.5 0 0 0 0-2.1l-2.1-2.1a1.5 1.5 0 0 0-2.1 0l-11 11V21z"/><path d="M13.5 6.5l4 4"/></svg></button>
        <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
+}
+
+async function refreshProviderAssessments() {
+  const list = await api("GET", "/provider/workspace/assessments");
+  state.providerAssessments = Array.isArray(list) ? list : [];
+  renderProviderAssessmentsList();
 }
       </div>
     `,
@@ -7857,50 +7900,192 @@ async function refreshProviderAssessments() {
   });
 }
 
-async function refreshProviderFeedback() {
-  const comments = await api("GET", "/provider/workspace/feedback/comments");
-  const ratings = await api("GET", "/provider/workspace/feedback/ratings");
+function setProviderFeedbackTab(tab) {
+  state.providerFeedbackTab = tab === "complaints" ? "complaints" : "feedback";
+  document.querySelectorAll("[data-provider-fc-tab]").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-provider-fc-tab") === state.providerFeedbackTab);
+  });
+  el.providerFeedbackTiles?.classList.toggle("hidden", state.providerFeedbackTab !== "feedback");
+  el.providerComplaintTiles?.classList.toggle("hidden", state.providerFeedbackTab !== "complaints");
+  if (!state.providerFeedbackDetailMode) {
+    el.providerFeedbackHub?.classList.remove("hidden");
+    el.providerFeedbackDetailPage?.classList.add("hidden");
+    el.providerComplaintsDetailPage?.classList.add("hidden");
+  }
+}
 
+function openProviderFeedbackDetail(mode) {
+  state.providerFeedbackDetailMode = mode === "old" ? "old" : "new";
+  state.providerComplaintsDetailStatus = "";
+  el.providerFeedbackHub?.classList.add("hidden");
+  el.providerFeedbackDetailPage?.classList.remove("hidden");
+  el.providerComplaintsDetailPage?.classList.add("hidden");
+}
+
+function openProviderComplaintsDetail(status) {
+  const normalized = ["new", "pending", "closed"].includes(String(status)) ? String(status) : "new";
+  state.providerComplaintsDetailStatus = normalized;
+  state.providerFeedbackDetailMode = "";
+  el.providerFeedbackHub?.classList.add("hidden");
+  el.providerFeedbackDetailPage?.classList.add("hidden");
+  el.providerComplaintsDetailPage?.classList.remove("hidden");
+}
+
+function closeProviderFeedbackDetails() {
+  state.providerFeedbackDetailMode = "";
+  state.providerComplaintsDetailStatus = "";
+  el.providerFeedbackHub?.classList.remove("hidden");
+  el.providerFeedbackDetailPage?.classList.add("hidden");
+  el.providerComplaintsDetailPage?.classList.add("hidden");
+}
+
+function renderProviderFeedbackHub() {
+  const ratings = Array.isArray(state.providerFeedbackRatings) ? state.providerFeedbackRatings : [];
+  const complaints = Array.isArray(state.providerComplaints) ? state.providerComplaints : [];
+  const newFeedback = ratings.filter((r) => !r.provider_seen_at);
+  const oldFeedback = ratings.filter((r) => r.provider_seen_at);
+  const avg = ratings.length
+    ? (ratings.reduce((sum, r) => sum + Number(r.overall_rating || 0), 0) / ratings.length)
+    : 0;
+  if (el.providerFeedbackNewCount) el.providerFeedbackNewCount.textContent = String(newFeedback.length);
+  if (el.providerFeedbackAvgBadge) el.providerFeedbackAvgBadge.textContent = avg.toFixed(1);
+  if (el.providerComplaintNewCount) el.providerComplaintNewCount.textContent = String(complaints.filter((c) => (c.provider_status || "new") === "new").length);
+  if (el.providerComplaintPendingCount) el.providerComplaintPendingCount.textContent = String(complaints.filter((c) => c.provider_status === "pending").length);
+  if (el.providerComplaintClosedCount) el.providerComplaintClosedCount.textContent = String(complaints.filter((c) => c.provider_status === "closed").length);
+}
+
+function renderProviderFeedbackDetail() {
+  const mode = state.providerFeedbackDetailMode === "old" ? "old" : "new";
+  if (el.providerFeedbackDetailTitle) {
+    el.providerFeedbackDetailTitle.textContent = mode === "new" ? "New Feedback" : "Old Feedback";
+  }
+  const items = (state.providerFeedbackRatings || []).filter((r) => (mode === "new" ? !r.provider_seen_at : Boolean(r.provider_seen_at)));
   renderList(
-    el.providerCommentsList,
-    comments,
-    (c) => `
-      <div><strong>${c.course_title}</strong> - ${c.student_name}</div>
-      <div style="margin-top:4px;">${c.message}</div>
-      <div class="meta">${formatTime(c.created_at)}</div>
-      <div class="meta">Reply: ${c.provider_reply || "No reply yet"}</div>
+    el.providerFeedbackDetailList,
+    items,
+    (r) => `
+      <div><strong>${escapeHtmlAttr(r.course_title || "Course")}</strong> - ${escapeHtmlAttr(r.student_name || "Student")}</div>
+      <div class="meta">Overall: ${Number(r.overall_rating || 0).toFixed(1)}/5 | Valuable: ${r.valuable_time_rating}/5 | Content: ${r.content_quality_rating}/5 | Clarity: ${r.instructor_clarity_rating}/5 | Practical: ${r.practical_usefulness_rating}/5</div>
+      <div style="margin-top:4px;">${escapeHtmlAttr(r.comment || "No comment")}</div>
+      <div class="meta">${formatTime(r.created_at)}</div>
+      <div class="meta">Reply: ${escapeHtmlAttr(r.provider_reply || "No reply yet")}</div>
       <div class="actions">
-        <button class="btn small" data-reply-comment="${c.comment_id}">Reply</button>
+        <button class="btn small" data-provider-feedback-reply="${r.feedback_id}">Reply</button>
+        ${mode === "new" ? `<button class="btn small" data-provider-feedback-mark-old="${r.feedback_id}">Mark Seen</button>` : ""}
       </div>
     `,
-    "No comments yet.",
+    mode === "new" ? "No new feedback." : "No old feedback yet.",
   );
-
-  renderList(
-    el.providerRatingsList,
-    ratings,
-    (r) => `
-      <div><strong>${r.course_title}</strong> - ${r.student_name}</div>
-      <div class="meta">Valuable Time: ${r.valuable_time_rating}/5 | Content: ${r.content_quality_rating}/5 | Clarity: ${r.instructor_clarity_rating}/5 | Practical: ${r.practical_usefulness_rating}/5</div>
-      <div style="margin-top:4px;">${r.comment || "No comment"}</div>
-    `,
-    "No feedback ratings yet.",
-  );
-
-  document.querySelectorAll("[data-reply-comment]").forEach((btn) => {
+  document.querySelectorAll("[data-provider-feedback-reply]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const id = btn.dataset.replyComment;
+      const feedbackId = Number(btn.getAttribute("data-provider-feedback-reply") || 0);
+      if (!feedbackId) return;
       const reply = prompt("Reply to student");
       if (!reply) return;
       try {
-        await api("POST", `/provider/workspace/feedback/comments/${id}/reply`, { reply });
+        await api("POST", `/provider/workspace/feedback/ratings/${feedbackId}/reply`, { reply });
         toast("Reply sent");
         await refreshProviderFeedback();
       } catch (err) {
-        toast("Failed to reply", "error");
+        toast(err?.message || "Failed to reply", "error");
       }
     });
   });
+  document.querySelectorAll("[data-provider-feedback-mark-old]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const feedbackId = Number(btn.getAttribute("data-provider-feedback-mark-old") || 0);
+      if (!feedbackId) return;
+      try {
+        await api("POST", `/provider/workspace/feedback/ratings/${feedbackId}/seen`, { seen: true });
+        await refreshProviderFeedback();
+      } catch (err) {
+        toast(err?.message || "Failed to mark feedback as seen", "error");
+      }
+    });
+  });
+}
+
+function renderProviderComplaintsDetail() {
+  const map = { new: "new", pending: "pending", closed: "closed" };
+  const selected = map[state.providerComplaintsDetailStatus] || "new";
+  if (el.providerComplaintsDetailTitle) {
+    el.providerComplaintsDetailTitle.textContent = `${selected[0].toUpperCase()}${selected.slice(1)} Complaints`;
+  }
+  const items = (state.providerComplaints || []).filter((c) => (c.provider_status || "new") === selected);
+  renderList(
+    el.providerComplaintsDetailList,
+    items,
+    (c) => `
+      <div><strong>${escapeHtmlAttr(c.course_title || "Course")}</strong> - ${escapeHtmlAttr(c.student_name || "Student")}</div>
+      <div style="margin-top:4px;">${escapeHtmlAttr(c.message || "")}</div>
+      <div class="meta">${formatTime(c.created_at)} | Status: ${escapeHtmlAttr(c.provider_status || "new")}</div>
+      <div class="meta">Reply: ${escapeHtmlAttr(c.provider_reply || "No response yet")}</div>
+      <div class="actions">
+        ${selected === "new" ? `<button class="btn small" data-provider-complaint-pending="${c.comment_id}">Mark Pending</button>` : ""}
+        ${selected !== "closed" ? `<button class="btn small danger" data-provider-complaint-close="${c.comment_id}">Close</button>` : ""}
+        <button class="btn small" data-provider-complaint-reply="${c.comment_id}">Respond</button>
+      </div>
+    `,
+    `No ${selected} complaints.`,
+  );
+
+  document.querySelectorAll("[data-provider-complaint-pending]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.getAttribute("data-provider-complaint-pending") || 0);
+      if (!id) return;
+      try {
+        await api("POST", `/provider/workspace/feedback/comments/${id}/status`, { status: "pending" });
+        await refreshProviderFeedback();
+      } catch (err) {
+        toast(err?.message || "Failed to update complaint", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-provider-complaint-close]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.getAttribute("data-provider-complaint-close") || 0);
+      if (!id) return;
+      try {
+        await api("POST", `/provider/workspace/feedback/comments/${id}/status`, { status: "closed" });
+        await refreshProviderFeedback();
+      } catch (err) {
+        toast(err?.message || "Failed to close complaint", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-provider-complaint-reply]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.getAttribute("data-provider-complaint-reply") || 0);
+      if (!id) return;
+      const reply = prompt("Respond to complaint");
+      if (!reply) return;
+      try {
+        await api("POST", `/provider/workspace/feedback/comments/${id}/reply`, { reply });
+        if (selected === "new") {
+          await api("POST", `/provider/workspace/feedback/comments/${id}/status`, { status: "pending" });
+        }
+        await refreshProviderFeedback();
+      } catch (err) {
+        toast(err?.message || "Failed to respond", "error");
+      }
+    });
+  });
+}
+
+async function refreshProviderFeedback() {
+  const [comments, ratings] = await Promise.all([
+    api("GET", "/provider/workspace/feedback/comments"),
+    api("GET", "/provider/workspace/feedback/ratings"),
+  ]);
+  state.providerComplaints = Array.isArray(comments) ? comments : [];
+  state.providerFeedbackRatings = Array.isArray(ratings) ? ratings : [];
+
+  renderProviderFeedbackHub();
+  if (state.providerFeedbackDetailMode) {
+    renderProviderFeedbackDetail();
+  } else if (state.providerComplaintsDetailStatus) {
+    renderProviderComplaintsDetail();
+  }
 }
 
 async function refreshProviderNotifications() {
@@ -9184,8 +9369,62 @@ function bindEvents() {
   $("providerCoursesFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
     refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
-  $("refreshProviderAssessmentsBtn")?.addEventListener("click", () => refreshProviderAssessments().catch(() => toast("Failed to refresh assessments", "error")));
-  $("refreshProviderCommentsBtn")?.addEventListener("click", () => refreshProviderFeedback().catch(() => toast("Failed to refresh feedback", "error")));
+  $("providerAssessmentsSearch")?.addEventListener("input", () => {
+    renderProviderAssessmentsList();
+  });
+  $("refreshProviderAssessmentsBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshProviderAssessmentsBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshProviderAssessments();
+    } catch {
+      toast("Failed to refresh assessments", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
+  $("refreshProviderCommentsBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshProviderCommentsBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshProviderFeedback();
+    } catch {
+      toast("Failed to refresh feedback", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
+  document.querySelectorAll("[data-provider-fc-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setProviderFeedbackTab(btn.getAttribute("data-provider-fc-tab") || "feedback");
+    });
+  });
+  $("providerFeedbackTileNew")?.addEventListener("click", () => {
+    openProviderFeedbackDetail("new");
+    renderProviderFeedbackDetail();
+  });
+  $("providerFeedbackTileOld")?.addEventListener("click", () => {
+    openProviderFeedbackDetail("old");
+    renderProviderFeedbackDetail();
+  });
+  $("providerComplaintTileNew")?.addEventListener("click", () => {
+    openProviderComplaintsDetail("new");
+    renderProviderComplaintsDetail();
+  });
+  $("providerComplaintTilePending")?.addEventListener("click", () => {
+    openProviderComplaintsDetail("pending");
+    renderProviderComplaintsDetail();
+  });
+  $("providerComplaintTileClosed")?.addEventListener("click", () => {
+    openProviderComplaintsDetail("closed");
+    renderProviderComplaintsDetail();
+  });
+  $("providerFeedbackBackBtn")?.addEventListener("click", () => {
+    closeProviderFeedbackDetails();
+  });
+  $("providerComplaintsBackBtn")?.addEventListener("click", () => {
+    closeProviderFeedbackDetails();
+  });
   $("refreshProviderNotificationsBtn")?.addEventListener("click", () => refreshProviderNotifications().catch(() => toast("Failed to refresh notifications", "error")));
   $("refreshProviderCertsBtn")?.addEventListener("click", () => refreshProviderCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("refreshProviderLiveClassesBtn")?.addEventListener("click", () => refreshProviderLiveClasses().catch(() => toast("Failed to refresh live classes", "error")));

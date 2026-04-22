@@ -290,6 +290,39 @@ def _migrate_admin_user_controls_postgres(conn) -> None:
             pass
 
 
+def _migrate_provider_feedback_schema_sqlite(conn) -> None:
+    _sqlite_add_column_if_missing(conn, "course_comments", "provider_status", "TEXT DEFAULT 'new'")
+    _sqlite_add_column_if_missing(conn, "course_comments", "provider_seen_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "course_feedback", "provider_seen_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "course_feedback", "provider_reply", "TEXT")
+    _sqlite_add_column_if_missing(conn, "course_feedback", "provider_replied_at", "DATETIME")
+    try:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_course_comments_provider_status ON course_comments (provider_status)"))
+    except Exception:
+        pass
+    try:
+        conn.execute(text("UPDATE course_comments SET provider_status = 'new' WHERE provider_status IS NULL OR provider_status = ''"))
+    except Exception:
+        pass
+
+
+def _migrate_provider_feedback_schema_postgres(conn) -> None:
+    statements = [
+        "ALTER TABLE course_comments ADD COLUMN IF NOT EXISTS provider_status VARCHAR(20) DEFAULT 'new'",
+        "ALTER TABLE course_comments ADD COLUMN IF NOT EXISTS provider_seen_at TIMESTAMPTZ",
+        "ALTER TABLE course_feedback ADD COLUMN IF NOT EXISTS provider_seen_at TIMESTAMPTZ",
+        "ALTER TABLE course_feedback ADD COLUMN IF NOT EXISTS provider_reply TEXT",
+        "ALTER TABLE course_feedback ADD COLUMN IF NOT EXISTS provider_replied_at TIMESTAMPTZ",
+        "CREATE INDEX IF NOT EXISTS ix_course_comments_provider_status ON course_comments(provider_status)",
+        "UPDATE course_comments SET provider_status = 'new' WHERE provider_status IS NULL OR provider_status = ''",
+    ]
+    for stmt in statements:
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            pass
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
@@ -306,6 +339,7 @@ def init_db() -> None:
             _migrate_identity_schema_sqlite(conn)
             _migrate_stream_market_schema_sqlite(conn)
             _migrate_admin_user_controls_sqlite(conn)
+            _migrate_provider_feedback_schema_sqlite(conn)
     elif engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             try:
@@ -317,6 +351,7 @@ def init_db() -> None:
             _migrate_identity_schema_postgres(conn)
             _migrate_stream_market_schema_postgres(conn)
             _migrate_admin_user_controls_postgres(conn)
+            _migrate_provider_feedback_schema_postgres(conn)
 
     # Backfill and normalize existing accounts to current role/approval rules, then sync Firebase claims.
     db = SessionLocal()
