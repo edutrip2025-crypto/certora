@@ -2356,12 +2356,18 @@ input:focus, select:focus, textarea:focus {
   gap: 2px;
   margin: -6px 0 2px;
 }
-#providerView .provider-sidebar-logo {
+#providerView .provider-sidebar-logo-wrap {
   width: min(200px, 100%);
+  max-width: 100%;
+  height: 62px;
+  overflow: hidden;
+}
+#providerView .provider-sidebar-logo {
+  width: 100%;
   height: auto;
   object-fit: contain;
   display: block;
-  margin: -4px 0 -6px;
+  margin: -4px 0 -20px;
 }
 #providerView .sidebar h3 {
   margin: 0 0 6px;
@@ -2371,6 +2377,9 @@ input:focus, select:focus, textarea:focus {
   color: #334155;
   padding: 9px 10px;
   margin-bottom: 3px;
+}
+#providerView .provider-nav-btn[data-provider-view="home"] {
+  margin-top: 14px;
 }
 #providerView .nav-btn:hover {
   background: #eef4ff;
@@ -2504,6 +2513,9 @@ input:focus, select:focus, textarea:focus {
     border-radius: 16px;
   }
   #providerView .provider-sidebar-logo {
+    width: 100%;
+  }
+  #providerView .provider-sidebar-logo-wrap {
     width: min(180px, 100%);
   }
   .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
