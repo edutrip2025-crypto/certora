@@ -36,7 +36,7 @@ main { margin-top: 0; margin-bottom: 20px; display: grid; gap: 18px; padding-top
 .workspace-brand {
   position: fixed;
   top: 10px;
-  left: calc(clamp(16px, 2.6vw, 34px) + 260px + 20px);
+  left: clamp(16px, 2.6vw, 34px);
   z-index: 1000;
   margin-bottom: 0;
   pointer-events: none;
@@ -2299,7 +2299,7 @@ input:focus, select:focus, textarea:focus {
 }
 .sidebar {
   top: 8px;
-  margin-top: 0;
+  margin-top: 102px;
   padding: 16px 12px 12px;
   border-right: none;
   border-radius: 18px;
@@ -2471,6 +2471,9 @@ input:focus, select:focus, textarea:focus {
   .workspace-brand {
     left: 12px;
     top: 8px;
+  }
+  .sidebar {
+    margin-top: 0;
   }
   .auth-hero-logo {
     transform: scale(1.14);
