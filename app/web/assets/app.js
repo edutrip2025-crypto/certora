@@ -2456,12 +2456,13 @@ function bindCustomPlayerControls({
   if (!video) return;
 
   const refreshPlayLabel = () => {
-    if (playBtn) playBtn.textContent = video.paused ? "â–¶" : "âšâš";
+    if (!playBtn) return;
+    playBtn.innerHTML = video.paused ? materialIcon("play_arrow") : materialIcon("pause");
   };
   const refreshFullscreenIcon = () => {
     if (!fullscreenBtn) return;
     const isFs = document.fullscreenElement === shell;
-    fullscreenBtn.textContent = isFs ? "ðŸ——" : "â›¶";
+    fullscreenBtn.innerHTML = isFs ? materialIcon("fullscreen_exit") : materialIcon("fullscreen");
     fullscreenBtn.title = isFs ? "Exit Fullscreen" : "Fullscreen";
     fullscreenBtn.setAttribute("aria-label", isFs ? "Exit Fullscreen" : "Fullscreen");
   };
@@ -4025,32 +4026,36 @@ function setIconButtonLabel(button, icon, label) {
   button.innerHTML = `<span class="ico">${icon}</span><span class="lbl">${escapeHtmlAttr(label)}</span>`;
 }
 
+function materialIcon(name, options = {}) {
+  const icon = String(name || "").trim() || "circle";
+  const filled = Boolean(options.filled);
+  const classes = `material-symbols-rounded${filled ? " is-filled" : ""}`;
+  return `<span class="${classes}" aria-hidden="true">${icon}</span>`;
+}
+
 function liveUiIcon(name) {
-  const stroke = "currentColor";
-  const w = 18;
-  const base = (path, sw = 1.8) => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
-  if (name === "tools") return base("<rect x='4' y='4' width='6' height='6' rx='1.2'/><rect x='14' y='4' width='6' height='6' rx='1.2'/><rect x='4' y='14' width='6' height='6' rx='1.2'/><rect x='14' y='14' width='6' height='6' rx='1.2'/>");
-  if (name === "chat") return base("<path d='M4 6h16v10H8l-4 4z'/>");
-  if (name === "reaction") return base("<path d='M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z'/>");
-  if (name === "fullscreen") return base("<path d='M4 9V4h5M15 4h5v5M4 15v5h5M20 15v5h-5'/>", 2.2);
-  if (name === "fullscreen-exit") return base("<path d='M9 9V4H4M15 9V4h5M9 15v5H4M15 15v5h5'/>", 2.2);
-  if (name === "camera") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/>");
-  if (name === "camera-off") return base("<rect x='3' y='7' width='13' height='10' rx='2'/><path d='M16 10l5-3v10l-5-3z'/><path d='M4 4l16 16'/>");
-  if (name === "mic") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2'/>");
-  if (name === "mic-off") return base("<rect x='9' y='4' width='6' height='10' rx='3'/><path d='M5 11a7 7 0 0 0 14 0M12 18v2M4 4l16 16'/>");
-  if (name === "screen") return base("<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4'/>");
-  if (name === "participants") return base("<circle cx='8' cy='9' r='3'/><circle cx='16' cy='10' r='2.5'/><path d='M3.5 18c1.4-2.3 3-3.5 4.5-3.5S11 15.7 12.5 18M14 18c.9-1.6 2-2.5 3.3-2.5 1.2 0 2.3.9 3.2 2.5'/>");
-  if (name === "leave") return base("<path d='M15 6l6 6-6 6'/><path d='M21 12H10'/><path d='M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5'/>");
-  if (name === "whiteboard") return base("<rect x='4' y='4' width='16' height='12' rx='2'/><path d='M8 20h8M12 16v4M8 8h8M8 11h5'/>");
-  if (name === "breakout") return base("<rect x='3' y='4' width='8' height='7' rx='1.5'/><rect x='13' y='4' width='8' height='7' rx='1.5'/><rect x='8' y='13' width='8' height='7' rx='1.5'/>");
-  if (name === "poll") return base("<path d='M5 19V9M12 19V5M19 19v-8'/>");
-  if (name === "qa") return base("<circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.7 1.2-1.7 2.2'/><path d='M12 16h.01'/>");
-  if (name === "stop-share") return base("<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4M5 5l14 10'/>");
-  if (name === "record") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><circle cx='12' cy='12' r='6' fill='currentColor'/></svg>";
-  if (name === "pause") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><rect x='7' y='6' width='3' height='12' fill='currentColor'/><rect x='14' y='6' width='3' height='12' fill='currentColor'/></svg>";
-  if (name === "stop") return "<svg viewBox='0 0 24 24' width='14' height='14' aria-hidden='true'><rect x='7' y='7' width='10' height='10' fill='currentColor'/></svg>";
-  if (name === "send") return base("<path d='M21 3L3 11l7 2 2 7 9-17z'/>");
-  return base("<circle cx='12' cy='12' r='8'/>");
+  if (name === "tools") return materialIcon("widgets");
+  if (name === "chat") return materialIcon("chat_bubble");
+  if (name === "reaction") return materialIcon("celebration");
+  if (name === "fullscreen") return materialIcon("fullscreen");
+  if (name === "fullscreen-exit") return materialIcon("fullscreen_exit");
+  if (name === "camera") return materialIcon("videocam");
+  if (name === "camera-off") return materialIcon("videocam_off");
+  if (name === "mic") return materialIcon("mic");
+  if (name === "mic-off") return materialIcon("mic_off");
+  if (name === "screen") return materialIcon("screen_share");
+  if (name === "participants") return materialIcon("groups");
+  if (name === "leave") return materialIcon("logout");
+  if (name === "whiteboard") return materialIcon("draw");
+  if (name === "breakout") return materialIcon("hub");
+  if (name === "poll") return materialIcon("bar_chart");
+  if (name === "qa") return materialIcon("quiz");
+  if (name === "stop-share") return materialIcon("stop_screen_share");
+  if (name === "record") return materialIcon("fiber_manual_record", { filled: true });
+  if (name === "pause") return materialIcon("pause");
+  if (name === "stop") return materialIcon("stop");
+  if (name === "send") return materialIcon("send");
+  return materialIcon("circle");
 }
 
 function positionLiveParticipantsMenu() {

@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL@0..1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
@@ -19,8 +20,28 @@
     <section id="authView" class="auth-wrap">
       <article class="panel auth-hero">
         <img src="/assets/classagon_logo.png?v=20260422b" alt="Classagon" class="auth-hero-logo" />
+        <div class="auth-hero-kicker">Enterprise Learning Cloud</div>
         <h1>Secure Learning. Verified Outcomes.</h1>
         <p>Courses, assessments, proctoring, and certificates on one controlled platform.</p>
+        <div class="auth-hero-proof">
+          <div class="auth-proof-item">
+            <strong>99.9%</strong>
+            <span>Uptime-ready delivery</span>
+          </div>
+          <div class="auth-proof-item">
+            <strong>AI + Human</strong>
+            <span>Layered proctoring confidence</span>
+          </div>
+          <div class="auth-proof-item">
+            <strong>Global-ready</strong>
+            <span>Secure exam flows at scale</span>
+          </div>
+        </div>
+        <div class="auth-hero-tags">
+          <span>Identity verification</span>
+          <span>Evidence-led scoring</span>
+          <span>Certificate issuance</span>
+        </div>
       </article>
 
       <article id="loginCard" class="panel auth-card">
@@ -89,7 +110,7 @@
         <button class="nav-btn provider-nav-btn" data-provider-view="live">Live Class</button>
         <button class="nav-btn provider-nav-btn" data-provider-view="certifications">Certifications</button>
         <div class="sidebar-tools">
-          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">⚙</button>
+          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
           <div class="settings-menu hidden">
             <div class="settings-header">
               <div class="settings-title">Settings</div>
@@ -157,11 +178,11 @@
             <div>
               <div id="pcvVideoShell" class="video-shell">
                 <video id="pcvVideo" style="width:100%; border-radius:10px; background:#000;"></video>
-                <button id="pcvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                <button id="pcvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen"><span class="material-symbols-rounded" aria-hidden="true">fullscreen</span></button>
                 <div class="video-controls">
-                  <button id="pcvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">▶</button>
-                  <button id="pcvBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">⟲10</button>
-                  <button id="pcvFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10⟳</button>
+                  <button id="pcvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause"><span class="material-symbols-rounded" aria-hidden="true">play_arrow</span></button>
+                  <button id="pcvBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds"><span class="material-symbols-rounded" aria-hidden="true">replay_10</span></button>
+                  <button id="pcvFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds"><span class="material-symbols-rounded" aria-hidden="true">forward_10</span></button>
                   <div class="seek-wrap">
                     <div id="pcvScrubber" class="yt-scrubber">
                       <div id="pcvBuffered" class="yt-buffered"></div>
@@ -276,11 +297,11 @@
                   </div>
                   <div id="cwVideoShell" class="video-shell" style="margin-top:8px;">
                     <video id="cwVideoPreview" style="width:100%; border-radius:10px; background:#000;"></video>
-                    <button id="cwFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                    <button id="cwFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen"><span class="material-symbols-rounded" aria-hidden="true">fullscreen</span></button>
                     <div class="video-controls">
-                      <button id="cwPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">▶</button>
-                      <button id="cwBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">⟲10</button>
-                      <button id="cwFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10⟳</button>
+                      <button id="cwPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause"><span class="material-symbols-rounded" aria-hidden="true">play_arrow</span></button>
+                      <button id="cwBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds"><span class="material-symbols-rounded" aria-hidden="true">replay_10</span></button>
+                      <button id="cwFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds"><span class="material-symbols-rounded" aria-hidden="true">forward_10</span></button>
                       <div class="seek-wrap">
                         <div id="cwScrubber" class="yt-scrubber">
                           <div id="cwBuffered" class="yt-buffered"></div>
@@ -1076,7 +1097,7 @@
         <button class="nav-btn" data-view="users">Users</button>
         <button class="nav-btn" data-view="billing">Billing & Payments</button>
         <div class="sidebar-tools">
-          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings">⚙</button>
+          <button class="settings-toggle js-settings-toggle" type="button" aria-label="Settings"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
           <div class="settings-menu hidden">
             <div class="settings-header">
               <div class="settings-title">Settings</div>
