@@ -286,6 +286,7 @@ function defaultProctorState() {
     precheckReady: false,
     precheckInProgress: false,
     precheckChecks: createDefaultPrecheckChecklist(),
+    readAloudReady: false,
     calibrated: false,
     audioBaselineRms: 0.03,
     baselineEvidenceReady: false,
@@ -1225,6 +1226,8 @@ const el = {
   apMeta: $("apMeta"),
   apProctorBadge: $("apProctorBadge"),
   apPrecheckPanel: $("apPrecheckPanel"),
+  apPrecheckChecksPage: $("apPrecheckChecksPage"),
+  apPrecheckRulesPage: $("apPrecheckRulesPage"),
   apPrecheckInstruction: $("apPrecheckInstruction"),
   apPrecheckInstructionDetail: $("apPrecheckInstructionDetail"),
   apPrecheckVoiceScript: $("apPrecheckVoiceScript"),
@@ -1235,6 +1238,11 @@ const el = {
   apEnvironmentAttest: $("apEnvironmentAttest"),
   apEnvironmentStatus: $("apEnvironmentStatus"),
   apRerunChecksBtn: $("apRerunChecksBtn"),
+  apPrecheckNextBtn: $("apPrecheckNextBtn"),
+  apBackToChecksBtn: $("apBackToChecksBtn"),
+  apRulesReadScript: $("apRulesReadScript"),
+  apRulesReadAloudBtn: $("apRulesReadAloudBtn"),
+  apRulesReadStatus: $("apRulesReadStatus"),
   apStartTestBtn: $("apStartTestBtn"),
   apQuestionPanel: $("apQuestionPanel"),
   apAttentionChallenge: $("apAttentionChallenge"),
@@ -6288,7 +6296,14 @@ function clearAssessmentPreviewTimer() {
 function renderPrecheckChecklist(activeKey = "") {
   if (!el.apPrecheckChecklist) return;
   const checks = state.assessmentPreview.proctor.precheckChecks || createDefaultPrecheckChecklist();
-  const rows = Object.entries(PROCTOR_PRECHECK_TASK_LABELS).map(([key, label]) => {
+  const ordered = Object.entries(PROCTOR_PRECHECK_TASK_LABELS);
+  const activeIndex = activeKey
+    ? ordered.findIndex(([key]) => key === activeKey)
+    : ordered.findIndex(([key]) => !checks[key]);
+  const renderLimit = activeIndex >= 0 ? activeIndex : (state.assessmentPreview.proctor.precheckReady ? ordered.length - 1 : 0);
+  const rows = ordered
+    .filter((_, idx) => idx <= renderLimit)
+    .map(([key, label]) => {
     const done = Boolean(checks[key]);
     const active = !done && key === activeKey;
     return `
@@ -6297,8 +6312,17 @@ function renderPrecheckChecklist(activeKey = "") {
         <span>${done ? "Done" : active ? "In progress" : "Pending"}: ${label}</span>
       </div>
     `;
-  });
+    });
+  if (state.assessmentPreview.proctor.precheckReady) {
+    rows.push(`
+      <div class="ap-precheck-checklist-row done">
+        <span class="ap-precheck-checklist-dot"></span>
+        <span>Done: All mandatory precheck stages completed.</span>
+      </div>
+    `);
+  }
   el.apPrecheckChecklist.innerHTML = rows.join("");
+  el.apPrecheckChecklist.scrollTop = el.apPrecheckChecklist.scrollHeight;
 }
 
 function setPrecheckInstruction(text, activeKey = "", detailText = "", voiceScript = "") {
@@ -6418,22 +6442,72 @@ async function runHoldStillCheck() {
   return stableFrames >= 12;
 }
 
+function showPrecheckChecksPage() {
+  el.apPrecheckChecksPage?.classList.remove("hidden");
+  el.apPrecheckRulesPage?.classList.add("hidden");
+}
+
+function showPrecheckRulesPage() {
+  el.apPrecheckChecksPage?.classList.add("hidden");
+  el.apPrecheckRulesPage?.classList.remove("hidden");
+}
+
+async function runRulesReadAloudVerification() {
+  const p = state.assessmentPreview.proctor;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  let audioContext = null;
+  let analyser = null;
+  try {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(stream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const arr = new Uint8Array(analyser.fftSize);
+    const start = Date.now();
+    let activeFrames = 0;
+    while (Date.now() - start < 4800) {
+      analyser.getByteTimeDomainData(arr);
+      let sum = 0;
+      for (let i = 0; i < arr.length; i += 1) {
+        const d = (arr[i] - 128) / 128;
+        sum += d * d;
+      }
+      const rms = Math.sqrt(sum / arr.length);
+      if (rms > Math.max(0.03, (p.audioBaselineRms || 0.03) * 1.35)) activeFrames += 1;
+      await new Promise((r) => setTimeout(r, 110));
+    }
+    return activeFrames >= 9;
+  } finally {
+    stream.getTracks().forEach((t) => t.stop());
+    if (audioContext) audioContext.close().catch(() => {});
+  }
+}
+
 function updateAssessmentStartEligibility() {
   const p = state.assessmentPreview.proctor;
   const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
   const attested = Boolean(p.environmentAttested);
+  const readReady = Boolean(p.readAloudReady);
+  if (el.apPrecheckNextBtn) {
+    el.apPrecheckNextBtn.disabled = !precheckReady;
+  }
   if (el.apStartTestBtn) {
-    el.apStartTestBtn.disabled = !(precheckReady && attested);
+    el.apStartTestBtn.disabled = !(precheckReady && attested && readReady);
   }
   if (el.apEnvironmentStatus) {
     if (p.precheckInProgress) {
-      el.apEnvironmentStatus.textContent = "Pre-check is in progress. Complete all checks to unlock assessment start.";
+      el.apEnvironmentStatus.textContent = "Pre-check is in progress. Complete all checks to unlock Next.";
     } else if (!precheckReady) {
-      el.apEnvironmentStatus.textContent = "Assessment start is blocked until all mandatory proctor checks are completed.";
+      el.apEnvironmentStatus.textContent = "Next is blocked until all mandatory proctor checks are completed.";
     } else {
-      el.apEnvironmentStatus.textContent = attested
-        ? "Environment declaration accepted. You can start the assessment."
-        : "Assessment start remains blocked until you confirm the test machine is local-only.";
+      if (!attested) {
+        el.apEnvironmentStatus.textContent = "Assessment start remains blocked until you confirm the test machine is local-only.";
+      } else if (!readReady) {
+        el.apEnvironmentStatus.textContent = "Assessment start remains blocked until read-aloud verification is complete.";
+      } else {
+        el.apEnvironmentStatus.textContent = "All checks completed. You can start the assessment.";
+      }
     }
   }
 }
@@ -7238,6 +7312,9 @@ async function runProctoringPrecheck() {
   p.precheckChecks = createDefaultPrecheckChecklist();
   p.precheckReady = false;
   p.precheckInProgress = true;
+  p.readAloudReady = false;
+  showPrecheckChecksPage();
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
   renderPrecheckChecklist("");
   updateAssessmentStartEligibility();
   if (isMobileDevice) {
@@ -7280,6 +7357,7 @@ async function runProctoringPrecheck() {
   p.challengePasses = 0;
   p.challengeFailures = 0;
   p.environmentAttested = Boolean(el.apEnvironmentAttest?.checked);
+  p.readAloudReady = false;
   p.precheckReady = false;
   p.calibrated = false;
   p.audioBaselineRms = 0.03;
@@ -7422,15 +7500,15 @@ async function runProctoringPrecheck() {
     p.precheckReady = isPrecheckFullyComplete(p);
     renderPrecheckChecklist("");
     if (el.apPrecheckStatus) {
-      el.apPrecheckStatus.textContent = "Pre-check complete. Confirm environment declaration to unlock Start Assessment.";
+      el.apPrecheckStatus.textContent = "Pre-check complete. Click Next to continue.";
     }
     if (el.apProctorHints) {
       el.apProctorHints.textContent = "All strict checks passed. Keep the same posture and environment during the assessment.";
     }
     setPrecheckInstruction(
-      "All required checks are complete. Confirm environment declaration, then start assessment.",
+      "All required checks are complete. Continue to the instructions page.",
       "",
-      "Start is enabled only after mandatory checks and local-only environment confirmation.",
+      "Next is enabled only after mandatory checks are completed.",
     );
   } catch (err) {
     p.precheckReady = false;
@@ -7547,6 +7625,10 @@ async function startAssessmentAfterPrecheck() {
   }
   if (!p.precheckReady) {
     toast("Run pre-check before starting the assessment.", "error");
+    return;
+  }
+  if (!p.readAloudReady) {
+    toast("Complete read-aloud verification on the instructions page before starting.", "error");
     return;
   }
   p.startingUp = true;
@@ -7984,6 +8066,8 @@ async function openAssessmentPreview(examId) {
     proctor: defaultProctorState(),
   };
   if (el.apEnvironmentAttest) el.apEnvironmentAttest.checked = false;
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
+  showPrecheckChecksPage();
   updateAssessmentStartEligibility();
   if (el.apMeta) el.apMeta.textContent = `${exam.title} | ${exam.course_title}`;
   if (el.apPrecheckPanel) el.apPrecheckPanel.classList.remove("hidden");
@@ -7997,7 +8081,7 @@ async function openAssessmentPreview(examId) {
     await startServerProctorSession();
     await initializeProctoringForAssessmentStart();
     if (el.apPrecheckStatus) {
-      el.apPrecheckStatus.textContent = "Camera and microphone are active. Review the pre-check and click Start Assessment when ready.";
+      el.apPrecheckStatus.textContent = "Camera and microphone are active. Complete checks, then click Next.";
     }
     if (el.apProctorHints) {
       el.apProctorHints.textContent = "Fullscreen is active. Keep face visible, stay centered, and confirm the environment before starting.";
@@ -8395,6 +8479,8 @@ async function openStudentAssessmentAttempt(examId) {
     proctor: defaultProctorState(),
   };
   if (el.apEnvironmentAttest) el.apEnvironmentAttest.checked = false;
+  if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Read-aloud verification required.";
+  showPrecheckChecksPage();
   updateAssessmentStartEligibility();
   if (el.apMeta) el.apMeta.textContent = `${paper.title}`;
   if (el.apPrecheckPanel) el.apPrecheckPanel.classList.remove("hidden");
@@ -9563,6 +9649,41 @@ function bindEvents() {
   $("abStep3BackBtn")?.addEventListener("click", () => goToAssessmentStep(2));
   $("assessmentPreviewCloseBtn")?.addEventListener("click", () => confirmQuitAssessment());
   $("apRerunChecksBtn")?.addEventListener("click", () => runProctoringPrecheck().catch(() => toast("Failed to run proctor checks", "error")));
+  $("apPrecheckNextBtn")?.addEventListener("click", () => {
+    const p = state.assessmentPreview.proctor;
+    if (!p.precheckReady || p.precheckInProgress) {
+      toast("Complete all technical checks before continuing.", "error");
+      return;
+    }
+    showPrecheckRulesPage();
+    if (el.apRulesReadStatus) {
+      el.apRulesReadStatus.textContent = p.readAloudReady
+        ? "Read-aloud verification completed."
+        : "Read-aloud verification required.";
+    }
+    updateAssessmentStartEligibility();
+  });
+  $("apBackToChecksBtn")?.addEventListener("click", () => {
+    showPrecheckChecksPage();
+    updateAssessmentStartEligibility();
+  });
+  $("apRulesReadAloudBtn")?.addEventListener("click", () => {
+    (async () => {
+      if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Listening... read the line clearly now.";
+      const ok = await runRulesReadAloudVerification();
+      state.assessmentPreview.proctor.readAloudReady = Boolean(ok);
+      if (el.apRulesReadStatus) {
+        el.apRulesReadStatus.textContent = ok
+          ? "Read-aloud verification completed."
+          : "Voice not detected clearly. Read the line again.";
+      }
+      updateAssessmentStartEligibility();
+    })().catch(() => {
+      state.assessmentPreview.proctor.readAloudReady = false;
+      if (el.apRulesReadStatus) el.apRulesReadStatus.textContent = "Microphone access failed. Allow mic and retry.";
+      updateAssessmentStartEligibility();
+    });
+  });
   $("apStartTestBtn")?.addEventListener("click", () => startAssessmentAfterPrecheck());
   $("apPrevBtn")?.addEventListener("click", () => {
     (async () => {

@@ -492,35 +492,55 @@
 
       <section id="apPrecheckPanel" class="item">
         <h3>Pre-test Proctoring Check</h3>
-        <div id="apPrecheckInstruction" class="ap-precheck-instruction" aria-live="polite">
-          Follow the guided checks. Start will unlock only after all checks are complete.
+        <div id="apPrecheckChecksPage">
+          <div id="apPrecheckInstruction" class="ap-precheck-instruction" aria-live="polite">
+            Follow the guided checks. Continue to the next page only after all checks are complete.
+          </div>
+          <div id="apPrecheckInstructionDetail" class="ap-precheck-instruction-detail" aria-live="polite">
+            Keep your face centered, eyes on question area, and stay silent unless prompted.
+          </div>
+          <div id="apPrecheckVoiceScript" class="ap-precheck-voice-script hidden" aria-live="polite">
+            Read exactly: "I am ready for this proctored assessment."
+          </div>
+          <div id="apPrecheckChecklist" class="ap-precheck-checklist" aria-live="polite"></div>
+          <div id="apPrecheckStatus" class="meta" style="margin-top:6px;">Requesting camera/microphone permission...</div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <video id="apProctorVideo" autoplay muted playsinline style="width:260px;max-width:100%;border-radius:12px;border:1px solid #dbe4f0;background:#0b1220;"></video>
+            <div id="apProctorHints" class="meta" style="min-width:260px;">Keep face visible, adequate lighting, and quiet environment.</div>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:12px;">
+            <button id="apRerunChecksBtn" class="btn small">Re-run checks</button>
+            <button id="apPrecheckNextBtn" class="btn primary" disabled>Next</button>
+          </div>
         </div>
-        <div id="apPrecheckInstructionDetail" class="ap-precheck-instruction-detail" aria-live="polite">
-          Keep your face centered, eyes on question area, and stay silent unless prompted.
-        </div>
-        <div id="apPrecheckVoiceScript" class="ap-precheck-voice-script hidden" aria-live="polite">
-          Read exactly: "I am ready for this proctored assessment."
-        </div>
-        <ul class="meta" style="margin:8px 0 0 18px;">
-          <li>No mobile phone or secondary screen usage.</li>
-          <li>Do not read questions aloud; avoid external voices.</li>
-          <li>Keep your face centered and eyes on screen.</li>
-          <li>Tab switching and fullscreen exit are not allowed.</li>
-        </ul>
-        <div id="apPrecheckChecklist" class="ap-precheck-checklist" aria-live="polite"></div>
-        <div id="apPrecheckStatus" class="meta" style="margin-top:6px;">Requesting camera/microphone permission...</div>
-        <div class="row wrap gap-sm" style="margin-top:10px;">
-          <video id="apProctorVideo" autoplay muted playsinline style="width:260px;max-width:100%;border-radius:12px;border:1px solid #dbe4f0;background:#0b1220;"></video>
-          <div id="apProctorHints" class="meta" style="min-width:260px;">Keep face visible, adequate lighting, and quiet environment.</div>
-        </div>
-        <label class="checkbox-row" style="margin-top:12px;">
-          <input id="apEnvironmentAttest" type="checkbox" />
-          <span>I confirm screen sharing, remote desktop, and support tools like AnyDesk or TeamViewer are not running.</span>
-        </label>
-        <div id="apEnvironmentStatus" class="meta" style="margin-top:6px;">Assessment start remains blocked until you confirm the test machine is local-only.</div>
-        <div class="row wrap gap-sm" style="margin-top:12px;">
-          <button id="apRerunChecksBtn" class="btn small">Re-run checks</button>
-          <button id="apStartTestBtn" class="btn primary" disabled>Start Assessment</button>
+
+        <div id="apPrecheckRulesPage" class="hidden">
+          <div class="ap-precheck-instruction">Read and follow all instructions before starting assessment.</div>
+          <ul class="meta" style="margin:10px 0 0 18px; line-height:1.8;">
+            <li>Avoid mobile phone or secondary screen usage.</li>
+            <li>Do not read questions aloud; avoid external voices.</li>
+            <li>Keep your face centered and eyes on screen.</li>
+            <li>Tab switching and fullscreen exit are not allowed.</li>
+            <li>Do not look at non-text blank space for long periods.</li>
+            <li>Closing your eyes briefly is permitted.</li>
+            <li>Look at the dot that randomly appears on the screen.</li>
+          </ul>
+          <div id="apRulesReadScript" class="ap-precheck-voice-script" style="margin-top:10px;">
+            Read exactly: "I understand and agree to follow all proctoring instructions."
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:10px;">
+            <button id="apRulesReadAloudBtn" class="btn small">Verify Read Aloud</button>
+            <div id="apRulesReadStatus" class="meta">Read-aloud verification required.</div>
+          </div>
+          <label class="checkbox-row" style="margin-top:12px;">
+            <input id="apEnvironmentAttest" type="checkbox" />
+            <span>I confirm screen sharing, remote desktop, and support tools like AnyDesk or TeamViewer are not running.</span>
+          </label>
+          <div id="apEnvironmentStatus" class="meta" style="margin-top:6px;">Assessment start remains blocked until you confirm the test machine is local-only.</div>
+          <div class="row wrap gap-sm" style="margin-top:12px;">
+            <button id="apBackToChecksBtn" class="btn small">Back</button>
+            <button id="apStartTestBtn" class="btn primary" disabled>Start Assessment</button>
+          </div>
         </div>
       </section>
 
