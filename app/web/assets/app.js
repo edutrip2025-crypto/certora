@@ -1657,21 +1657,25 @@ function ensureAuthReady() {
 }
 
 function setSessionBadge(text) {
+  state.sessionBadgeText = String(text || "").trim();
+  const uid = String(state.sessionBadgeUid || "").trim();
+  const combined = uid ? `${state.sessionBadgeText} | UID: ${uid}` : state.sessionBadgeText;
   el.sessionBadges.forEach((b) => {
-    b.textContent = text;
+    b.textContent = combined;
   });
 }
 
 function setUserUidBadge(publicUid) {
   const uid = String(publicUid || "").trim();
+  state.sessionBadgeUid = uid;
+  const base = String(state.sessionBadgeText || "").trim();
+  const combined = uid ? `${base} | UID: ${uid}` : base;
+  el.sessionBadges.forEach((b) => {
+    b.textContent = combined;
+  });
   el.userUidBadges.forEach((b) => {
-    if (!uid) {
-      b.classList.add("hidden");
-      b.textContent = "UID: -";
-      return;
-    }
-    b.classList.remove("hidden");
-    b.textContent = `UID: ${uid}`;
+    b.classList.add("hidden");
+    b.textContent = uid ? `UID: ${uid}` : "UID: -";
   });
 }
 
