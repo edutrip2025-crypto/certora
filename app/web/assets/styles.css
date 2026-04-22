@@ -2291,15 +2291,20 @@ input:focus, select:focus, textarea:focus {
 
 .admin-layout {
   gap: 20px;
+  align-items: start;
 }
 .sidebar {
   top: 8px;
+  margin-top: 14px;
   padding: 16px 12px 12px;
   border-right: none;
   border-radius: 18px;
   border: 1px solid #1e3a8a;
   background: linear-gradient(180deg, #0b1d44 0%, #102a63 100%);
   box-shadow: 0 18px 34px rgba(2, 6, 23, 0.3);
+}
+.content {
+  margin-top: 0;
 }
 .sidebar h3 {
   color: #e6efff;
@@ -2404,6 +2409,7 @@ input:focus, select:focus, textarea:focus {
   .admin-glimpse-grid { grid-template-columns: 1fr; }
   .sidebar {
     position: static;
+    margin-top: 0;
     border-right: none;
     border-bottom: none;
     padding: 14px;
