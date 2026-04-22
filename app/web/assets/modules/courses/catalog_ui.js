@@ -92,6 +92,8 @@
   }
 
   function providerCourseDifficultyPct(course) {
+    const passPct = Number(course?.pass_percentage);
+    if (Number.isFinite(passPct)) return Math.max(0, Math.min(100, 100 - passPct));
     const explicit = Number(course?.difficulty_pct ?? course?.difficulty_percent ?? course?.difficulty_score);
     if (Number.isFinite(explicit)) return Math.max(0, Math.min(100, explicit));
     const level = String(course?.level || "").toLowerCase();
@@ -220,8 +222,10 @@
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">Provider: You</div>
-            <div class="course-tile-meta">Status: ${statusLabel}</div>
-            <div class="course-tile-meta">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></div>
+            <div class="course-tile-meta course-meta-inline">
+              <span>Status: ${statusLabel}</span>
+              <span>Duration: <span data-course-duration="${c.id}">${durationLabel}</span></span>
+            </div>
             <div class="course-tile-meta">Posted: ${escapeHtmlAttr(postedDate)}</div>
             <div class="course-tile-meta">Difficulty</div>
             <div class="course-difficulty-meter">

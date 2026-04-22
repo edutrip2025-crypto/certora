@@ -1126,6 +1126,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   font-size: .78rem;
   color: #64748b;
 }
+.course-meta-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .course-tile-progress {
   margin-top: 8px;
   height: 6px;

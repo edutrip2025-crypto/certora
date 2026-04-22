@@ -4,7 +4,7 @@ import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, case, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -532,6 +532,26 @@ def provider_content_courses(
     provider = _provider_or_404(db, current_user.id)
     courses = list(db.scalars(select(Course).where(Course.provider_id == provider.id)).all())
     rating_summary = _course_rating_summary(db, {int(c.id) for c in courses})
+    pass_stats_rows = db.execute(
+        select(
+            Exam.course_id,
+            func.count(Result.id).label("attempts_count"),
+            func.coalesce(
+                func.sum(case((Result.passed.is_(True), 1), else_=0)),
+                0,
+            ).label("passed_count"),
+        )
+        .join(Result, Result.exam_id == Exam.id)
+        .where(Exam.course_id.in_([int(c.id) for c in courses] or [-1]))
+        .group_by(Exam.course_id),
+    ).all()
+    pass_stats_by_course = {
+        int(row.course_id): {
+            "attempts_count": int(row.attempts_count or 0),
+            "passed_count": int(row.passed_count or 0),
+        }
+        for row in pass_stats_rows
+    }
     from app.models.entities import CourseModule  # local import to avoid file-wide refactor
 
     response = []
@@ -566,6 +586,19 @@ def provider_content_courses(
                 "title": course.title,
                 "thumbnail_url": course.thumbnail_url,
                 "is_published": course.is_published,
+                "created_at": course.created_at,
+                "status": "active" if course.is_published else "inactive",
+                "pass_percentage": (
+                    round(
+                        (
+                            pass_stats_by_course.get(int(course.id), {}).get("passed_count", 0)
+                            / max(1, pass_stats_by_course.get(int(course.id), {}).get("attempts_count", 0))
+                        ) * 100,
+                        2,
+                    )
+                    if pass_stats_by_course.get(int(course.id), {}).get("attempts_count", 0) > 0
+                    else None
+                ),
                 "average_rating": float((rating_summary.get(int(course.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(course.id)) or {}).get("rating_count", 0)),
                 "modules": module_items,
