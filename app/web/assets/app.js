@@ -462,15 +462,15 @@ function computeFaceMetrics(lm) {
 
 /** Three-layer gaze policy: raw zones â†’ scored suspicion events â†’ rolling-window thresholds (no instant â€œlooked awayâ€ warnings). */
 const GAZE_ROLLING_MS = 120000;
-const GAZE_UI_GRACE_MS = 1800;
-const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 1000;
+const GAZE_UI_GRACE_MS = 900;
+const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 700;
 const GAZE_QUESTION_OPTIONS_AWAY_REPEAT_COUNT = 2;
-const GAZE_LAPTOP_AWAY_LIMIT_MS = 1600;
-const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 1800;
-const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 2400;
+const GAZE_LAPTOP_AWAY_LIMIT_MS = 1100;
+const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 1300;
+const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 1800;
 const GAZE_STATIC_LOW_VAR = 0.034;
-const GAZE_STATIC_PTS_MS = 1600;
-const GAZE_EVENT_DEBOUNCE_MS = 9000;
+const GAZE_STATIC_PTS_MS = 1100;
+const GAZE_EVENT_DEBOUNCE_MS = 6000;
 
 function computeQuestionPanelAllowedGazeZones() {
   const screenRect = el.assessmentPreviewScreen?.getBoundingClientRect?.();
@@ -500,15 +500,15 @@ function computeQuestionPanelAllowedGazeZones() {
   const right = clamp(panelRect.right - screenRect.left, 0, screenRect.width);
   const top = clamp(panelRect.top - screenRect.top, 0, screenRect.height || 1);
   const bottom = clamp(panelRect.bottom - screenRect.top, 0, screenRect.height || 1);
-  const padX = Math.min(28, screenRect.width * 0.025);
-  const padY = Math.min(24, (screenRect.height || 1) * 0.03);
+  const padX = Math.min(12, screenRect.width * 0.012);
+  const padY = Math.min(10, (screenRect.height || 1) * 0.015);
   const zoneLeft = Math.max(0, left - padX);
   const zoneRight = Math.min(screenRect.width, right + padX);
   const zoneTop = Math.max(0, top - padY);
   const zoneBottom = Math.min(screenRect.height || 1, bottom + padY);
   const third = screenRect.width / 3;
   const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
-  const minimumOverlap = Math.max(24, third * 0.16);
+  const minimumOverlap = Math.max(24, third * 0.22);
   const secondary = overlap(zoneLeft, zoneRight, 0, third) >= minimumOverlap;
   const primary = overlap(zoneLeft, zoneRight, third, third * 2) >= minimumOverlap;
   const tertiary = overlap(zoneLeft, zoneRight, third * 2, screenRect.width) >= minimumOverlap;
@@ -605,8 +605,8 @@ function classifyGazeUiZone(p, metrics, ref, allowedZones = null, allowedRect = 
   const target = getSmoothedGazeTarget(p, rawTarget);
   if (!target) return "neutral";
   if (allowedRect) {
-    const marginX = target.confidence >= 0.82 ? 0.012 : target.confidence >= 0.65 ? 0.028 : 0.045;
-    const marginY = target.confidence >= 0.82 ? 0.016 : target.confidence >= 0.65 ? 0.034 : 0.052;
+    const marginX = target.confidence >= 0.82 ? 0.006 : target.confidence >= 0.65 ? 0.012 : 0.02;
+    const marginY = target.confidence >= 0.82 ? 0.01 : target.confidence >= 0.65 ? 0.018 : 0.028;
     const insideRect = (
       target.x >= Number(allowedRect.left ?? 0) &&
       target.x <= Number(allowedRect.right ?? 1) &&
@@ -619,7 +619,7 @@ function classifyGazeUiZone(p, metrics, ref, allowedZones = null, allowedRect = 
       target.y >= Number(allowedRect.top ?? 0) - marginY &&
       target.y <= Number(allowedRect.bottom ?? 1) + marginY
     );
-    if (!insideRect && nearRect) return "neutral";
+    if (!insideRect && nearRect && target.confidence < 0.5) return "neutral";
     if (!insideRect) return "suspicious";
     if (target.confidence < 0.45) return "neutral";
   }
@@ -825,7 +825,7 @@ function tickGazeThreeLayerModel(p, metrics, now) {
     p.gazeContinuousWarningCount = 0;
     p.gazeNextContinuousWarningMs = 0;
   }
-  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 2000 && canEmitGazeEvent(p, "look_away_over_2s")) {
+  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 1200 && canEmitGazeEvent(p, "look_away_over_2s")) {
     markGazeEventEmitted(p, "look_away_over_2s");
     pushProctorWarning(
       "Eyes moved away from the question area for too long. Keep attention on the question and options.",
@@ -1427,6 +1427,8 @@ const el = {
   authProgressOverlay: $("authProgressOverlay"),
   authProgressTitle: $("authProgressTitle"),
   authProgressDetail: $("authProgressDetail"),
+  appNetworkBusy: $("appNetworkBusy"),
+  appNetworkBusyText: $("appNetworkBusyText"),
   toastStack: $("toastStack"),
 };
 
@@ -6975,8 +6977,11 @@ async function startAssessmentAfterPrecheck() {
   if (el.apStartTestBtn) el.apStartTestBtn.disabled = true;
   try {
     if (!(p.stream && p.baselineEvidenceReady && p.sessionId)) {
+      if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Starting assessment... (1/3) Securing fullscreen";
       await ensureAssessmentFullscreen();
+      if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Starting assessment... (2/3) Preparing secure session";
       await startServerProctorSession();
+      if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Starting assessment... (3/3) Initializing proctor checks";
       await initializeProctoringForAssessmentStart();
     }
   } catch (err) {
@@ -8181,6 +8186,25 @@ function handleKeyboardShortcuts(event) {
 function bindEvents() {
   initializeLiveIconButtons();
   refreshLiveFullscreenButton();
+  let appNetworkHideTimer = null;
+  window.addEventListener("certora:network-busy", (event) => {
+    const pending = Number(event?.detail?.pending || 0);
+    if (pending > 0) {
+      if (appNetworkHideTimer) {
+        clearTimeout(appNetworkHideTimer);
+        appNetworkHideTimer = null;
+      }
+      el.appNetworkBusy?.classList.remove("hidden");
+      if (el.appNetworkBusyText) {
+        el.appNetworkBusyText.textContent = pending > 1 ? `Loading ${pending} tasks...` : "Loading...";
+      }
+      return;
+    }
+    appNetworkHideTimer = setTimeout(() => {
+      el.appNetworkBusy?.classList.add("hidden");
+      if (el.appNetworkBusyText) el.appNetworkBusyText.textContent = "Loading...";
+    }, 180);
+  });
   window.addEventListener("resize", () => {
     if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
   });
