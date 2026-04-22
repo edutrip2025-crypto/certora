@@ -7775,8 +7775,8 @@ async function refreshProviderAssessments() {
         ${
   a.status === "published"
     ? ""
-    : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0L15.13 5.13l3.75 3.75 1.82-1.84z"/></svg></button>
-       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z"/></svg></button>
+    : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M12 6l4 4"/></svg></button>
+       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M8 7l1 13h6l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
 }
       </div>

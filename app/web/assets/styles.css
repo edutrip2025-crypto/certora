@@ -1046,6 +1046,27 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .provider-courses-toolbar .search {
   width: min(460px, 48vw);
   min-width: 220px;
+  padding-left: 34px;
+}
+.search-with-icon {
+  position: relative;
+  width: min(460px, 48vw);
+  min-width: 220px;
+}
+.search-with-icon .search {
+  width: 100%;
+}
+.search-with-icon svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  transform: translateY(-50%);
+  stroke: #64748b;
+  stroke-width: 2;
+  fill: none;
+  pointer-events: none;
 }
 .provider-course-actions {
   position: relative;
@@ -1061,7 +1082,14 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .toolbar-icon-btn svg {
   width: 17px;
   height: 17px;
-  fill: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.toolbar-icon-btn .refresh-icon {
+  transform: scaleX(-1);
 }
 .toolbar-icon-btn.is-spinning svg {
   animation: toolbar-refresh-spin .8s linear infinite;
@@ -1201,7 +1229,11 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .icon-action-btn svg {
   width: 16px;
   height: 16px;
-  fill: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 #providerAssessmentsList {
   display: grid;

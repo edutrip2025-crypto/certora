@@ -237,7 +237,7 @@
               <button class="btn small" data-view-course="${c.id}">View</button>
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
               ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
-              ${canDeleteCourseFromUi() ? `<button class="btn small danger icon-action-btn" data-delete-course="${c.id}" title="Delete Course" aria-label="Delete Course"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z"/></svg></button>` : ""}
+              ${canDeleteCourseFromUi() ? `<button class="btn small danger icon-action-btn" data-delete-course="${c.id}" title="Delete Course" aria-label="Delete Course"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M8 7l1 13h6l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>` : ""}
             </div>
           </div>
         </article>

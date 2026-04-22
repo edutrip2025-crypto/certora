@@ -117,10 +117,13 @@
       <section class="panel content hidden" id="provider-view-courses">
         <h2>Courses</h2>
         <div class="row between provider-courses-toolbar" id="providerCoursesHeader">
-          <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course or provider" />
+          <div class="search-with-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
+            <input id="providerCoursesSearch" class="search" type="text" placeholder="Search by course or provider" />
+          </div>
           <div class="row provider-course-actions">
             <button id="providerCoursesFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
             </button>
             <div id="providerCoursesFilterMenu" class="filter-popover hidden">
               <input id="providerCoursesSort" type="hidden" value="latest" />
@@ -130,10 +133,10 @@
               <button class="provider-sort-option" type="button" data-provider-sort="status_active">Active First</button>
             </div>
             <button id="refreshProviderCoursesBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-4.58 7H5.26A7 7 0 1 0 17.65 6.35z"/></svg>
+              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-4.58 7H5.26A7 7 0 1 0 17.65 6.35z"/></svg>
             </button>
             <button id="openDraftsPageBtn" class="btn small toolbar-icon-btn" title="Drafts" aria-label="Drafts">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm8 1v5h5"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>
             </button>
             <button id="openCourseWizardBtn" class="btn primary" title="New Course">+</button>
           </div>
