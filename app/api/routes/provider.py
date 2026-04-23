@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
+from urllib import error, request
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -60,7 +61,12 @@ from app.schemas import (
 from app.live_ws import signal_manager
 from app.services.certificates import ensure_certificate_pdf, safe_certificate_verification_url
 from app.services.identity_verification import verify_identity_via_api
-from app.services.media_storage import normalize_image_storage_reference, resolve_media_url, upload_file_to_cloud_storage
+from app.services.media_storage import (
+    delete_storage_reference,
+    normalize_image_storage_reference,
+    resolve_media_url,
+    upload_file_to_cloud_storage,
+)
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
@@ -99,6 +105,38 @@ def _live_recording_paths(session_id: int, upload_id: str | None = None) -> tupl
 def _safe_filename(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", name.strip())
     return cleaned[:180] if cleaned else f"video_{uuid4().hex}.mp4"
+
+
+def _chunk_object_path(session_id: str, index: int) -> str:
+    return f"upload-chunks/{session_id}/{int(index)}.part"
+
+
+def _download_bunny_chunk_bytes(object_path: str) -> bytes | None:
+    settings = get_settings()
+    zone = str(settings.bunny_storage_zone or "").strip()
+    access_key = str(settings.bunny_storage_access_key or "").strip()
+    endpoint = str(settings.bunny_storage_endpoint or "storage.bunnycdn.com").strip()
+    if not (zone and access_key and endpoint):
+        return None
+    url = f"https://{endpoint}/{zone}/{object_path.lstrip('/')}"
+    req = request.Request(
+        url,
+        method="GET",
+        headers={
+            "AccessKey": access_key,
+            "Accept": "application/octet-stream",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=60) as resp:
+            status = int(getattr(resp, "status", 0) or 0)
+            if status not in {200, 206}:
+                return None
+            return resp.read() or b""
+    except error.HTTPError as exc:
+        if int(getattr(exc, "code", 0) or 0) == 404:
+            return None
+        raise
 
 
 def _normalize_business_registration(
@@ -662,15 +700,29 @@ async def upload_video_chunk(
     if index < 0 or index >= upload.total_chunks:
         raise HTTPException(status_code=400, detail="Invalid chunk index")
 
+    settings = get_settings()
+    backend = settings.resolved_object_storage_backend
     _, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     chunk_path = session_dir / f"{index}.part"
-    if chunk_path.exists():
-        return {"session_id": session_id, "index": index, "status": "already_received", "received_chunks": upload.received_chunks}
-
     data = await chunk.read()
-    chunk_path.write_bytes(data)
+    if backend == "bunny":
+        temp_part = session_dir / f"{index}.upload.part"
+        temp_part.write_bytes(data)
+        try:
+            upload_file_to_cloud_storage(
+                temp_part,
+                object_path=_chunk_object_path(session_id, index),
+                content_type=chunk.content_type or "application/octet-stream",
+            )
+        finally:
+            temp_part.unlink(missing_ok=True)
+    else:
+        if chunk_path.exists():
+            return {"session_id": session_id, "index": index, "status": "already_received", "received_chunks": upload.received_chunks}
+        chunk_path.write_bytes(data)
+
     upload.received_chunks += 1
     upload.status = VideoUploadStatus.UPLOADING
     db.commit()
@@ -707,6 +759,8 @@ def complete_video_upload(
     upload = db.scalar(select(VideoUploadSession).where(VideoUploadSession.session_id == session_id))
     if not upload or upload.provider_id != provider.id:
         raise HTTPException(status_code=404, detail="Upload session not found")
+    settings = get_settings()
+    backend = settings.resolved_object_storage_backend
     videos_dir, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     final_path = videos_dir / upload.stored_filename
@@ -715,37 +769,40 @@ def complete_video_upload(
         db.commit()
         raise HTTPException(status_code=400, detail="Upload session files are missing")
 
-    missing_chunks = [
-        idx for idx in range(upload.total_chunks)
-        if not (session_dir / f"{idx}.part").exists()
-    ]
-    upload.received_chunks = upload.total_chunks - len(missing_chunks)
-    db.commit()
-    if missing_chunks:
-        first_missing = missing_chunks[0]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Upload is incomplete (missing chunk {first_missing})",
-        )
-
     try:
+        missing_chunks: list[int] = []
         with final_path.open("wb") as out:
             for idx in range(upload.total_chunks):
+                if backend == "bunny":
+                    blob = _download_bunny_chunk_bytes(_chunk_object_path(session_id, idx))
+                    if blob is None:
+                        missing_chunks.append(idx)
+                        continue
+                    out.write(blob)
+                else:
+                    part = session_dir / f"{idx}.part"
+                    if not part.exists():
+                        missing_chunks.append(idx)
+                        continue
+                    with part.open("rb") as inp:
+                        while True:
+                            chunk = inp.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+        upload.received_chunks = upload.total_chunks - len(missing_chunks)
+        db.commit()
+        if missing_chunks:
+            first_missing = missing_chunks[0]
+            raise HTTPException(status_code=400, detail=f"Upload is incomplete (missing chunk {first_missing})")
+
+        if backend != "bunny":
+            for idx in range(upload.total_chunks):
                 part = session_dir / f"{idx}.part"
-                if not part.exists():
-                    raise HTTPException(status_code=400, detail=f"Missing chunk {idx}")
-                with part.open("rb") as inp:
-                    while True:
-                        chunk = inp.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        out.write(chunk)
-        for idx in range(upload.total_chunks):
-            part = session_dir / f"{idx}.part"
-            if part.exists():
-                part.unlink()
-        if session_dir.exists():
-            session_dir.rmdir()
+                if part.exists():
+                    part.unlink()
+            if session_dir.exists():
+                session_dir.rmdir()
     except HTTPException:
         upload.status = VideoUploadStatus.FAILED
         db.commit()
@@ -763,8 +820,7 @@ def complete_video_upload(
             content_type=upload.mime_type or "video/mp4",
         )
     except Exception as exc:
-        settings = get_settings()
-        if settings.resolved_object_storage_backend == "local":
+        if backend == "local":
             upload.file_url = f"/media/videos/{upload.stored_filename}"
         else:
             upload.status = VideoUploadStatus.FAILED
@@ -773,9 +829,15 @@ def complete_video_upload(
             raise HTTPException(status_code=500, detail="Failed to upload video to cloud storage")
     upload.status = VideoUploadStatus.COMPLETED
     db.commit()
+
+    if backend == "bunny":
+        zone = str(settings.bunny_storage_zone or "").strip()
+        for idx in range(upload.total_chunks):
+            chunk_ref = f"bunny://{zone}/{_chunk_object_path(session_id, idx)}" if zone else None
+            if chunk_ref:
+                delete_storage_reference(chunk_ref)
     try:
-        settings = get_settings()
-        if settings.resolved_object_storage_backend != "local":
+        if backend != "local":
             final_path.unlink(missing_ok=True)
     except Exception:
         pass
