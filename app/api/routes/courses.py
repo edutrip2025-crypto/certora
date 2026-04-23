@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.entities import Course, CourseModule, Lesson, ProviderProfile, Resource, User, UserRole
 from app.schemas import CourseCreate, CourseOut, CourseUpdate, LessonCreate, ModuleCreate, ResourceCreate
+from app.services.media_storage import normalize_image_storage_reference, resolve_media_url
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -27,6 +28,12 @@ def _can_delete_course(db: Session, course: Course, current_user: User) -> bool:
     return bool(profile and course.provider_id == profile.id)
 
 
+def _course_out_payload(course: Course) -> dict:
+    out = CourseOut.model_validate(course).model_dump()
+    out["thumbnail_url"] = resolve_media_url(course.thumbnail_url) or course.thumbnail_url
+    return out
+
+
 @router.post("", response_model=CourseOut, status_code=status.HTTP_201_CREATED)
 def create_course(
     payload: CourseCreate,
@@ -34,19 +41,26 @@ def create_course(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
+    try:
+        thumbnail_ref = normalize_image_storage_reference(
+            payload.thumbnail_url,
+            object_prefix=f"course-thumbnails/provider-{profile.id}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid course thumbnail: {exc}") from exc
     course = Course(
         provider_id=profile.id,
         title=payload.title,
         description=payload.description,
         category=payload.category,
-        thumbnail_url=payload.thumbnail_url,
+        thumbnail_url=thumbnail_ref,
         includes_certification_exam=payload.includes_certification_exam,
         is_published=True,
     )
     db.add(course)
     db.commit()
     db.refresh(course)
-    return course
+    return _course_out_payload(course)
 
 
 @router.put("/{course_id}", response_model=CourseOut)
@@ -61,11 +75,21 @@ def update_course(
     if not course or course.provider_id != profile.id:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    for key, value in payload.model_dump(exclude_none=True).items():
+    updates = payload.model_dump(exclude_none=True)
+    if "thumbnail_url" in updates:
+        try:
+            updates["thumbnail_url"] = normalize_image_storage_reference(
+                updates.get("thumbnail_url"),
+                object_prefix=f"course-thumbnails/provider-{profile.id}",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid course thumbnail: {exc}") from exc
+
+    for key, value in updates.items():
         setattr(course, key, value)
     db.commit()
     db.refresh(course)
-    return course
+    return _course_out_payload(course)
 
 
 @router.get("", response_model=list[CourseOut])
@@ -73,15 +97,15 @@ def list_courses(db: Session = Depends(get_db), user: User = Depends(get_current
     if user.role == UserRole.PROVIDER:
         profile = _provider_profile_or_404(db, user.id)
         courses = db.scalars(select(Course).where(Course.provider_id == profile.id)).all()
-        return list(courses)
+        return [_course_out_payload(c) for c in courses]
     courses = db.scalars(select(Course).where(Course.is_published.is_(True))).all()
-    return list(courses)
+    return [_course_out_payload(c) for c in courses]
 
 
 @router.get("/public", response_model=list[CourseOut])
 def public_courses(db: Session = Depends(get_db)):
     courses = db.scalars(select(Course).where(Course.is_published.is_(True))).all()
-    return list(courses)
+    return [_course_out_payload(c) for c in courses]
 
 
 @router.post("/{course_id}/modules")
@@ -158,7 +182,7 @@ def publish_course(
     course.is_published = True
     db.commit()
     db.refresh(course)
-    return course
+    return _course_out_payload(course)
 
 
 @router.delete("/{course_id}")

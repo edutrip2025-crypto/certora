@@ -60,7 +60,7 @@ from app.schemas import (
 from app.live_ws import signal_manager
 from app.services.certificates import ensure_certificate_pdf, safe_certificate_verification_url
 from app.services.identity_verification import verify_identity_via_api
-from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
+from app.services.media_storage import normalize_image_storage_reference, resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
@@ -586,7 +586,7 @@ def provider_content_courses(
             {
                 "id": course.id,
                 "title": course.title,
-                "thumbnail_url": course.thumbnail_url,
+                "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
                 "is_published": course.is_published,
                 "created_at": course.created_at,
                 "status": "active" if course.is_published else "inactive",
@@ -795,7 +795,14 @@ def save_course_draft(
     draft.level = str(payload.get("level") or "Beginner")
     draft.category = str(payload.get("category") or "General")
     draft.description = str(payload.get("description") or "")
-    draft.thumbnail_url = payload.get("thumbnail_url")
+    thumbnail_input = payload.get("thumbnail_url")
+    try:
+        draft.thumbnail_url = normalize_image_storage_reference(
+            thumbnail_input,
+            object_prefix=f"course-thumbnails/provider-{provider.id}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid draft thumbnail: {exc}") from exc
     draft.includes_exam = bool(payload.get("includes_exam", True))
     draft.video_url = payload.get("video_url")
     draft.topics_json = payload.get("topics") or []
@@ -807,7 +814,7 @@ def save_course_draft(
         "level": draft.level,
         "category": draft.category,
         "description": draft.description,
-        "thumbnail_url": draft.thumbnail_url,
+        "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
         "video_url": draft.video_url,
         "topics": draft.topics_json,
@@ -854,7 +861,7 @@ def get_course_draft(
         "level": draft.level,
         "category": draft.category,
         "description": draft.description,
-        "thumbnail_url": draft.thumbnail_url,
+        "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
         "video_url": draft.video_url,
         "video_play_url": resolve_media_url(draft.video_url),

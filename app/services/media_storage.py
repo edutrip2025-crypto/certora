@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import mimetypes
 from pathlib import Path
+import re
 from urllib.parse import quote, urlparse
 from urllib import error, request
 from uuid import uuid4
@@ -14,6 +17,8 @@ from firebase_admin import storage
 
 from app.core.config import get_settings
 from app.services.firebase_auth import init_firebase
+
+_DATA_URL_RE = re.compile(r"^data:(?P<mime>[-\w.+/]+)?;base64,(?P<data>.+)$", re.IGNORECASE)
 
 
 def _bucket_name() -> str:
@@ -125,6 +130,53 @@ def upload_file_to_cloud_storage(
     if backend == "firebase":
         return _upload_file_to_firebase_storage(local_path, object_path=object_path, content_type=content_type)
     raise RuntimeError("Cloud storage backend is not configured.")
+
+
+def normalize_image_storage_reference(
+    value: str | None,
+    *,
+    object_prefix: str = "images",
+) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    match = _DATA_URL_RE.match(raw)
+    if not match:
+        return raw
+
+    mime = (match.group("mime") or "application/octet-stream").strip().lower()
+    b64_data = match.group("data") or ""
+    try:
+        image_bytes = base64.b64decode(b64_data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid base64 data URL.") from exc
+    if not image_bytes:
+        raise ValueError("Image data is empty.")
+
+    ext = mimetypes.guess_extension(mime) or ".bin"
+    if ext == ".jpe":
+        ext = ".jpg"
+    object_prefix_clean = object_prefix.strip("/").replace("\\", "/") or "images"
+    filename = f"{uuid4().hex}{ext}"
+    object_path = f"{object_prefix_clean}/{filename}"
+
+    settings = get_settings()
+    media_root = Path(settings.resolved_media_dir)
+    local_target = media_root / object_path
+    local_target.parent.mkdir(parents=True, exist_ok=True)
+    local_target.write_bytes(image_bytes)
+
+    backend = settings.resolved_object_storage_backend
+    if backend == "local":
+        rel = local_target.relative_to(media_root).as_posix()
+        return f"/media/{rel}"
+    try:
+        return upload_file_to_cloud_storage(local_target, object_path=object_path, content_type=mime)
+    finally:
+        try:
+            local_target.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> str | None:
