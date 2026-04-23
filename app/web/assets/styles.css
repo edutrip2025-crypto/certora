@@ -3049,19 +3049,48 @@ textarea {
 }
 
 /* Final workspace consistency overrides (must be last) */
-#providerView .sidebar {
-  background: linear-gradient(180deg, #09295f 0%, #0a3d86 55%, #0a4aa3 100%) !important;
-  border: 1px solid rgba(28, 111, 224, 0.45) !important;
-  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.3) !important;
+#adminView .sidebar,
+#providerView .sidebar,
+#studentView .sidebar {
+  background: #ffffff !important;
+  border: 1px solid #d7e3f3 !important;
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12) !important;
 }
+#adminView .sidebar h3,
 #providerView .sidebar h3,
-#providerView .nav-btn {
-  color: #d7e5ff !important;
+#studentView .sidebar h3 {
+  color: #0f172a !important;
 }
-#providerView .nav-btn.active {
-  background: rgba(255, 255, 255, 0.24) !important;
-  border-color: rgba(255, 255, 255, 0.34) !important;
-  color: #ffffff !important;
+#adminView .nav-btn,
+#providerView .nav-btn,
+#studentView .nav-btn {
+  color: #334155 !important;
+}
+#adminView .nav-btn:hover,
+#providerView .nav-btn:hover,
+#studentView .nav-btn:hover {
+  background: #eef4ff !important;
+}
+#adminView .nav-btn.active,
+#providerView .nav-btn.active,
+#studentView .nav-btn.active {
+  background: #dbeafe !important;
+  border-color: #bfdbfe !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+#adminView .sidebar-tools,
+#providerView .sidebar-tools,
+#studentView .sidebar-tools {
+  border-top-color: #e2e8f0 !important;
+  background: transparent !important;
+}
+#adminView .settings-toggle,
+#providerView .settings-toggle,
+#studentView .settings-toggle {
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
 }
 #providerView .provider-sidebar-logo {
   height: 72px !important;
