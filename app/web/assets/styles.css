@@ -1096,6 +1096,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 .search-with-icon .search {
   width: 100%;
+  padding-left: 34px;
 }
 .search-with-icon svg {
   position: absolute;

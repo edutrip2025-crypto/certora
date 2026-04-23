@@ -687,7 +687,7 @@
 
     <section id="studentView" class="admin-layout hidden">
       <aside class="panel sidebar">
-        <h3>Student Workspace</h3>
+        <h3>Workspace</h3>
         <button class="nav-btn active student-nav-btn" data-student-view="home">Home</button>
         <button class="nav-btn student-nav-btn" data-student-view="available">Available Courses</button>
         <button class="nav-btn student-nav-btn" data-student-view="enrolled">My Courses</button>
@@ -715,10 +715,26 @@
 
       <section class="panel content" id="student-view-home">
         <div class="row between">
-          <h2>Student Home</h2>
+          <h2>Home</h2>
           <button id="refreshStudentDashboardBtn" class="btn small">Refresh</button>
         </div>
         <div id="studentStats" class="stats"></div>
+        <section class="admin-glimpse-grid">
+          <div class="moderation-toolbar" style="margin-top:0;">
+            <div class="row between">
+              <h3 style="margin:0;">Available Courses Snapshot</h3>
+              <div class="meta">Latest published courses</div>
+            </div>
+            <div id="studentHomeAvailableList" class="list glimpse-list"></div>
+          </div>
+          <div class="moderation-toolbar" style="margin-top:0;">
+            <div class="row between">
+              <h3 style="margin:0;">My Courses Snapshot</h3>
+              <div class="meta">Recent enrolled progress</div>
+            </div>
+            <div id="studentHomeEnrolledList" class="list glimpse-list"></div>
+          </div>
+        </section>
       </section>
 
       <section class="panel content hidden" id="student-view-available">

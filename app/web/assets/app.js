@@ -1232,6 +1232,8 @@ const el = {
   signupBtn: $("signupBtn"),
   providerHomeStats: $("providerHomeStats"),
   studentStats: $("studentStats"),
+  studentHomeAvailableList: $("studentHomeAvailableList"),
+  studentHomeEnrolledList: $("studentHomeEnrolledList"),
   studentCertificatesList: $("studentCertificatesList"),
   studentCertificatesTabList: $("studentCertificatesTabList"),
   studentAvailableCourses: $("studentAvailableCourses"),
@@ -1896,6 +1898,47 @@ function activateAdminSubView(name) {
   if (name === "users") {
     refreshAdminUsers().catch(() => toast("Failed to load users", "error"));
   }
+}
+
+function renderStudentHomeCards(target, data) {
+  if (!target) return;
+  const cards = [
+    { key: "Enrolled Courses", value: data?.total_enrolled ?? 0, cls: "t1", icon: "EN" },
+    { key: "Completed Courses", value: data?.completed_courses ?? 0, cls: "t2", icon: "CM" },
+    { key: "Avg Progress %", value: `${data?.avg_progress ?? 0}%`, cls: "t3", icon: "PR" },
+    { key: "Exam Eligible", value: data?.exam_eligible_courses ?? 0, cls: "t4", icon: "EX" },
+    { key: "Certificates", value: data?.certificates_issued ?? 0, cls: "t5", icon: "CF" },
+  ];
+  target.innerHTML = "";
+  cards.forEach((card) => {
+    const div = document.createElement("div");
+    div.className = `stat analytics ${card.cls}`;
+    div.innerHTML = `<div class="icon">${card.icon}</div><div class="text"><div class="k">${card.key}</div><div class="v">${card.value ?? "-"}</div></div>`;
+    target.appendChild(div);
+  });
+}
+
+function renderStudentHomeSnapshots() {
+  const available = Array.isArray(state.studentDashboard.available) ? state.studentDashboard.available.slice(0, 4) : [];
+  const enrolled = Array.isArray(state.studentDashboard.enrolled) ? state.studentDashboard.enrolled.slice(0, 4) : [];
+  renderList(
+    el.studentHomeAvailableList,
+    available,
+    (c) => `
+      <div><strong>${escapeHtmlAttr(c.title || "Untitled Course")}</strong></div>
+      <div class="meta">${escapeHtmlAttr(c.provider_name || "Provider")} | ${escapeHtmlAttr(c.category || "General")}</div>
+    `,
+    "No available courses.",
+  );
+  renderList(
+    el.studentHomeEnrolledList,
+    enrolled,
+    (c) => `
+      <div><strong>${escapeHtmlAttr(c.title || "Untitled Course")}</strong></div>
+      <div class="meta">${escapeHtmlAttr(c.provider_name || "Provider")} | Progress: ${Number(c.progress_pct || 0).toFixed(0)}%</div>
+    `,
+    "No enrolled courses yet.",
+  );
 }
 
 function activateProviderSubView(name) {
@@ -3387,15 +3430,10 @@ async function refreshProviderHome() {
 
 async function refreshStudentDashboard() {
   const data = await api("GET", "/student/dashboard");
-  renderSimpleStats(el.studentStats, {
-    "Enrolled Courses": data.stats?.total_enrolled ?? 0,
-    "Completed Courses": data.stats?.completed_courses ?? 0,
-    "Avg Progress %": `${data.stats?.avg_progress ?? 0}%`,
-    "Exam Eligible": data.stats?.exam_eligible_courses ?? 0,
-    "Certificates": data.stats?.certificates_issued ?? 0,
-  });
+  renderStudentHomeCards(el.studentStats, data.stats || {});
   state.studentDashboard.available = Array.isArray(data.available) ? data.available : [];
   state.studentDashboard.enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  renderStudentHomeSnapshots();
   renderStudentCourseCatalogs();
 }
 
