@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.entities import Course, CourseModule, Lesson, ProviderProfile, Resource, User, UserRole
 from app.schemas import CourseCreate, CourseOut, CourseUpdate, LessonCreate, ModuleCreate, ResourceCreate
-from app.services.media_storage import normalize_image_storage_reference, resolve_media_url
+from app.services.media_storage import delete_storage_reference, normalize_image_storage_reference, resolve_media_url
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -34,6 +34,15 @@ def _course_out_payload(course: Course) -> dict:
     return out
 
 
+def _cleanup_storage_refs(refs: set[str]) -> None:
+    for ref in refs:
+        try:
+            delete_storage_reference(ref)
+        except Exception:
+            # Storage cleanup should not block business workflow.
+            pass
+
+
 @router.post("", response_model=CourseOut, status_code=status.HTTP_201_CREATED)
 def create_course(
     payload: CourseCreate,
@@ -55,7 +64,7 @@ def create_course(
         category=payload.category,
         thumbnail_url=thumbnail_ref,
         includes_certification_exam=payload.includes_certification_exam,
-        is_published=True,
+        is_published=False,
     )
     db.add(course)
     db.commit()
@@ -243,7 +252,26 @@ def delete_course(
             ),
         ).all(),
     ) if exam_ids else []
-    certificate_ids = list(db.scalars(select(Certificate.id).where(Certificate.course_id == course.id)).all())
+    certificate_rows = list(db.scalars(select(Certificate).where(Certificate.course_id == course.id)).all())
+    certificate_ids = [int(c.id) for c in certificate_rows]
+
+    storage_refs: set[str] = set()
+    if course.thumbnail_url:
+        storage_refs.add(str(course.thumbnail_url))
+    if lesson_ids:
+        lesson_video_refs = db.scalars(select(Lesson.recorded_video_url).where(Lesson.id.in_(lesson_ids))).all()
+        for ref in lesson_video_refs:
+            if ref:
+                storage_refs.add(str(ref))
+    if certificate_rows:
+        for cert in certificate_rows:
+            if cert.pdf_url:
+                storage_refs.add(str(cert.pdf_url))
+    if session_ids:
+        proctor_files = db.scalars(select(ProctorEvidence.file_url).where(ProctorEvidence.session_id.in_(session_ids))).all()
+        for ref in proctor_files:
+            if ref:
+                storage_refs.add(str(ref))
 
     if certificate_ids:
         db.execute(delete(VerificationRecord).where(VerificationRecord.certificate_id.in_(certificate_ids)))
@@ -304,4 +332,5 @@ def delete_course(
             status_code=409,
             detail="Course cannot be deleted because dependent records still exist. Please retry or contact support.",
         )
+    _cleanup_storage_refs(storage_refs)
     return {"deleted": True, "course_id": course_id}

@@ -768,6 +768,12 @@ def complete_video_upload(
             raise HTTPException(status_code=500, detail="Failed to upload video to cloud storage")
     upload.status = VideoUploadStatus.COMPLETED
     db.commit()
+    try:
+        settings = get_settings()
+        if settings.resolved_object_storage_backend != "local":
+            final_path.unlink(missing_ok=True)
+    except Exception:
+        pass
     return {
         "session_id": upload.session_id,
         "file_url": resolve_media_url(upload.file_url),

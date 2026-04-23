@@ -77,6 +77,17 @@ def _upload_file_to_s3(local_path: Path, *, object_path: str, content_type: str 
     return f"s3://{settings.aws_s3_bucket_name}/{key}"
 
 
+def _delete_s3_object(storage_ref: str) -> bool:
+    settings = get_settings()
+    bucket = str(settings.aws_s3_bucket_name or "").strip()
+    if not bucket:
+        return False
+    key = storage_ref[len(f"s3://{bucket}/"):] if storage_ref.startswith(f"s3://{bucket}/") else storage_ref.split("/", 3)[-1]
+    client = _s3_client()
+    client.delete_object(Bucket=bucket, Key=key)
+    return True
+
+
 def _upload_file_to_bunny_storage(local_path: Path, *, object_path: str, content_type: str | None = None) -> str:
     if not local_path.exists():
         raise RuntimeError(f"Local file not found for upload: {local_path}")
@@ -128,6 +139,42 @@ def _upload_file_to_bunny_storage(local_path: Path, *, object_path: str, content
     return f"bunny://{zone}/{key}"
 
 
+def _delete_bunny_object(storage_ref: str) -> bool:
+    settings = get_settings()
+    access_key = str(settings.bunny_storage_access_key or "").strip()
+    endpoint = str(settings.bunny_storage_endpoint or "storage.bunnycdn.com").strip()
+    if not (access_key and endpoint):
+        return False
+    ref = storage_ref[len("bunny://"):]
+    parts = ref.split("/", 1)
+    if len(parts) != 2:
+        return False
+    zone = parts[0].strip()
+    object_key = parts[1].lstrip("/")
+    if not (zone and object_key):
+        return False
+    url = f"https://{endpoint}/{zone}/{object_key}"
+    req = request.Request(
+        url,
+        method="DELETE",
+        headers={
+            "AccessKey": access_key,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=60) as resp:
+            status = int(getattr(resp, "status", 0) or 0)
+            return status in {200, 201, 202, 204}
+    except error.HTTPError as exc:
+        # Treat not found as already deleted.
+        if int(getattr(exc, "code", 0) or 0) == 404:
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def upload_file_to_cloud_storage(
     local_path: Path,
     *,
@@ -142,6 +189,28 @@ def upload_file_to_cloud_storage(
     if backend == "firebase":
         return _upload_file_to_firebase_storage(local_path, object_path=object_path, content_type=content_type)
     raise RuntimeError("Cloud storage backend is not configured.")
+
+
+def delete_storage_reference(value: str | None) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    try:
+        if raw.startswith("bunny://"):
+            return _delete_bunny_object(raw)
+        if raw.startswith("s3://"):
+            return _delete_s3_object(raw)
+        if raw.startswith("/media/"):
+            settings = get_settings()
+            media_root = Path(settings.resolved_media_dir)
+            path = media_root / raw.removeprefix("/media/").lstrip("/")
+            if path.exists():
+                path.unlink(missing_ok=True)
+                return True
+            return False
+    except Exception:
+        return False
+    return False
 
 
 def normalize_image_storage_reference(

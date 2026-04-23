@@ -8202,7 +8202,9 @@ async function createCourseFromWizard() {
   if (!title) throw new Error("Course name is required");
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
-  const safeRecordedVideoUrl = localVideoFile ? null : videoUrl;
+  const safeRecordedVideoUrl = localVideoFile
+    ? await uploadLocalVideoInChunks(localVideoFile)
+    : videoUrl;
 
   const course = await api("POST", "/courses", {
     title,
@@ -8229,9 +8231,6 @@ async function createCourseFromWizard() {
       time_seconds: topic.time_seconds,
       thumbnail_data_url: topic.thumbnail_data_url || null,
     });
-  }
-  if (localVideoFile) {
-    await uploadWizardVideoToStream(course.id, title, localVideoFile);
   }
   await api("POST", `/courses/${course.id}/publish`);
   if (state.activeDraftId) {
@@ -8936,7 +8935,7 @@ function bindEvents() {
     if (!file) return toast("Choose a local video file first", "error");
     try {
       setWizardVideoPreviewFromLocalFile(file);
-      toast("Local video selected. It will upload to Cloudflare on Create Course.");
+      toast("Local video selected. It will upload when you create the course.");
     } catch (err) {
       toast(err?.message || "Video selection failed", "error");
     }

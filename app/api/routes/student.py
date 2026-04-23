@@ -128,10 +128,10 @@ def _student_feedback_map(db: Session, student_id: int, course_ids: set[int]) ->
         out[int(fb.course_id)] = {
             "feedback_id": int(fb.id),
             "overall_rating": round(overall, 2),
-            "valuable_time_rating": int(fb.valuable_time_rating),
-            "content_quality_rating": int(fb.content_quality_rating),
-            "instructor_clarity_rating": int(fb.instructor_clarity_rating),
-            "practical_usefulness_rating": int(fb.practical_usefulness_rating),
+            "valuable_time_rating": int(fb.valuable_time_rating or 0),
+            "content_quality_rating": int(fb.content_quality_rating or 0),
+            "instructor_clarity_rating": int(fb.instructor_clarity_rating or 0),
+            "practical_usefulness_rating": int(fb.practical_usefulness_rating or 0),
             "comment": fb.comment,
             "created_at": fb.created_at,
         }
