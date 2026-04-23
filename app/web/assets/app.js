@@ -9028,6 +9028,7 @@ function bindEvents() {
     const filterNodes = [
       [el.studentAvailableFilterBtn, el.studentAvailableFilterMenu],
       [el.studentEnrolledFilterBtn, el.studentEnrolledFilterMenu],
+      [el.studentAssessmentsFilterBtn, el.studentAssessmentsFilterMenu],
       [el.providerCoursesFilterBtn, el.providerCoursesFilterMenu],
     ];
     filterNodes.forEach(([btn, menu]) => {

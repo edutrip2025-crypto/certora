@@ -3128,17 +3128,20 @@ textarea {
   height: 128px !important;
 }
 body.app-workspace-active {
-  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 body.app-workspace-active main {
-  height: 100dvh !important;
+  min-height: calc(100dvh - 16px) !important;
+  height: auto !important;
   margin-bottom: 0 !important;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
-  overflow: hidden !important;
+  overflow: visible !important;
 }
 body.app-workspace-active .admin-layout {
-  height: calc(100dvh - 16px) !important;
+  min-height: calc(100dvh - 16px) !important;
+  height: auto !important;
   align-items: stretch !important;
 }
 body.app-workspace-active #adminView .sidebar,
@@ -3146,17 +3149,18 @@ body.app-workspace-active #providerView .sidebar,
 body.app-workspace-active #studentView .sidebar {
   position: relative !important;
   top: 0 !important;
-  min-height: 0 !important;
+  min-height: calc(100dvh - 42px) !important;
   max-height: none !important;
-  height: 100% !important;
-  overflow: auto !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 body.app-workspace-active #adminView .content,
 body.app-workspace-active #providerView .content,
 body.app-workspace-active #studentView .content {
   margin-top: 0 !important;
-  height: 100% !important;
-  overflow: auto !important;
+  min-height: calc(100dvh - 42px) !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 @media (max-width: 1040px) {
   #adminView .provider-sidebar-logo,
@@ -3203,4 +3207,87 @@ select,
 textarea {
   min-width: 0 !important;
   max-width: 100%;
+}
+
+.student-course-viewer {
+  display: grid;
+  gap: 14px;
+}
+.student-course-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.student-course-hero-main {
+  border: 1px solid #d8e5ff;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(37, 99, 235, 0.14), transparent 45%),
+    radial-gradient(circle at 95% 0%, rgba(14, 165, 233, 0.14), transparent 40%),
+    linear-gradient(160deg, #ffffff 0%, #f4f8ff 100%);
+  padding: 16px;
+}
+.student-course-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.student-course-title-row h3 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.student-course-subtitle {
+  margin-top: 6px;
+  color: #1e293b;
+  line-height: 1.55;
+}
+.student-course-actions {
+  border: 1px solid #d8e5ff;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.student-course-actions .item {
+  margin: 0 !important;
+}
+.student-course-progress-track {
+  height: 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #eef2ff;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.student-course-sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.student-course-player-card,
+.student-course-curriculum {
+  border: 1px solid #d8e5ff;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 12px;
+}
+.student-course-player-card .video-shell {
+  margin-bottom: 8px;
+}
+.student-course-curriculum h4 {
+  margin: 0 0 8px;
+}
+.student-course-curriculum-block + .student-course-curriculum-block {
+  margin-top: 12px;
+}
+@media (max-width: 1100px) {
+  .student-course-hero,
+  .student-course-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
