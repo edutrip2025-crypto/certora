@@ -2006,9 +2006,10 @@ function renderStudentAssessmentsList() {
     el.studentAssessmentsList.innerHTML = `<div class="item"><div style="margin-top:4px;">No assessments found for current search/filter.</div></div>`;
     return;
   }
+  const fallbackThumb = "/assets/classagon_logo.png?v=20260422c";
   const cards = rows.map((r) => `
     <article class="course-tile">
-      ${r.thumbnail_url ? `<img src="${escapeHtmlAttr(r.thumbnail_url)}" alt="" class="course-tile-thumb" />` : `<div class="course-tile-thumb"></div>`}
+      <img src="${escapeHtmlAttr(r.thumbnail_url || fallbackThumb)}" alt="" class="course-tile-thumb" onerror="this.onerror=null;this.src='${fallbackThumb}';" />
       <div class="course-tile-body">
         <h4 class="course-tile-title">${escapeHtmlAttr(r.title)}</h4>
         <div class="course-tile-provider">${escapeHtmlAttr(r.provider_name)}</div>
@@ -2566,9 +2567,10 @@ async function fetchVideoDuration(url) {
 }
 
 function resolveCourseThumbnail(course, lesson) {
+  const fallback = "/assets/classagon_logo.png?v=20260422c";
   if (course?.thumbnail_url) return course.thumbnail_url;
   const firstTopicThumb = lesson?.topics?.find((t) => t.thumbnail_data_url)?.thumbnail_data_url;
-  return firstTopicThumb || "";
+  return firstTopicThumb || fallback;
 }
 
 function normalizeText(value) {
@@ -9589,8 +9591,26 @@ function bindEvents() {
     Promise.all([refreshStudentDashboard(), refreshStudentCertifications(), refreshStudentLiveClasses()]).catch(() => toast("Failed to refresh dashboard", "error")));
   $("studentAvailableSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
   $("studentAvailableSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
+  const syncStudentAvailableSortOptionState = () => {
+    const current = String($("studentAvailableSort")?.value || "latest");
+    document.querySelectorAll("[data-student-available-sort]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-available-sort") === current);
+    });
+  };
+  document.querySelectorAll("[data-student-available-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-available-sort") || "latest");
+      if ($("studentAvailableSort")) $("studentAvailableSort").value = next;
+      syncStudentAvailableSortOptionState();
+      renderStudentCourseCatalogs();
+      if (el.studentAvailableFilterMenu) el.studentAvailableFilterMenu.classList.add("hidden");
+      el.studentAvailableFilterBtn?.classList.remove("active");
+    });
+  });
+  syncStudentAvailableSortOptionState();
   $("studentAvailableFilterBtn")?.addEventListener("click", (event) => {
     event.stopPropagation();
+    syncStudentAvailableSortOptionState();
     toggleFilterPopover(el.studentAvailableFilterMenu, el.studentAvailableFilterBtn);
   });
   $("studentAvailableFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
@@ -9607,16 +9627,66 @@ function bindEvents() {
   });
   $("studentEnrolledSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
   $("studentEnrolledSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
+  const syncStudentEnrolledSortOptionState = () => {
+    const current = String($("studentEnrolledSort")?.value || "latest");
+    document.querySelectorAll("[data-student-enrolled-sort]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-enrolled-sort") === current);
+    });
+  };
+  document.querySelectorAll("[data-student-enrolled-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-enrolled-sort") || "latest");
+      if ($("studentEnrolledSort")) $("studentEnrolledSort").value = next;
+      syncStudentEnrolledSortOptionState();
+      renderStudentCourseCatalogs();
+      if (el.studentEnrolledFilterMenu) el.studentEnrolledFilterMenu.classList.add("hidden");
+      el.studentEnrolledFilterBtn?.classList.remove("active");
+    });
+  });
+  syncStudentEnrolledSortOptionState();
   $("studentEnrolledFilterBtn")?.addEventListener("click", (event) => {
     event.stopPropagation();
+    syncStudentEnrolledSortOptionState();
     toggleFilterPopover(el.studentEnrolledFilterMenu, el.studentEnrolledFilterBtn);
   });
   $("studentEnrolledFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("studentAssessmentsSearch")?.addEventListener("input", () => renderStudentAssessmentsList());
   $("studentAssessmentsSort")?.addEventListener("change", () => renderStudentAssessmentsList());
   $("studentAssessmentsStatus")?.addEventListener("change", () => renderStudentAssessmentsList());
+  const syncStudentAssessmentsFilterOptionState = () => {
+    const sortValue = String($("studentAssessmentsSort")?.value || "latest");
+    const statusValue = String($("studentAssessmentsStatus")?.value || "all");
+    document.querySelectorAll("[data-student-assess-sort]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-assess-sort") === sortValue);
+    });
+    document.querySelectorAll("[data-student-assess-status]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-assess-status") === statusValue);
+    });
+  };
+  document.querySelectorAll("[data-student-assess-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-assess-sort") || "latest");
+      if ($("studentAssessmentsSort")) $("studentAssessmentsSort").value = next;
+      syncStudentAssessmentsFilterOptionState();
+      renderStudentAssessmentsList();
+      if (el.studentAssessmentsFilterMenu) el.studentAssessmentsFilterMenu.classList.add("hidden");
+      el.studentAssessmentsFilterBtn?.classList.remove("active");
+    });
+  });
+  document.querySelectorAll("[data-student-assess-status]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-assess-status") || "all");
+      if ($("studentAssessmentsStatus")) $("studentAssessmentsStatus").value = next;
+      syncStudentAssessmentsFilterOptionState();
+      renderStudentAssessmentsList();
+      if (el.studentAssessmentsFilterMenu) el.studentAssessmentsFilterMenu.classList.add("hidden");
+      el.studentAssessmentsFilterBtn?.classList.remove("active");
+    });
+  });
+  syncStudentAssessmentsFilterOptionState();
   $("studentAssessmentsFilterBtn")?.addEventListener("click", (event) => {
     event.stopPropagation();
+    syncStudentAssessmentsFilterOptionState();
     toggleFilterPopover(el.studentAssessmentsFilterMenu, el.studentAssessmentsFilterBtn);
   });
   $("studentAssessmentsFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());

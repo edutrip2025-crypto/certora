@@ -1167,8 +1167,20 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   display: grid;
   gap: 4px;
 }
+.filter-popover.open-left {
+  left: auto;
+  right: 0;
+}
 .filter-popover .filter {
   width: 100%;
+}
+.filter-popover-label {
+  margin: 4px 2px 2px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .02em;
 }
 .provider-sort-option {
   border: 1px solid transparent;
