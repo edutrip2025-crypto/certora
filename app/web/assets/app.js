@@ -9125,16 +9125,27 @@ function bindEvents() {
     onSeekBlocked: () => maybeShowStudentSeekLockHint(),
   });
   $("cwCreateCourseBtn")?.addEventListener("click", async () => {
+    const createBtn = $("cwCreateCourseBtn");
+    if (createBtn) createBtn.disabled = true;
     try {
       const out = await createCourseFromWizard();
-      toast(`Course created (ID ${out.courseId})`);
+      // Move user out of wizard immediately once create/publish succeeded.
       el.courseWizard?.classList.add("hidden");
-      await refreshProviderHome();
-      await refreshProviderContent();
-      await refreshProviderDrafts();
       activateProviderSubView("courses");
+      toast(`Course created (ID ${out.courseId})`);
+      // Refresh dashboard/content in background; do not block UI transition.
+      Promise.allSettled([
+        refreshProviderHome(),
+        refreshProviderContent(),
+        refreshProviderDrafts(),
+      ]).then((results) => {
+        const hasError = results.some((r) => r.status === "rejected");
+        if (hasError) toast("Course published, but some lists failed to refresh. Please refresh once.", "error");
+      });
     } catch (err) {
       toast(err?.message || "Failed to create course", "error");
+    } finally {
+      if (createBtn) createBtn.disabled = false;
     }
   });
 
