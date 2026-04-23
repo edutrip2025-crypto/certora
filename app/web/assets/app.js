@@ -2765,6 +2765,18 @@ function resetCourseWizard() {
   renderDraftTopics();
 }
 
+function renderCoursePublishProgress(pct, label = "Publishing your course") {
+  const progress = $("cwUploadProgress");
+  if (!progress) return;
+  const safePct = Math.max(0, Math.min(100, Number(pct || 0)));
+  progress.innerHTML = `
+    <div class="upload-progress-wrap">
+      <div class="upload-progress-label">${label} (${safePct.toFixed(0)}%)</div>
+      <div class="upload-progress-bar"><span style="width:${safePct}%;"></span></div>
+    </div>
+  `;
+}
+
 function refreshThumbnailPreview() {
   const url = $("cwCourseThumbnail")?.value?.trim();
   const preview = $("cwThumbnailPreview");
@@ -2882,26 +2894,15 @@ async function refreshProviderDrafts() {
   });
 }
 
-async function uploadLocalVideoInChunks(file) {
-  const progress = $("cwUploadProgress");
-  const renderUploadProgress = (pct, label = "Uploading video") => {
-    if (!progress) return;
-    progress.innerHTML = `
-      <div class="upload-progress-wrap">
-        <div class="upload-progress-label">${label}</div>
-        <div class="upload-progress-bar"><span style="width:${Math.max(0, Math.min(100, pct))}%;"></span></div>
-      </div>
-    `;
-  };
-  const chunkSizeCandidates = [1, 0.5, 0.25, 0.125].map((mb) => Math.floor(mb * 1024 * 1024));
+async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd = 78 } = {}) {
+  const chunkSizeCandidates = [2, 1, 0.5, 0.25].map((mb) => Math.floor(mb * 1024 * 1024));
   let lastErr = null;
 
   for (let sizeIdx = 0; sizeIdx < chunkSizeCandidates.length; sizeIdx += 1) {
     const chunkSize = chunkSizeCandidates[sizeIdx];
     const totalChunks = Math.ceil(file.size / chunkSize);
-    const maxParallel = chunkSize >= 1024 * 1024 ? 3 : Math.min(4, Math.max(2, totalChunks));
-    const mb = Math.round((chunkSize / (1024 * 1024)) * 10) / 10;
-    renderUploadProgress(0, `Preparing upload (${mb} MB chunks)`);
+    const maxParallel = chunkSize >= 1024 * 1024 ? 4 : Math.min(4, Math.max(2, totalChunks));
+    renderCoursePublishProgress(progressStart, "Publishing your course");
 
     const init = await api("POST", "/provider/workspace/uploads/init", {
       filename: file.name,
@@ -2924,7 +2925,7 @@ async function uploadLocalVideoInChunks(file) {
         body: fd,
       });
       if (!res.ok) {
-        const err = new Error(`Chunk upload failed (HTTP ${res.status})`);
+        const err = new Error(`Upload failed (HTTP ${res.status})`);
         err.status = res.status;
         throw err;
       }
@@ -2939,28 +2940,30 @@ async function uploadLocalVideoInChunks(file) {
           nextIndex += 1;
           await uploadChunk(current);
           uploadedCount += 1;
-          renderUploadProgress((uploadedCount / totalChunks) * 100, `Uploading video (${mb} MB chunks)`);
+          const localPct = (uploadedCount / totalChunks) * 100;
+          const overall = progressStart + ((progressEnd - progressStart) * localPct) / 100;
+          renderCoursePublishProgress(overall, "Publishing your course");
         }
       });
       await Promise.all(workers);
 
-      renderUploadProgress(99, "Finalizing upload...");
+      renderCoursePublishProgress(Math.max(progressStart, progressEnd - 1), "Publishing your course");
       const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
       $("cwVideoUrl").value = done.storage_ref || done.file_url;
       if (done.file_url && $("cwVideoPreview")) {
         $("cwVideoPreview").setAttribute("src", done.file_url);
         $("cwVideoPreview").load();
       }
-      renderUploadProgress(100, "Upload complete");
+      renderCoursePublishProgress(progressEnd, "Publishing your course");
       return done.storage_ref || done.file_url;
     } catch (err) {
       lastErr = err;
       if (Number(err?.status || 0) === 413 && sizeIdx < chunkSizeCandidates.length - 1) {
-        renderUploadProgress(0, "Chunk too large for server. Retrying with smaller chunks...");
+        renderCoursePublishProgress(progressStart, "Publishing your course");
         continue;
       }
       if (Number(err?.status || 0) === 413) {
-        renderUploadProgress(0, "Server upload limit reached. Contact admin to increase request size.");
+        renderCoursePublishProgress(0, "Upload failed");
       }
       throw err;
     }
@@ -8190,6 +8193,7 @@ async function publishCourseAction() {
 }
 
 async function createCourseFromWizard() {
+  renderCoursePublishProgress(2, "Publishing your course");
   const title = $("cwCourseTitle")?.value?.trim();
   const level = $("cwCourseLevel")?.value || "Beginner";
   const category = $("cwCourseCategory")?.value?.trim() || "General";
@@ -8202,9 +8206,13 @@ async function createCourseFromWizard() {
   if (!title) throw new Error("Course name is required");
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
+  renderCoursePublishProgress(5, "Publishing your course");
   const safeRecordedVideoUrl = localVideoFile
-    ? await uploadLocalVideoInChunks(localVideoFile)
+    ? await uploadLocalVideoInChunks(localVideoFile, { progressStart: 8, progressEnd: 78 })
     : videoUrl;
+  if (!localVideoFile) {
+    renderCoursePublishProgress(78, "Publishing your course");
+  }
 
   const course = await api("POST", "/courses", {
     title,
@@ -8213,11 +8221,13 @@ async function createCourseFromWizard() {
     thumbnail_url: thumbnail,
     includes_certification_exam: includesExam,
   });
+  renderCoursePublishProgress(84, "Publishing your course");
   const module = await api("POST", `/courses/${course.id}/modules`, {
     title: `${title} - Core Module`,
     position: 1,
     syllabus_text: "",
   });
+  renderCoursePublishProgress(90, "Publishing your course");
   const lesson = await api("POST", `/courses/modules/${module.id}/lessons`, {
     title: `${title} - Main Class`,
     lesson_type: "recorded_video",
@@ -8225,6 +8235,7 @@ async function createCourseFromWizard() {
     live_class_url: null,
     position: 1,
   });
+  renderCoursePublishProgress(94, "Publishing your course");
   for (const topic of state.draftTopics) {
     await api("POST", `/provider/workspace/content/lessons/${lesson.id}/topics`, {
       title: topic.title,
@@ -8232,7 +8243,9 @@ async function createCourseFromWizard() {
       thumbnail_data_url: topic.thumbnail_data_url || null,
     });
   }
+  renderCoursePublishProgress(97, "Publishing your course");
   await api("POST", `/courses/${course.id}/publish`);
+  renderCoursePublishProgress(100, "Published");
   if (state.activeDraftId) {
     await api("DELETE", `/provider/workspace/courses/drafts/${state.activeDraftId}`);
     state.activeDraftId = null;
