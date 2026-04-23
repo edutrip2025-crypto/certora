@@ -63,6 +63,7 @@ const state = {
     enrolled: [],
   },
   studentAssessments: [],
+  studentCertificates: [],
   studentLiveReminderTimers: {},
   studentLiveReminderSent: {},
   viewerTopics: [],
@@ -1237,6 +1238,11 @@ const el = {
   studentHomeEnrolledList: $("studentHomeEnrolledList"),
   studentCertificatesList: $("studentCertificatesList"),
   studentCertificatesTabList: $("studentCertificatesTabList"),
+  studentCertificationsSearch: $("studentCertificationsSearch"),
+  studentCertificationsSort: $("studentCertificationsSort"),
+  studentCertificationsStatus: $("studentCertificationsStatus"),
+  studentCertificationsFilterBtn: $("studentCertificationsFilterBtn"),
+  studentCertificationsFilterMenu: $("studentCertificationsFilterMenu"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentAvailableSearch: $("studentAvailableSearch"),
@@ -2003,13 +2009,18 @@ function renderStudentAssessmentsList() {
     return Date.parse(String(b.created_at || "")) - Date.parse(String(a.created_at || ""));
   });
   if (!rows.length) {
-    el.studentAssessmentsList.innerHTML = `<div class="item"><div style="margin-top:4px;">No assessments found for current search/filter.</div></div>`;
+    el.studentAssessmentsList.innerHTML = `
+      <div class="item">
+        <div><strong>No assessments yet</strong></div>
+        <div style="margin-top:4px;">Assessments appear here after you enroll in a course and the provider publishes them.</div>
+      </div>
+    `;
     return;
   }
   const fallbackThumb = "/assets/classagon_logo.png?v=20260422c";
   const cards = rows.map((r) => `
     <article class="course-tile">
-      <img src="${escapeHtmlAttr(r.thumbnail_url || fallbackThumb)}" alt="" class="course-tile-thumb" onerror="this.onerror=null;this.src='${fallbackThumb}';" />
+      <img src="${escapeHtmlAttr(r.thumbnail_url || fallbackThumb)}" alt="" class="${r.thumbnail_url ? "course-tile-thumb" : "course-tile-thumb is-logo"}" onerror="this.onerror=null;this.src='${fallbackThumb}';this.className='course-tile-thumb is-logo';" />
       <div class="course-tile-body">
         <h4 class="course-tile-title">${escapeHtmlAttr(r.title)}</h4>
         <div class="course-tile-provider">${escapeHtmlAttr(r.provider_name)}</div>
@@ -3075,7 +3086,7 @@ async function refreshProviderDrafts() {
   });
 }
 
-async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd = 78 } = {}) {
+async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd = 78, courseId = null } = {}) {
   const chunkSizeCandidates = [2, 1, 0.5, 0.25].map((mb) => Math.floor(mb * 1024 * 1024));
   let lastErr = null;
 
@@ -3133,7 +3144,10 @@ async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd =
 
       renderCoursePublishProgress(Math.max(progressStart, progressEnd - 2), "Finalizing video", true);
       const completeHeaders = await getHeaders(true);
-      const completeRes = await fetch(`/provider/workspace/uploads/${init.session_id}/complete`, {
+      const completeUrl = courseId
+        ? `/provider/workspace/uploads/${init.session_id}/complete?course_id=${encodeURIComponent(String(courseId))}`
+        : `/provider/workspace/uploads/${init.session_id}/complete`;
+      const completeRes = await fetch(completeUrl, {
         method: "POST",
         headers: completeHeaders,
         signal: abortController.signal,
@@ -3585,17 +3599,48 @@ async function refreshStudentDashboard() {
 
 async function refreshStudentCertifications() {
   const certs = await api("GET", "/student/certificates");
-  const certItems = certs || [];
+  state.studentCertificates = Array.isArray(certs) ? certs : [];
+  renderStudentCertificationsList();
+}
+
+function renderStudentCertificationsList() {
+  const target = el.studentCertificatesTabList;
+  if (!target) return;
+  const q = String(el.studentCertificationsSearch?.value || "").trim().toLowerCase();
+  const sortKey = String(el.studentCertificationsSort?.value || "latest");
+  const statusKey = String(el.studentCertificationsStatus?.value || "all");
+  let rows = Array.isArray(state.studentCertificates) ? [...state.studentCertificates] : [];
+  if (q) {
+    rows = rows.filter((c) => {
+      const hay = `${c.course_name || ""} ${c.provider_name || ""} ${c.certificate_id || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if (statusKey !== "all") {
+    rows = rows.filter((c) => String(c.status || "").toLowerCase() === statusKey);
+  }
+  rows.sort((a, b) => {
+    if (sortKey === "course_asc") return String(a.course_name || "").localeCompare(String(b.course_name || ""));
+    if (sortKey === "provider_asc") return String(a.provider_name || "").localeCompare(String(b.provider_name || ""));
+    return Date.parse(String(b.issued_at || "")) - Date.parse(String(a.issued_at || ""));
+  });
+
   const certRenderer = (c) => `
     <div>
       <div><strong>${c.course_name}</strong></div>
-      <div class="meta">Certificate ID: ${c.certificate_id} | Issued: ${formatTime(c.issued_at)}</div>
+      <div class="meta">Certificate ID: ${c.certificate_id} | Provider: ${c.provider_name || "Provider"} | Status: ${String(c.status || "active")}</div>
+      <div class="meta">Issued: ${formatTime(c.issued_at)}</div>
       <div class="actions">
         ${c.download_url ? `<a class="btn small" href="${c.download_url}" target="_blank" rel="noreferrer">Download PDF</a>` : ""}
       </div>
     </div>
   `;
-  renderList(el.studentCertificatesTabList, certItems, certRenderer, "No certificates issued yet.");
+  renderList(
+    target,
+    rows,
+    certRenderer,
+    "No certificates yet. Complete courses and pass assessments to receive certificates.",
+  );
 }
 
 function providerLiveSchedulerSetVisible(visible) {
@@ -8437,16 +8482,11 @@ async function createCourseFromWizard() {
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
   if (state.wizardVideoUploadPromise) {
-    renderCoursePublishProgress(70, "Publishing your course");
+    renderCoursePublishProgress(48, "Publishing your course");
     await state.wizardVideoUploadPromise;
   }
-  renderCoursePublishProgress(5, "Publishing your course");
-  let safeRecordedVideoUrl = videoUrl;
-  if (!safeRecordedVideoUrl && localVideoFile) {
-    safeRecordedVideoUrl = await uploadLocalVideoInChunks(localVideoFile, { progressStart: 8, progressEnd: 78 });
-  } else {
-    renderCoursePublishProgress(78, "Publishing your course");
-  }
+  renderCoursePublishProgress(52, "Publishing your course");
+  let safeRecordedVideoUrl = videoUrl || $("cwVideoUrl")?.value?.trim() || "";
 
   const course = await api("POST", "/courses", {
     title,
@@ -8455,7 +8495,13 @@ async function createCourseFromWizard() {
     thumbnail_url: thumbnail,
     includes_certification_exam: includesExam,
   });
-  renderCoursePublishProgress(84, "Publishing your course");
+  if (!safeRecordedVideoUrl && localVideoFile) {
+    safeRecordedVideoUrl = await uploadLocalVideoInChunks(localVideoFile, { progressStart: 56, progressEnd: 86, courseId: course.id });
+  } else {
+    renderCoursePublishProgress(86, "Publishing your course");
+  }
+  if (!safeRecordedVideoUrl) throw new Error("Video upload failed. Please try again.");
+  renderCoursePublishProgress(88, "Publishing your course");
   const module = await api("POST", `/courses/${course.id}/modules`, {
     title: `${title} - Core Module`,
     position: 1,
@@ -9058,6 +9104,7 @@ function bindEvents() {
       [el.studentAvailableFilterBtn, el.studentAvailableFilterMenu],
       [el.studentEnrolledFilterBtn, el.studentEnrolledFilterMenu],
       [el.studentAssessmentsFilterBtn, el.studentAssessmentsFilterMenu],
+      [el.studentCertificationsFilterBtn, el.studentCertificationsFilterMenu],
       [el.providerCoursesFilterBtn, el.providerCoursesFilterMenu],
     ];
     filterNodes.forEach(([btn, menu]) => {
@@ -9754,6 +9801,46 @@ function bindEvents() {
     toggleFilterPopover(el.providerCoursesFilterMenu, el.providerCoursesFilterBtn);
   });
   $("providerCoursesFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
+  $("studentCertificationsSearch")?.addEventListener("input", () => renderStudentCertificationsList());
+  $("studentCertificationsSort")?.addEventListener("change", () => renderStudentCertificationsList());
+  $("studentCertificationsStatus")?.addEventListener("change", () => renderStudentCertificationsList());
+  const syncStudentCertificationsFilterOptionState = () => {
+    const sortValue = String($("studentCertificationsSort")?.value || "latest");
+    const statusValue = String($("studentCertificationsStatus")?.value || "all");
+    document.querySelectorAll("[data-student-cert-sort]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-cert-sort") === sortValue);
+    });
+    document.querySelectorAll("[data-student-cert-status]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-student-cert-status") === statusValue);
+    });
+  };
+  document.querySelectorAll("[data-student-cert-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-cert-sort") || "latest");
+      if ($("studentCertificationsSort")) $("studentCertificationsSort").value = next;
+      syncStudentCertificationsFilterOptionState();
+      renderStudentCertificationsList();
+      if (el.studentCertificationsFilterMenu) el.studentCertificationsFilterMenu.classList.add("hidden");
+      el.studentCertificationsFilterBtn?.classList.remove("active");
+    });
+  });
+  document.querySelectorAll("[data-student-cert-status]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = String(btn.getAttribute("data-student-cert-status") || "all");
+      if ($("studentCertificationsStatus")) $("studentCertificationsStatus").value = next;
+      syncStudentCertificationsFilterOptionState();
+      renderStudentCertificationsList();
+      if (el.studentCertificationsFilterMenu) el.studentCertificationsFilterMenu.classList.add("hidden");
+      el.studentCertificationsFilterBtn?.classList.remove("active");
+    });
+  });
+  syncStudentCertificationsFilterOptionState();
+  $("studentCertificationsFilterBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    syncStudentCertificationsFilterOptionState();
+    toggleFilterPopover(el.studentCertificationsFilterMenu, el.studentCertificationsFilterBtn);
+  });
+  $("studentCertificationsFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
   $("refreshStudentCertificationsBtn")?.addEventListener("click", () =>
     refreshStudentCertifications().catch(() => toast("Failed to refresh certifications", "error")));
   $("providerAssessmentsSearch")?.addEventListener("input", () => {

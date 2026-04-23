@@ -716,28 +716,14 @@ async def upload_video_chunk(
     if index < 0 or index >= upload.total_chunks:
         raise HTTPException(status_code=400, detail="Invalid chunk index")
 
-    settings = get_settings()
-    backend = settings.resolved_object_storage_backend
     _, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     chunk_path = session_dir / f"{index}.part"
     data = await chunk.read()
-    if backend == "bunny":
-        temp_part = session_dir / f"{index}.upload.part"
-        temp_part.write_bytes(data)
-        try:
-            upload_file_to_cloud_storage(
-                temp_part,
-                object_path=_chunk_object_path(session_id, index),
-                content_type=chunk.content_type or "application/octet-stream",
-            )
-        finally:
-            temp_part.unlink(missing_ok=True)
-    else:
-        if chunk_path.exists():
-            return {"session_id": session_id, "index": index, "status": "already_received", "received_chunks": upload.received_chunks}
-        chunk_path.write_bytes(data)
+    if chunk_path.exists():
+        return {"session_id": session_id, "index": index, "status": "already_received", "received_chunks": upload.received_chunks}
+    chunk_path.write_bytes(data)
 
     upload.received_chunks += 1
     upload.status = VideoUploadStatus.UPLOADING
@@ -768,6 +754,7 @@ def upload_video_status(
 @router.post("/workspace/uploads/{session_id}/complete")
 def complete_video_upload(
     session_id: str,
+    course_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
@@ -780,45 +767,41 @@ def complete_video_upload(
     videos_dir, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     final_path = videos_dir / upload.stored_filename
-    if backend != "bunny" and not session_dir.exists():
+    if not session_dir.exists():
         upload.status = VideoUploadStatus.FAILED
         db.commit()
         raise HTTPException(status_code=400, detail="Upload session files are missing")
+    if course_id:
+        course = db.get(Course, int(course_id))
+        if not course or int(course.provider_id or 0) != int(provider.id):
+            raise HTTPException(status_code=404, detail="Course not found for upload finalize")
 
     try:
         missing_chunks: list[int] = []
         with final_path.open("wb") as out:
             for idx in range(upload.total_chunks):
-                if backend == "bunny":
-                    blob = _download_bunny_chunk_bytes_with_retry(_chunk_object_path(session_id, idx))
-                    if blob is None:
-                        missing_chunks.append(idx)
-                        continue
-                    out.write(blob)
-                else:
-                    part = session_dir / f"{idx}.part"
-                    if not part.exists():
-                        missing_chunks.append(idx)
-                        continue
-                    with part.open("rb") as inp:
-                        while True:
-                            chunk = inp.read(1024 * 1024)
-                            if not chunk:
-                                break
-                            out.write(chunk)
+                part = session_dir / f"{idx}.part"
+                if not part.exists():
+                    missing_chunks.append(idx)
+                    continue
+                with part.open("rb") as inp:
+                    while True:
+                        chunk = inp.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
         upload.received_chunks = upload.total_chunks - len(missing_chunks)
         db.commit()
         if missing_chunks:
             first_missing = missing_chunks[0]
             raise HTTPException(status_code=400, detail=f"Upload is incomplete (missing chunk {first_missing})")
 
-        if backend != "bunny":
-            for idx in range(upload.total_chunks):
-                part = session_dir / f"{idx}.part"
-                if part.exists():
-                    part.unlink()
-            if session_dir.exists():
-                session_dir.rmdir()
+        for idx in range(upload.total_chunks):
+            part = session_dir / f"{idx}.part"
+            if part.exists():
+                part.unlink()
+        if session_dir.exists():
+            session_dir.rmdir()
     except HTTPException:
         upload.status = VideoUploadStatus.FAILED
         db.commit()
@@ -830,9 +813,12 @@ def complete_video_upload(
         raise HTTPException(status_code=500, detail="Failed to merge uploaded chunks")
 
     try:
+        object_path = f"videos/{upload.stored_filename}"
+        if course_id:
+            object_path = f"videos/course-{int(course_id)}/{upload.stored_filename}"
         upload.file_url = upload_file_to_cloud_storage(
             final_path,
-            object_path=f"videos/{upload.stored_filename}",
+            object_path=object_path,
             content_type=upload.mime_type or "video/mp4",
         )
     except Exception as exc:
@@ -846,12 +832,6 @@ def complete_video_upload(
     upload.status = VideoUploadStatus.COMPLETED
     db.commit()
 
-    if backend == "bunny":
-        zone = str(settings.bunny_storage_zone or "").strip()
-        for idx in range(upload.total_chunks):
-            chunk_ref = f"bunny://{zone}/{_chunk_object_path(session_id, idx)}" if zone else None
-            if chunk_ref:
-                delete_storage_reference(chunk_ref)
     try:
         if backend != "local":
             final_path.unlink(missing_ok=True)

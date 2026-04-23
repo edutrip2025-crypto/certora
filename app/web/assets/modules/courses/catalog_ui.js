@@ -113,7 +113,7 @@
   function toggleFilterPopover(menu, trigger, show) {
     if (!menu) return;
     const next = typeof show === "boolean" ? show : menu.classList.contains("hidden");
-    [el.studentAvailableFilterMenu, el.studentEnrolledFilterMenu, el.studentAssessmentsFilterMenu, el.providerCoursesFilterMenu].forEach((node) => {
+    [el.studentAvailableFilterMenu, el.studentEnrolledFilterMenu, el.studentAssessmentsFilterMenu, el.studentCertificationsFilterMenu, el.providerCoursesFilterMenu].forEach((node) => {
       if (node && node !== menu) node.classList.add("hidden");
     });
     menu.classList.toggle("hidden", !next);
@@ -127,6 +127,8 @@
       return;
     }
     const cards = items.map((c) => {
+      const thumbSrc = courseThumbSrc(c);
+      const thumbClass = thumbSrc === fallbackCourseThumb ? "course-tile-thumb is-logo" : "course-tile-thumb";
       const progress = Math.max(0, Math.min(100, Number(c.progress_pct || 0)));
       const assessmentLine = c.assessment_available
         ? "Assessment available"
@@ -135,7 +137,7 @@
           : "Assessment locked";
       return `
         <article class="course-tile">
-          <img src="${escapeHtmlAttr(courseThumbSrc(c))}" alt="" class="course-tile-thumb" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';" />
+          <img src="${escapeHtmlAttr(thumbSrc)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
@@ -215,6 +217,7 @@
       const firstLesson = findPrimaryLesson(c);
       const firstLiveLesson = findLiveLessons(c)[0] || null;
       const thumb = courseThumbSrc(c, firstLesson);
+      const thumbClass = thumb === fallbackCourseThumb ? "course-tile-thumb is-logo" : "course-tile-thumb";
       const durationLabel = firstLesson?.recorded_video_url
         ? (state.videoDurationByUrl[firstLesson.recorded_video_url] != null
           ? formatSecondsToClock(state.videoDurationByUrl[firstLesson.recorded_video_url])
@@ -226,7 +229,7 @@
       return `
         <article class="course-tile">
           ${canDeleteCourseFromUi() ? `<button class="btn small danger icon-action-btn course-tile-delete-corner" data-delete-course="${c.id}" title="Delete Course" aria-label="Delete Course"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>` : ""}
-          <img src="${escapeHtmlAttr(thumb)}" alt="" class="course-tile-thumb" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';" />
+          <img src="${escapeHtmlAttr(thumb)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">Provider: You</div>

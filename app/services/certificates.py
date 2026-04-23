@@ -305,9 +305,10 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     settings = get_settings()
     if settings.resolved_object_storage_backend == "local":
         raise RuntimeError("Certificate storage requires a cloud backend configuration (Bunny, S3, or Firebase).")
+    course_segment = f"course-{int(certificate.course_id)}"
     return upload_file_to_cloud_storage(
         out_path,
-        object_path=f"certificates/{CERTIFICATE_TEMPLATE_VERSION}/{certificate.certificate_id}.pdf",
+        object_path=f"certificates/{course_segment}/{CERTIFICATE_TEMPLATE_VERSION}/{certificate.certificate_id}.pdf",
         content_type="application/pdf",
     )
 

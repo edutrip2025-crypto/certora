@@ -1222,6 +1222,11 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   border-bottom: 1px solid #e5e7eb;
   background: #f8fafc;
 }
+.course-tile-thumb.is-logo {
+  object-fit: contain;
+  padding: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
 .course-tile-body {
   padding: 10px;
 }

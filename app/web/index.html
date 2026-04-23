@@ -776,24 +776,29 @@
 
       <section class="panel content hidden" id="student-view-enrolled">
         <h2>My Enrolled Courses</h2>
-        <div class="row wrap gap-sm course-grid-controls">
-          <input id="studentEnrolledSearch" class="search" type="text" placeholder="Search by course or provider" />
-          <button id="studentEnrolledFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
-          </button>
-          <div id="studentEnrolledFilterMenu" class="filter-popover open-left hidden">
-            <select id="studentEnrolledSort" class="filter hidden">
-              <option value="latest">Latest</option>
-              <option value="rating_desc">Top Rated</option>
-              <option value="progress_desc">Progress</option>
-              <option value="title_asc">Course Name (A-Z)</option>
-              <option value="provider_asc">Provider (A-Z)</option>
-            </select>
-            <button class="provider-sort-option active" type="button" data-student-enrolled-sort="latest">Latest</button>
-            <button class="provider-sort-option" type="button" data-student-enrolled-sort="rating_desc">Top Rated</button>
-            <button class="provider-sort-option" type="button" data-student-enrolled-sort="progress_desc">Progress</button>
-            <button class="provider-sort-option" type="button" data-student-enrolled-sort="title_asc">Course Name (A-Z)</button>
-            <button class="provider-sort-option" type="button" data-student-enrolled-sort="provider_asc">Provider (A-Z)</button>
+        <div class="row between provider-courses-toolbar course-grid-controls">
+          <div class="search-with-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
+            <input id="studentEnrolledSearch" class="search" type="text" placeholder="Search by course or provider" />
+          </div>
+          <div class="row provider-course-actions">
+            <button id="studentEnrolledFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
+            </button>
+            <div id="studentEnrolledFilterMenu" class="filter-popover open-left hidden">
+              <select id="studentEnrolledSort" class="filter hidden">
+                <option value="latest">Latest</option>
+                <option value="rating_desc">Top Rated</option>
+                <option value="progress_desc">Progress</option>
+                <option value="title_asc">Course Name (A-Z)</option>
+                <option value="provider_asc">Provider (A-Z)</option>
+              </select>
+              <button class="provider-sort-option active" type="button" data-student-enrolled-sort="latest">Latest</button>
+              <button class="provider-sort-option" type="button" data-student-enrolled-sort="rating_desc">Top Rated</button>
+              <button class="provider-sort-option" type="button" data-student-enrolled-sort="progress_desc">Progress</button>
+              <button class="provider-sort-option" type="button" data-student-enrolled-sort="title_asc">Course Name (A-Z)</button>
+              <button class="provider-sort-option" type="button" data-student-enrolled-sort="provider_asc">Provider (A-Z)</button>
+            </div>
           </div>
         </div>
         <div id="studentEnrolledCourses" class="list"></div>
@@ -914,6 +919,50 @@
         </section>
       </section>
 
+      <section class="panel content hidden" id="student-view-assessments">
+        <h2>Assessments</h2>
+        <p class="muted">Track unlocked assessments and start tests from your enrolled courses.</p>
+        <div class="row between provider-courses-toolbar course-grid-controls">
+          <div class="search-with-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
+            <input id="studentAssessmentsSearch" class="search" type="text" placeholder="Search by course or provider" />
+          </div>
+          <div class="row provider-course-actions">
+            <button id="studentAssessmentsFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
+            </button>
+            <div id="studentAssessmentsFilterMenu" class="filter-popover open-left hidden">
+              <select id="studentAssessmentsSort" class="filter hidden">
+                <option value="latest">Latest</option>
+                <option value="status_available">Available First</option>
+                <option value="title_asc">Course Name (A-Z)</option>
+                <option value="provider_asc">Provider (A-Z)</option>
+              </select>
+              <select id="studentAssessmentsStatus" class="filter hidden" style="margin-top:8px;">
+                <option value="all">All Status</option>
+                <option value="available">Available</option>
+                <option value="locked">Locked</option>
+                <option value="unavailable">Unavailable</option>
+              </select>
+              <div class="filter-popover-label">Sort</div>
+              <button class="provider-sort-option active" type="button" data-student-assess-sort="latest">Latest</button>
+              <button class="provider-sort-option" type="button" data-student-assess-sort="status_available">Available First</button>
+              <button class="provider-sort-option" type="button" data-student-assess-sort="title_asc">Course Name (A-Z)</button>
+              <button class="provider-sort-option" type="button" data-student-assess-sort="provider_asc">Provider (A-Z)</button>
+              <div class="filter-popover-label">Status</div>
+              <button class="provider-sort-option active" type="button" data-student-assess-status="all">All Status</button>
+              <button class="provider-sort-option" type="button" data-student-assess-status="available">Available</button>
+              <button class="provider-sort-option" type="button" data-student-assess-status="locked">Locked</button>
+              <button class="provider-sort-option" type="button" data-student-assess-status="unavailable">Unavailable</button>
+            </div>
+            <button id="refreshStudentAssessmentsBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
+              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5v5h-5"/><path d="M4 19v-5h5"/><path d="M20 10a8 8 0 0 0-14.9-3"/><path d="M4 14a8 8 0 0 0 14.9 3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="studentAssessmentsList" class="list"></div>
+      </section>
+
       <section class="panel content hidden" id="student-view-live">
         <div class="row between">
           <h2>Live Classes</h2>
@@ -929,6 +978,37 @@
           <button id="refreshStudentCertificationsBtn" class="btn small">Refresh</button>
         </div>
         <p class="muted">Certificates issued after passing eligible assessments.</p>
+        <div class="row between provider-courses-toolbar course-grid-controls">
+          <div class="search-with-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
+            <input id="studentCertificationsSearch" class="search" type="text" placeholder="Search by course, provider or certificate ID" />
+          </div>
+          <div class="row provider-course-actions">
+            <button id="studentCertificationsFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
+            </button>
+            <div id="studentCertificationsFilterMenu" class="filter-popover open-left hidden">
+              <select id="studentCertificationsSort" class="filter hidden">
+                <option value="latest">Latest</option>
+                <option value="course_asc">Course Name (A-Z)</option>
+                <option value="provider_asc">Provider (A-Z)</option>
+              </select>
+              <select id="studentCertificationsStatus" class="filter hidden">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="revoked">Revoked</option>
+              </select>
+              <div class="filter-popover-label">Sort</div>
+              <button class="provider-sort-option active" type="button" data-student-cert-sort="latest">Latest</button>
+              <button class="provider-sort-option" type="button" data-student-cert-sort="course_asc">Course Name (A-Z)</button>
+              <button class="provider-sort-option" type="button" data-student-cert-sort="provider_asc">Provider (A-Z)</button>
+              <div class="filter-popover-label">Status</div>
+              <button class="provider-sort-option active" type="button" data-student-cert-status="all">All Status</button>
+              <button class="provider-sort-option" type="button" data-student-cert-status="active">Active</button>
+              <button class="provider-sort-option" type="button" data-student-cert-status="revoked">Revoked</button>
+            </div>
+          </div>
+        </div>
         <div id="studentCertificatesTabList" class="list"></div>
       </section>
     </section>
@@ -1313,50 +1393,6 @@
           <h3>Providers</h3>
           <div id="pendingProviders" class="list"></div>
         </section>
-      </section>
-
-      <section class="panel content hidden" id="student-view-assessments">
-        <h2>Assessments</h2>
-        <p class="muted">Track unlocked assessments and start tests from your enrolled courses.</p>
-        <div class="row between provider-courses-toolbar course-grid-controls">
-          <div class="search-with-icon">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
-            <input id="studentAssessmentsSearch" class="search" type="text" placeholder="Search by course or provider" />
-          </div>
-          <div class="row provider-course-actions">
-            <button id="studentAssessmentsFilterBtn" class="btn small toolbar-icon-btn" type="button" title="Filter" aria-label="Filter">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg>
-            </button>
-            <div id="studentAssessmentsFilterMenu" class="filter-popover open-left hidden">
-              <select id="studentAssessmentsSort" class="filter hidden">
-                <option value="latest">Latest</option>
-                <option value="status_available">Available First</option>
-                <option value="title_asc">Course Name (A-Z)</option>
-                <option value="provider_asc">Provider (A-Z)</option>
-              </select>
-              <select id="studentAssessmentsStatus" class="filter hidden" style="margin-top:8px;">
-                <option value="all">All Status</option>
-                <option value="available">Available</option>
-                <option value="locked">Locked</option>
-                <option value="unavailable">Unavailable</option>
-              </select>
-              <div class="filter-popover-label">Sort</div>
-              <button class="provider-sort-option active" type="button" data-student-assess-sort="latest">Latest</button>
-              <button class="provider-sort-option" type="button" data-student-assess-sort="status_available">Available First</button>
-              <button class="provider-sort-option" type="button" data-student-assess-sort="title_asc">Course Name (A-Z)</button>
-              <button class="provider-sort-option" type="button" data-student-assess-sort="provider_asc">Provider (A-Z)</button>
-              <div class="filter-popover-label">Status</div>
-              <button class="provider-sort-option active" type="button" data-student-assess-status="all">All Status</button>
-              <button class="provider-sort-option" type="button" data-student-assess-status="available">Available</button>
-              <button class="provider-sort-option" type="button" data-student-assess-status="locked">Locked</button>
-              <button class="provider-sort-option" type="button" data-student-assess-status="unavailable">Unavailable</button>
-            </div>
-            <button id="refreshStudentAssessmentsBtn" class="btn small toolbar-icon-btn" title="Refresh" aria-label="Refresh">
-              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5v5h-5"/><path d="M4 19v-5h5"/><path d="M20 10a8 8 0 0 0-14.9-3"/><path d="M4 14a8 8 0 0 0 14.9 3"/></svg>
-            </button>
-          </div>
-        </div>
-        <div id="studentAssessmentsList" class="list"></div>
       </section>
 
       <section class="panel content hidden" id="view-billing">
