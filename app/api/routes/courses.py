@@ -107,6 +107,9 @@ def list_courses(db: Session = Depends(get_db), user: User = Depends(get_current
         profile = _provider_profile_or_404(db, user.id)
         courses = db.scalars(select(Course).where(Course.provider_id == profile.id)).all()
         return [_course_out_payload(c) for c in courses]
+    if user.role == UserRole.ADMIN:
+        courses = db.scalars(select(Course).order_by(Course.created_at.desc())).all()
+        return [_course_out_payload(c) for c in courses]
     courses = db.scalars(select(Course).where(Course.is_published.is_(True))).all()
     return [_course_out_payload(c) for c in courses]
 
@@ -188,6 +191,14 @@ def publish_course(
     course = db.get(Course, course_id)
     if not course or course.provider_id != profile.id:
         raise HTTPException(status_code=404, detail="Course not found")
+    module_ids = list(db.scalars(select(CourseModule.id).where(CourseModule.course_id == course.id)).all())
+    lesson_rows = list(db.scalars(select(Lesson).where(Lesson.module_id.in_(module_ids))).all()) if module_ids else []
+    has_playable = any(
+        (str(lesson.live_class_url or "").strip() or str(lesson.recorded_video_url or "").strip())
+        for lesson in lesson_rows
+    )
+    if not has_playable:
+        raise HTTPException(status_code=400, detail="Add at least one lesson with video/live URL before publishing.")
     course.is_published = True
     db.commit()
     db.refresh(course)

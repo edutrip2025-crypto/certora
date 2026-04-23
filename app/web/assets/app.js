@@ -3026,7 +3026,7 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     `;
   };
 
-  renderUploadProgress(0, "Preparing Bunny upload...");
+  renderUploadProgress(0, "Preparing upload...");
   const streamLesson = await api("POST", `/stream/courses/${Number(courseId)}/lessons`, {
     title: `${String(title || "Course")} - Stream Lesson`,
     position: 1,
@@ -3035,13 +3035,13 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     lesson_id: Number(streamLesson.lesson_id),
   });
   const uploadUrl = String(init?.upload_url || "").trim();
-  if (!uploadUrl) throw new Error("Bunny direct upload URL missing.");
+  if (!uploadUrl) throw new Error("Direct upload URL missing.");
 
   await uploadToCloudflareDirectUrl(uploadUrl, file, (pct) => {
-    renderUploadProgress(pct, "Uploading to Bunny Stream...");
+    renderUploadProgress(pct, "Uploading video...");
   });
 
-  renderUploadProgress(100, "Upload completed. Processing video...");
+  renderUploadProgress(100, "Upload completed. Processing...");
   const lessonVideoId = Number(init?.lesson_video_id || 0);
   if (!lessonVideoId) return init;
 
@@ -3051,12 +3051,12 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     await new Promise((r) => setTimeout(r, 5000));
     const status = await api("GET", `/stream/videos/${lessonVideoId}/status?sync=true`);
     if (status?.ready_status) {
-      renderUploadProgress(100, "Bunny video ready");
+      renderUploadProgress(100, "Video ready");
       return { ...init, ...status };
     }
-    renderUploadProgress(100, `Processing on Bunny (${status?.upload_status || "pending"})...`);
+    renderUploadProgress(100, `Processing (${status?.upload_status || "pending"})...`);
   }
-  renderUploadProgress(100, "Upload accepted. Bunny processing is still in progress.");
+  renderUploadProgress(100, "Upload accepted. Processing is still in progress.");
   return init;
 }
 
@@ -8935,7 +8935,7 @@ function bindEvents() {
     if (!file) return toast("Choose a local video file first", "error");
     try {
       setWizardVideoPreviewFromLocalFile(file);
-      toast("Local video selected. It will upload when you create the course.");
+      toast("Local video selected.");
     } catch (err) {
       toast(err?.message || "Video selection failed", "error");
     }

@@ -734,7 +734,12 @@ def complete_video_upload(
                 part = session_dir / f"{idx}.part"
                 if not part.exists():
                     raise HTTPException(status_code=400, detail=f"Missing chunk {idx}")
-                out.write(part.read_bytes())
+                with part.open("rb") as inp:
+                    while True:
+                        chunk = inp.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
         for idx in range(upload.total_chunks):
             part = session_dir / f"{idx}.part"
             if part.exists():
