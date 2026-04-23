@@ -258,6 +258,10 @@ def delete_course(
         LessonVideo,
         LiveStreamSession,
         LiveClassCompletion,
+        LiveClassMessage,
+        LiveClassParticipant,
+        LiveClassPollVote,
+        LiveClassSession,
         Option,
         ProctorEvent,
         ProctorEvidence,
@@ -275,6 +279,7 @@ def delete_course(
     lesson_ids = list(db.scalars(select(Lesson.id).where(Lesson.module_id.in_(module_ids))).all()) if module_ids else []
     stream_lesson_ids = list(db.scalars(select(CourseLesson.id).where(CourseLesson.course_id == course.id)).all())
     lesson_video_ids = list(db.scalars(select(LessonVideo.id).where(LessonVideo.course_id == course.id)).all())
+    live_class_session_ids = list(db.scalars(select(LiveClassSession.id).where(LiveClassSession.course_id == course.id)).all())
     exam_ids = list(db.scalars(select(Exam.id).where(Exam.course_id == course.id)).all())
     question_ids = list(db.scalars(select(Question.id).where(Question.exam_id.in_(exam_ids))).all()) if exam_ids else []
     attempt_ids = list(db.scalars(select(ExamAttempt.id).where(ExamAttempt.exam_id.in_(exam_ids))).all()) if exam_ids else []
@@ -339,6 +344,8 @@ def delete_course(
         db.execute(delete(LessonTopic).where(LessonTopic.lesson_id.in_(lesson_ids)))
         db.execute(delete(Lesson).where(Lesson.id.in_(lesson_ids)))
     if module_ids:
+        db.execute(delete(Resource).where(Resource.module_id.in_(module_ids)))
+    if module_ids:
         db.execute(delete(CourseModule).where(CourseModule.id.in_(module_ids)))
     if lesson_video_ids:
         db.execute(delete(VideoWatchSession).where(VideoWatchSession.lesson_video_id.in_(lesson_video_ids)))
@@ -350,6 +357,11 @@ def delete_course(
         db.execute(delete(CourseLesson).where(CourseLesson.id.in_(stream_lesson_ids)))
     db.execute(delete(CoursePurchase).where(CoursePurchase.course_id == course.id))
     db.execute(delete(LiveStreamSession).where(LiveStreamSession.course_id == course.id))
+    if live_class_session_ids:
+        db.execute(delete(LiveClassPollVote).where(LiveClassPollVote.session_id.in_(live_class_session_ids)))
+        db.execute(delete(LiveClassMessage).where(LiveClassMessage.session_id.in_(live_class_session_ids)))
+        db.execute(delete(LiveClassParticipant).where(LiveClassParticipant.session_id.in_(live_class_session_ids)))
+        db.execute(delete(LiveClassSession).where(LiveClassSession.id.in_(live_class_session_ids)))
     db.execute(delete(InstructorMapping).where(InstructorMapping.course_id == course.id))
 
     db.execute(delete(CourseComment).where(CourseComment.course_id == course.id))
