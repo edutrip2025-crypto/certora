@@ -3166,3 +3166,41 @@ body.app-workspace-active #studentView .content {
     max-width: 148px !important;
   }
 }
+
+/* Horizontal overflow guard + responsive control wrapping */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden !important;
+}
+.admin-layout,
+.content,
+.moderation-toolbar,
+.item,
+.course-tile,
+.course-tile-grid,
+.stats,
+.stats.small {
+  max-width: 100%;
+}
+.provider-courses-toolbar {
+  flex-wrap: wrap !important;
+  row-gap: 8px;
+}
+.provider-course-actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.search-with-icon,
+.provider-courses-toolbar .search {
+  width: min(460px, 100%) !important;
+  min-width: 0 !important;
+}
+.search,
+.filter,
+input,
+select,
+textarea {
+  min-width: 0 !important;
+  max-width: 100%;
+}
