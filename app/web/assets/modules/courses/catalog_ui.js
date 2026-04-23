@@ -244,6 +244,7 @@
             <div class="actions">
               <button class="btn small" data-view-course="${c.id}">View</button>
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
+              ${c.is_published ? `<button class="btn small" data-deactivate-course="${c.id}">Deactivate</button>` : ""}
               ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
             </div>
           </div>
@@ -282,6 +283,19 @@
           await refreshProviderContent();
         } catch (err) {
           toast(err?.message || "Failed to activate course", "error");
+        }
+      });
+    });
+    document.querySelectorAll("[data-deactivate-course]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const courseId = Number(btn.dataset.deactivateCourse || 0);
+        if (!courseId) return;
+        try {
+          await api("POST", `/courses/${courseId}/unpublish`);
+          toast("Course hidden from students");
+          await refreshProviderContent();
+        } catch (err) {
+          toast(err?.message || "Failed to deactivate course", "error");
         }
       });
     });

@@ -2089,6 +2089,9 @@ function activateStudentSubView(name) {
   document.querySelectorAll('[id^="student-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`student-view-${name}`);
   if (pane) pane.classList.remove("hidden");
+  if (name === "home" || name === "available" || name === "enrolled" || name === "assessments") {
+    refreshStudentDashboard().catch(() => toast("Failed to refresh courses", "error"));
+  }
   if (name === "live") {
     refreshStudentLiveClasses().catch(() => toast("Failed to load live classes", "error"));
   }
@@ -3546,10 +3549,34 @@ async function refreshProviderHome() {
 }
 
 async function refreshStudentDashboard() {
-  const data = await api("GET", "/student/dashboard");
+  const [data, publicCourses] = await Promise.all([
+    api("GET", "/student/dashboard"),
+    api("GET", "/courses/public"),
+  ]);
   renderStudentHomeCards(el.studentStats, data.stats || {});
-  state.studentDashboard.available = Array.isArray(data.available) ? data.available : [];
-  state.studentDashboard.enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  const available = Array.isArray(data.available) ? data.available : [];
+  const enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  const enrolledIds = new Set(enrolled.map((c) => Number(c.course_id || 0)));
+  const availableIds = new Set(available.map((c) => Number(c.course_id || 0)));
+  const publicList = Array.isArray(publicCourses) ? publicCourses : [];
+  const mergedAvailable = [...available];
+  for (const c of publicList) {
+    const cid = Number(c?.id || 0);
+    if (!cid || enrolledIds.has(cid) || availableIds.has(cid)) continue;
+    mergedAvailable.push({
+      course_id: cid,
+      title: c?.title || "Untitled Course",
+      category: c?.category || "General",
+      provider_name: "Provider",
+      thumbnail_url: c?.thumbnail_url || null,
+      average_rating: Number(c?.average_rating || 0),
+      rating_count: Number(c?.rating_count || 0),
+      created_at: c?.created_at || null,
+    });
+    availableIds.add(cid);
+  }
+  state.studentDashboard.available = mergedAvailable;
+  state.studentDashboard.enrolled = enrolled;
   state.studentAssessments = buildStudentAssessmentRows();
   renderStudentHomeSnapshots();
   renderStudentCourseCatalogs();

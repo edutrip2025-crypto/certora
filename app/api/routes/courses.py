@@ -228,6 +228,22 @@ def publish_course(
     return _course_out_payload(course)
 
 
+@router.post("/{course_id}/unpublish", response_model=CourseOut)
+def unpublish_course(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    profile = _provider_profile_or_404(db, current_user.id)
+    course = db.get(Course, course_id)
+    if not course or course.provider_id != profile.id:
+        raise HTTPException(status_code=404, detail="Course not found")
+    course.is_published = False
+    db.commit()
+    db.refresh(course)
+    return _course_out_payload(course)
+
+
 @router.delete("/{course_id}")
 def delete_course(
     course_id: int,
