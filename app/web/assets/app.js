@@ -1609,7 +1609,8 @@ function showView(mode) {
   if (mode === "provider") el.providerView?.classList.remove("hidden");
   if (mode === "student") el.studentView?.classList.remove("hidden");
   if (mode === "non-admin") el.nonAdminView?.classList.remove("hidden");
-  el.workspaceBrand?.classList.toggle("hidden", mode === "auth" || mode === "provider");
+  el.workspaceBrand?.classList.add("hidden");
+  document.body.classList.toggle("app-workspace-active", mode !== "auth");
   if (mode === "auth") {
     hideAuthProgress();
     el.workspaceExpandFab?.classList.add("hidden");

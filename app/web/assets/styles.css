@@ -3056,6 +3056,37 @@ textarea {
   border: 1px solid #d7e3f3 !important;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12) !important;
 }
+#adminView .provider-sidebar-brand,
+#providerView .provider-sidebar-brand,
+#studentView .provider-sidebar-brand {
+  display: grid !important;
+  gap: 0 !important;
+  margin: 0 !important;
+}
+#adminView .provider-sidebar-logo-wrap,
+#providerView .provider-sidebar-logo-wrap,
+#studentView .provider-sidebar-logo-wrap {
+  width: 100% !important;
+  min-height: 92px !important;
+  height: 92px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  overflow: visible !important;
+}
+#adminView .provider-sidebar-logo,
+#providerView .provider-sidebar-logo,
+#studentView .provider-sidebar-logo {
+  width: auto !important;
+  height: 72px !important;
+  max-width: 160px !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: left center !important;
+  display: block !important;
+  margin: 0 !important;
+  transform: none !important;
+}
 #adminView .sidebar h3,
 #providerView .sidebar h3,
 #studentView .sidebar h3 {
@@ -3092,16 +3123,45 @@ textarea {
   background: #f8fafc !important;
   color: #0f172a !important;
 }
-#providerView .provider-sidebar-logo {
-  height: 72px !important;
-  max-width: 160px !important;
-}
 .workspace-brand .brand-logo {
   width: 128px !important;
   height: 128px !important;
 }
+body.app-workspace-active {
+  overflow: hidden !important;
+}
+body.app-workspace-active main {
+  height: 100dvh !important;
+  margin-bottom: 0 !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  overflow: hidden !important;
+}
+body.app-workspace-active .admin-layout {
+  height: calc(100dvh - 16px) !important;
+  align-items: stretch !important;
+}
+body.app-workspace-active #adminView .sidebar,
+body.app-workspace-active #providerView .sidebar,
+body.app-workspace-active #studentView .sidebar {
+  position: relative !important;
+  top: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  height: 100% !important;
+  overflow: auto !important;
+}
+body.app-workspace-active #adminView .content,
+body.app-workspace-active #providerView .content,
+body.app-workspace-active #studentView .content {
+  margin-top: 0 !important;
+  height: 100% !important;
+  overflow: auto !important;
+}
 @media (max-width: 1040px) {
-  #providerView .provider-sidebar-logo {
+  #adminView .provider-sidebar-logo,
+  #providerView .provider-sidebar-logo,
+  #studentView .provider-sidebar-logo {
     height: 64px !important;
     max-width: 148px !important;
   }
