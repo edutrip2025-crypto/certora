@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
+import time
 from urllib import error, request
 from uuid import uuid4
 
@@ -137,6 +138,21 @@ def _download_bunny_chunk_bytes(object_path: str) -> bytes | None:
         if int(getattr(exc, "code", 0) or 0) == 404:
             return None
         raise
+
+
+def _download_bunny_chunk_bytes_with_retry(object_path: str, *, retries: int = 5, delay_seconds: float = 0.35) -> bytes | None:
+    """
+    Bunny storage can be briefly eventual after chunk PUTs; retry a few times
+    before treating a chunk as missing.
+    """
+    attempts = max(1, int(retries))
+    for attempt in range(1, attempts + 1):
+        blob = _download_bunny_chunk_bytes(object_path)
+        if blob is not None:
+            return blob
+        if attempt < attempts:
+            time.sleep(delay_seconds * attempt)
+    return None
 
 
 def _normalize_business_registration(
@@ -764,7 +780,7 @@ def complete_video_upload(
     videos_dir, uploads_dir = _media_paths()
     session_dir = uploads_dir / session_id
     final_path = videos_dir / upload.stored_filename
-    if not session_dir.exists():
+    if backend != "bunny" and not session_dir.exists():
         upload.status = VideoUploadStatus.FAILED
         db.commit()
         raise HTTPException(status_code=400, detail="Upload session files are missing")
@@ -774,7 +790,7 @@ def complete_video_upload(
         with final_path.open("wb") as out:
             for idx in range(upload.total_chunks):
                 if backend == "bunny":
-                    blob = _download_bunny_chunk_bytes(_chunk_object_path(session_id, idx))
+                    blob = _download_bunny_chunk_bytes_with_retry(_chunk_object_path(session_id, idx))
                     if blob is None:
                         missing_chunks.append(idx)
                         continue
