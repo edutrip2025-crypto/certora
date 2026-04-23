@@ -194,56 +194,60 @@ def normalize_image_storage_reference(
 def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> str | None:
     if not value:
         return None
-    # Normalize legacy localhost absolute URLs to same-origin media paths to avoid
-    # mixed-content errors on HTTPS deployments.
-    if value.startswith("http://") or value.startswith("https://"):
-        try:
-            parsed = urlparse(value)
-            host = (parsed.hostname or "").lower()
-            if host in {"localhost", "127.0.0.1"} and parsed.path.startswith("/media/"):
-                return parsed.path
-        except Exception:
-            pass
-    if value.startswith("http://") or value.startswith("https://"):
-        return value
-    if value.startswith("/media/"):
-        # Return relative path so browser always uses current origin/protocol.
-        # If local media file is missing (common after cloud deploy), suppress broken URL.
-        settings = get_settings()
-        media_root = Path(settings.resolved_media_dir)
-        rel = value.removeprefix("/media/").lstrip("/")
-        local_file = media_root / rel
-        if not local_file.exists():
-            return None
-        return value
-    if value.startswith("s3://"):
-        settings = get_settings()
-        if not settings.aws_s3_bucket_name:
-            return None
-        key = value[len(f"s3://{settings.aws_s3_bucket_name}/"):] if value.startswith(f"s3://{settings.aws_s3_bucket_name}/") else value.split("/", 3)[-1]
-        client = _s3_client()
-        return client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": settings.aws_s3_bucket_name, "Key": key},
-            ExpiresIn=max(60, min(expires_in_seconds, 7 * 24 * 3600)),
-        )
-    if value.startswith("bunny://"):
-        settings = get_settings()
-        pull_zone = str(settings.bunny_storage_pull_zone or "").strip().strip("/")
-        key = value[len("bunny://"):]
-        parts = key.split("/", 1)
-        if len(parts) != 2:
-            return None
-        zone_name = parts[0].strip()
-        object_key = parts[1].lstrip("/")
-        if not pull_zone:
-            # Fallback for misconfigured env: many Bunny setups expose storage
-            # files via "<zone>.b-cdn.net". This keeps media playable while
-            # pull zone/domain env is being corrected.
-            pull_zone = f"{zone_name}.b-cdn.net" if zone_name else ""
-            if not pull_zone:
+    try:
+        # Normalize legacy localhost absolute URLs to same-origin media paths to avoid
+        # mixed-content errors on HTTPS deployments.
+        if value.startswith("http://") or value.startswith("https://"):
+            try:
+                parsed = urlparse(value)
+                host = (parsed.hostname or "").lower()
+                if host in {"localhost", "127.0.0.1"} and parsed.path.startswith("/media/"):
+                    return parsed.path
+            except Exception:
+                pass
+        if value.startswith("http://") or value.startswith("https://"):
+            return value
+        if value.startswith("/media/"):
+            # Return relative path so browser always uses current origin/protocol.
+            # If local media file is missing (common after cloud deploy), suppress broken URL.
+            settings = get_settings()
+            media_root = Path(settings.resolved_media_dir)
+            rel = value.removeprefix("/media/").lstrip("/")
+            local_file = media_root / rel
+            if not local_file.exists():
                 return None
-        if pull_zone.startswith("http://") or pull_zone.startswith("https://"):
-            return f"{pull_zone.rstrip('/')}/{object_key}"
-        return f"https://{pull_zone}/{object_key}"
-    return value
+            return value
+        if value.startswith("s3://"):
+            settings = get_settings()
+            if not settings.aws_s3_bucket_name:
+                return None
+            key = value[len(f"s3://{settings.aws_s3_bucket_name}/"):] if value.startswith(f"s3://{settings.aws_s3_bucket_name}/") else value.split("/", 3)[-1]
+            client = _s3_client()
+            return client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": settings.aws_s3_bucket_name, "Key": key},
+                ExpiresIn=max(60, min(expires_in_seconds, 7 * 24 * 3600)),
+            )
+        if value.startswith("bunny://"):
+            settings = get_settings()
+            pull_zone = str(settings.bunny_storage_pull_zone or "").strip().strip("/")
+            key = value[len("bunny://"):]
+            parts = key.split("/", 1)
+            if len(parts) != 2:
+                return None
+            zone_name = parts[0].strip()
+            object_key = parts[1].lstrip("/")
+            if not pull_zone:
+                # Fallback for misconfigured env: many Bunny setups expose storage
+                # files via "<zone>.b-cdn.net". This keeps media playable while
+                # pull zone/domain env is being corrected.
+                pull_zone = f"{zone_name}.b-cdn.net" if zone_name else ""
+                if not pull_zone:
+                    return None
+            if pull_zone.startswith("http://") or pull_zone.startswith("https://"):
+                return f"{pull_zone.rstrip('/')}/{object_key}"
+            return f"https://{pull_zone}/{object_key}"
+        return value
+    except Exception:
+        # Never break API responses due to media-url resolution issues.
+        return None
