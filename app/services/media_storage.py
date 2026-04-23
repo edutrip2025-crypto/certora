@@ -230,13 +230,19 @@ def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> s
     if value.startswith("bunny://"):
         settings = get_settings()
         pull_zone = str(settings.bunny_storage_pull_zone or "").strip().strip("/")
-        if not pull_zone:
-            return None
         key = value[len("bunny://"):]
         parts = key.split("/", 1)
         if len(parts) != 2:
             return None
+        zone_name = parts[0].strip()
         object_key = parts[1].lstrip("/")
+        if not pull_zone:
+            # Fallback for misconfigured env: many Bunny setups expose storage
+            # files via "<zone>.b-cdn.net". This keeps media playable while
+            # pull zone/domain env is being corrected.
+            pull_zone = f"{zone_name}.b-cdn.net" if zone_name else ""
+            if not pull_zone:
+                return None
         if pull_zone.startswith("http://") or pull_zone.startswith("https://"):
             return f"{pull_zone.rstrip('/')}/{object_key}"
         return f"https://{pull_zone}/{object_key}"
