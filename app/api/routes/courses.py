@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -152,11 +152,34 @@ def add_lesson(
     course = db.get(Course, module.course_id)
     if not course or course.provider_id != profile.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    lesson = Lesson(module_id=module.id, **payload.model_dump())
-    db.add(lesson)
-    db.commit()
-    db.refresh(lesson)
-    return lesson
+    lesson_payload = payload.model_dump(mode="json")
+    lesson_payload["recorded_video_url"] = str(lesson_payload.get("recorded_video_url") or "").strip() or None
+    lesson_payload["live_class_url"] = str(lesson_payload.get("live_class_url") or "").strip() or None
+    if lesson_payload.get("lesson_type") == "recorded_video" and not lesson_payload.get("recorded_video_url"):
+        raise HTTPException(status_code=400, detail="Recorded video URL is required for recorded lessons.")
+    if lesson_payload.get("lesson_type") == "live_class_link" and not lesson_payload.get("live_class_url"):
+        raise HTTPException(status_code=400, detail="Live class URL is required for live lessons.")
+
+    # Handle enum representation mismatch across environments (name vs value).
+    lesson_type_candidates = [payload.lesson_type, payload.lesson_type.value, payload.lesson_type.name]
+    for lesson_type_value in lesson_type_candidates:
+        try:
+            lesson = Lesson(
+                module_id=module.id,
+                title=lesson_payload["title"],
+                lesson_type=lesson_type_value,
+                recorded_video_url=lesson_payload.get("recorded_video_url"),
+                live_class_url=lesson_payload.get("live_class_url"),
+                position=lesson_payload.get("position", 1),
+            )
+            db.add(lesson)
+            db.commit()
+            db.refresh(lesson)
+            return lesson
+        except SQLAlchemyError:
+            db.rollback()
+            continue
+    raise HTTPException(status_code=500, detail="Failed to create lesson.")
 
 
 @router.post("/lessons/{lesson_id}/resources")

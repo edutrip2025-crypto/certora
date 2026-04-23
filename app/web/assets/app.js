@@ -46,6 +46,9 @@ const state = {
   providerCourses: [],
   providerDrafts: [],
   wizardLocalVideoObjectUrl: "",
+  wizardVideoPlaybackUrl: "",
+  wizardUploadAbortController: null,
+  wizardVideoUploadPromise: null,
   providerAssessments: [],
   providerFeedbackRatings: [],
   providerComplaints: [],
@@ -2009,8 +2012,10 @@ function formatSecondsToClock(totalSeconds) {
 
 function ensureCourseVideoPreview() {
   const video = $("cwVideoPreview");
-  const url = $("cwVideoUrl")?.value?.trim();
+  const storageOrManualUrl = $("cwVideoUrl")?.value?.trim();
+  const url = state.wizardVideoPlaybackUrl || storageOrManualUrl;
   if (!video || !url) return;
+  if (String(url).startsWith("bunny://")) return;
   if (video.getAttribute("src") !== url) {
     video.setAttribute("src", url);
     video.load();
@@ -2072,7 +2077,7 @@ function setWizardVideoPreviewFromLocalFile(file) {
   releaseWizardLocalVideoObjectUrl();
   const objectUrl = URL.createObjectURL(file);
   state.wizardLocalVideoObjectUrl = objectUrl;
-  if ($("cwVideoUrl")) $("cwVideoUrl").value = objectUrl;
+  state.wizardVideoPlaybackUrl = objectUrl;
   ensureCourseVideoPreview();
   return objectUrl;
 }
@@ -2735,6 +2740,9 @@ function renderDraftTopics() {
 function resetCourseWizard() {
   state.activeDraftId = null;
   state.draftTopics = [];
+  state.wizardVideoPlaybackUrl = "";
+  state.wizardVideoUploadPromise = null;
+  state.wizardUploadAbortController = null;
   releaseWizardLocalVideoObjectUrl();
   ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwVideoUrl", "cwTopicTitle", "cwTopicTime"].forEach((id) => {
     const node = $(id);
@@ -2765,16 +2773,25 @@ function resetCourseWizard() {
   renderDraftTopics();
 }
 
-function renderCoursePublishProgress(pct, label = "Publishing your course") {
+function renderCoursePublishProgress(pct, label = "Publishing your course", cancellable = false) {
   const progress = $("cwUploadProgress");
   if (!progress) return;
   const safePct = Math.max(0, Math.min(100, Number(pct || 0)));
+  const cancel = cancellable
+    ? `<button id="cwCancelUploadBtn" class="icon-btn" title="Stop" aria-label="Stop"><span class="material-symbols-rounded" aria-hidden="true">close</span></button>`
+    : "";
   progress.innerHTML = `
     <div class="upload-progress-wrap">
-      <div class="upload-progress-label">${label} (${safePct.toFixed(0)}%)</div>
+      <div class="upload-progress-label">${label} (${safePct.toFixed(0)}%) ${cancel}</div>
       <div class="upload-progress-bar"><span style="width:${safePct}%;"></span></div>
     </div>
   `;
+  if (cancellable) {
+    $("cwCancelUploadBtn")?.addEventListener("click", () => {
+      const ctrl = state.wizardUploadAbortController;
+      if (ctrl) ctrl.abort();
+    });
+  }
 }
 
 function refreshThumbnailPreview() {
@@ -2875,6 +2892,7 @@ async function refreshProviderDrafts() {
         refreshThumbnailPreview();
         $("cwIncludesExam").checked = Boolean(draft.includes_exam);
         $("cwVideoUrl").value = draft.video_url || "";
+        state.wizardVideoPlaybackUrl = draft.video_play_url || "";
         if (draft.video_play_url && $("cwVideoPreview")) {
           $("cwVideoPreview").setAttribute("src", draft.video_play_url);
           $("cwVideoPreview").load();
@@ -2899,10 +2917,12 @@ async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd =
   let lastErr = null;
 
   for (let sizeIdx = 0; sizeIdx < chunkSizeCandidates.length; sizeIdx += 1) {
+    const abortController = new AbortController();
+    state.wizardUploadAbortController = abortController;
     const chunkSize = chunkSizeCandidates[sizeIdx];
     const totalChunks = Math.ceil(file.size / chunkSize);
     const maxParallel = chunkSize >= 1024 * 1024 ? 4 : Math.min(4, Math.max(2, totalChunks));
-    renderCoursePublishProgress(progressStart, "Publishing your course");
+    renderCoursePublishProgress(progressStart, "Uploading video", true);
 
     const init = await api("POST", "/provider/workspace/uploads/init", {
       filename: file.name,
@@ -2923,6 +2943,7 @@ async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd =
         method: "PUT",
         headers,
         body: fd,
+        signal: abortController.signal,
       });
       if (!res.ok) {
         const err = new Error(`Upload failed (HTTP ${res.status})`);
@@ -2942,32 +2963,40 @@ async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd =
           uploadedCount += 1;
           const localPct = (uploadedCount / totalChunks) * 100;
           const overall = progressStart + ((progressEnd - progressStart) * localPct) / 100;
-          renderCoursePublishProgress(overall, "Publishing your course");
+          renderCoursePublishProgress(overall, "Uploading video", true);
         }
       });
       await Promise.all(workers);
 
-      renderCoursePublishProgress(Math.max(progressStart, progressEnd - 1), "Publishing your course");
+      renderCoursePublishProgress(Math.max(progressStart, progressEnd - 1), "Uploading video", true);
       const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
       $("cwVideoUrl").value = done.storage_ref || done.file_url;
+      state.wizardVideoPlaybackUrl = done.file_url || "";
       if (done.file_url && $("cwVideoPreview")) {
         $("cwVideoPreview").setAttribute("src", done.file_url);
         $("cwVideoPreview").load();
       }
-      renderCoursePublishProgress(progressEnd, "Publishing your course");
+      renderCoursePublishProgress(progressEnd, "Video uploaded");
+      state.wizardUploadAbortController = null;
       return done.storage_ref || done.file_url;
     } catch (err) {
+      if (err?.name === "AbortError") {
+        state.wizardUploadAbortController = null;
+        throw new Error("Video upload stopped");
+      }
       lastErr = err;
       if (Number(err?.status || 0) === 413 && sizeIdx < chunkSizeCandidates.length - 1) {
-        renderCoursePublishProgress(progressStart, "Publishing your course");
+        renderCoursePublishProgress(progressStart, "Uploading video", true);
         continue;
       }
       if (Number(err?.status || 0) === 413) {
         renderCoursePublishProgress(0, "Upload failed");
       }
+      state.wizardUploadAbortController = null;
       throw err;
     }
   }
+  state.wizardUploadAbortController = null;
   throw lastErr || new Error("Upload failed");
 }
 
@@ -8206,11 +8235,15 @@ async function createCourseFromWizard() {
   if (!title) throw new Error("Course name is required");
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
+  if (state.wizardVideoUploadPromise) {
+    renderCoursePublishProgress(70, "Publishing your course");
+    await state.wizardVideoUploadPromise;
+  }
   renderCoursePublishProgress(5, "Publishing your course");
-  const safeRecordedVideoUrl = localVideoFile
-    ? await uploadLocalVideoInChunks(localVideoFile, { progressStart: 8, progressEnd: 78 })
-    : videoUrl;
-  if (!localVideoFile) {
+  let safeRecordedVideoUrl = videoUrl;
+  if (!safeRecordedVideoUrl && localVideoFile) {
+    safeRecordedVideoUrl = await uploadLocalVideoInChunks(localVideoFile, { progressStart: 8, progressEnd: 78 });
+  } else {
     renderCoursePublishProgress(78, "Publishing your course");
   }
 
@@ -8943,16 +8976,23 @@ function bindEvents() {
       toast("Failed to save draft", "error");
     }
   });
-  $("cwUploadVideoBtn")?.addEventListener("click", async () => {
+  $("cwUploadVideoBtn")?.addEventListener("click", () => $("cwVideoFile")?.click());
+  $("cwVideoFile")?.addEventListener("change", async () => {
     const file = $("cwVideoFile")?.files?.[0];
-    if (!file) return toast("Choose a local video file first", "error");
+    if (!file) return;
+    if (state.wizardVideoUploadPromise) return toast("Video upload is already in progress", "error");
     try {
       setWizardVideoPreviewFromLocalFile(file);
-      toast("Local video selected.");
+      state.wizardVideoUploadPromise = uploadLocalVideoInChunks(file, { progressStart: 4, progressEnd: 100 });
+      await state.wizardVideoUploadPromise;
+      toast("Video uploaded");
     } catch (err) {
-      toast(err?.message || "Video selection failed", "error");
+      toast(err?.message || "Video upload failed", "error");
+    } finally {
+      state.wizardVideoUploadPromise = null;
     }
   });
+  $("cwUploadThumbnailBtn")?.addEventListener("click", () => $("cwThumbnailFile")?.click());
   $("cwThumbnailFile")?.addEventListener("change", async () => {
     const file = $("cwThumbnailFile")?.files?.[0];
     if (!file) return;
@@ -8971,7 +9011,7 @@ function bindEvents() {
   });
   $("cwUseCurrentFrameBtn")?.addEventListener("click", async () => {
     const preview = $("cwVideoPreview");
-    const videoUrl = $("cwVideoUrl")?.value?.trim();
+    const videoUrl = state.wizardVideoPlaybackUrl || $("cwVideoUrl")?.value?.trim();
     if (!videoUrl) return toast("Video URL required first", "error");
     let frame = "";
     if (preview && preview.getAttribute("src")) {
@@ -8995,6 +9035,7 @@ function bindEvents() {
   $("cwNextToTopicsBtn")?.addEventListener("click", () => {
     const videoUrl = $("cwVideoUrl")?.value?.trim();
     const localVideoFile = $("cwVideoFile")?.files?.[0] || null;
+    if (state.wizardVideoUploadPromise) return toast("Video is still uploading. Please wait.", "error");
     if (!videoUrl && !localVideoFile) return toast("Video URL or local video file is required", "error");
     const thumbnail = $("cwCourseThumbnail")?.value?.trim();
     if (!thumbnail) return toast("Thumbnail is required. Upload one or capture from video.", "error");
@@ -9023,7 +9064,7 @@ function bindEvents() {
     const seconds = parseTimeToSeconds(timeRaw);
     if (!title) return toast("Topic name is required", "error");
     if (Number.isNaN(seconds)) return toast("Invalid topic time. Use mm:ss or hh:mm:ss", "error");
-    const videoUrl = $("cwVideoUrl")?.value?.trim();
+    const videoUrl = state.wizardVideoPlaybackUrl || $("cwVideoUrl")?.value?.trim();
     const thumb = videoUrl ? await captureThumbnailAt(videoUrl, seconds) : "";
     state.draftTopics.push({ title, time_seconds: seconds, thumbnail_data_url: thumb });
     $("cwTopicTitle").value = "";

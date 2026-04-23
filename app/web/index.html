@@ -270,8 +270,8 @@
             <input id="cwVideoUrl" class="search" type="url" placeholder="Recorded video URL" />
             <input id="cwCourseThumbnail" type="hidden" />
             <div class="row wrap gap-sm" style="margin-top:8px;">
-              <input id="cwVideoFile" type="file" accept="video/*" />
-              <button id="cwUploadVideoBtn" class="btn small">Upload Local Video</button>
+              <input id="cwVideoFile" type="file" accept="video/*" style="display:none;" />
+              <button id="cwUploadVideoBtn" class="btn small">Upload Video</button>
             </div>
             <div id="cwUploadProgress" class="meta" style="margin-top:6px;"></div>
             <div class="item" style="margin-top:10px;">
@@ -279,7 +279,8 @@
               <div class="meta">Thumbnail is required. Choose from video frame or upload an image from local system.</div>
               <div class="row wrap gap-sm" style="margin-top:8px;">
                 <button id="cwUseCurrentFrameBtn" class="btn small">Use Current Video Frame</button>
-                <input id="cwThumbnailFile" type="file" accept="image/*" />
+                <input id="cwThumbnailFile" type="file" accept="image/*" style="display:none;" />
+                <button id="cwUploadThumbnailBtn" class="btn small">Upload Thumbnail</button>
               </div>
               <img id="cwThumbnailPreview" alt="" class="thumb-preview hidden" />
             </div>
