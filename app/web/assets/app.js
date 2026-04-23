@@ -2969,11 +2969,22 @@ async function uploadLocalVideoInChunks(file) {
 }
 
 async function uploadToCloudflareDirectUrl(uploadUrl, file, onProgress) {
+  const authHeader = {};
+  const isSameOrigin = String(uploadUrl || "").startsWith("/")
+    || String(uploadUrl || "").startsWith(window.location.origin);
+  if (isSameOrigin) {
+    try {
+      const token = await state.auth?.currentUser?.getIdToken?.();
+      if (token) authHeader.Authorization = `Bearer ${token}`;
+    } catch {}
+  }
+
   const tryPutRaw = async () => {
     const xhr = new XMLHttpRequest();
     await new Promise((resolve, reject) => {
       xhr.open("PUT", uploadUrl, true);
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      if (authHeader.Authorization) xhr.setRequestHeader("Authorization", authHeader.Authorization);
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && typeof onProgress === "function") {
           onProgress((event.loaded / event.total) * 100);
@@ -2981,9 +2992,9 @@ async function uploadToCloudflareDirectUrl(uploadUrl, file, onProgress) {
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) resolve(null);
-        else reject(new Error(`Cloudflare direct PUT failed (HTTP ${xhr.status})`));
+        else reject(new Error(`Bunny direct PUT failed (HTTP ${xhr.status})`));
       };
-      xhr.onerror = () => reject(new Error("Cloudflare direct PUT failed"));
+      xhr.onerror = () => reject(new Error("Bunny direct PUT failed"));
       xhr.send(file);
     });
   };
@@ -2991,8 +3002,8 @@ async function uploadToCloudflareDirectUrl(uploadUrl, file, onProgress) {
   const tryPostMultipart = async () => {
     const fd = new FormData();
     fd.append("file", file, file.name || "video.mp4");
-    const res = await fetch(uploadUrl, { method: "POST", body: fd });
-    if (!res.ok) throw new Error(`Cloudflare direct POST failed (HTTP ${res.status})`);
+    const res = await fetch(uploadUrl, { method: "POST", headers: authHeader, body: fd });
+    if (!res.ok) throw new Error(`Bunny direct POST failed (HTTP ${res.status})`);
     if (typeof onProgress === "function") onProgress(100);
   };
 
@@ -3015,7 +3026,7 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     `;
   };
 
-  renderUploadProgress(0, "Preparing Cloudflare upload...");
+  renderUploadProgress(0, "Preparing Bunny upload...");
   const streamLesson = await api("POST", `/stream/courses/${Number(courseId)}/lessons`, {
     title: `${String(title || "Course")} - Stream Lesson`,
     position: 1,
@@ -3024,10 +3035,10 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     lesson_id: Number(streamLesson.lesson_id),
   });
   const uploadUrl = String(init?.upload_url || "").trim();
-  if (!uploadUrl) throw new Error("Cloudflare direct upload URL missing.");
+  if (!uploadUrl) throw new Error("Bunny direct upload URL missing.");
 
   await uploadToCloudflareDirectUrl(uploadUrl, file, (pct) => {
-    renderUploadProgress(pct, "Uploading to Cloudflare Stream...");
+    renderUploadProgress(pct, "Uploading to Bunny Stream...");
   });
 
   renderUploadProgress(100, "Upload completed. Processing video...");
@@ -3040,12 +3051,12 @@ async function uploadWizardVideoToStream(courseId, title, file) {
     await new Promise((r) => setTimeout(r, 5000));
     const status = await api("GET", `/stream/videos/${lessonVideoId}/status?sync=true`);
     if (status?.ready_status) {
-      renderUploadProgress(100, "Cloudflare video ready");
+      renderUploadProgress(100, "Bunny video ready");
       return { ...init, ...status };
     }
-    renderUploadProgress(100, `Processing on Cloudflare (${status?.upload_status || "pending"})...`);
+    renderUploadProgress(100, `Processing on Bunny (${status?.upload_status || "pending"})...`);
   }
-  renderUploadProgress(100, "Upload accepted. Cloudflare processing is still in progress.");
+  renderUploadProgress(100, "Upload accepted. Bunny processing is still in progress.");
   return init;
 }
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
@@ -35,13 +35,14 @@ from app.schemas import (
     StreamVideoUploadInitRequest,
     StreamWatchHeartbeatRequest,
 )
-from app.services.cloudflare_stream import (
-    CloudflareStreamError,
+from app.services.bunny_stream import (
+    BunnyStreamError,
     build_playback_urls,
     create_direct_upload,
     generate_playback_token,
     get_video_details,
     is_configured,
+    upload_video_content,
 )
 from app.services.fair_usage import evaluate_fair_usage, log_fair_usage_transition
 from app.services.pricing_recommendation import analytics_total_uploaded_minutes, pricing_recommendation_for_course
@@ -193,7 +194,7 @@ def init_stream_video_upload(
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     if not is_configured():
-        raise HTTPException(status_code=503, detail="Cloudflare Stream is not configured")
+        raise HTTPException(status_code=503, detail="Bunny Stream is not configured")
 
     internal_id = uuid.uuid4().hex
     try:
@@ -206,7 +207,7 @@ def init_stream_video_upload(
                 "internal_id": internal_id,
             },
         )
-    except CloudflareStreamError as exc:
+    except BunnyStreamError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     row = LessonVideo(
@@ -227,10 +228,62 @@ def init_stream_video_upload(
         lesson_video_id=row.id,
         internal_id=row.internal_id,
         cloudflare_video_uid=row.cloudflare_video_uid,
-        upload_url=direct["upload_url"],
+        upload_url=f"/stream/videos/{row.id}/upload",
         expires_at=direct.get("expires_at"),
         status=row.upload_status,
     )
+
+
+@router.put("/videos/{lesson_video_id}/upload")
+@router.post("/videos/{lesson_video_id}/upload")
+async def upload_stream_video_content(
+    lesson_video_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
+):
+    row = db.get(LessonVideo, int(lesson_video_id))
+    if not row:
+        raise HTTPException(status_code=404, detail="Lesson video not found")
+
+    if current_user.role == UserRole.PROVIDER:
+        profile = _provider_profile_or_403(db, current_user.id)
+        lesson = db.get(CourseLesson, int(row.lesson_id))
+        course = db.get(Course, int(lesson.course_id)) if lesson else None
+        if not course or int(course.provider_id) != int(profile.id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    raw_content_type = str(request.headers.get("content-type") or "").lower()
+    body = b""
+    content_type = "application/octet-stream"
+
+    if "multipart/form-data" in raw_content_type:
+        form = await request.form()
+        up = form.get("file")
+        if not isinstance(up, UploadFile) and not hasattr(up, "read"):
+            raise HTTPException(status_code=400, detail="Missing file in multipart body")
+        body = await up.read()
+        content_type = up.content_type or content_type
+    else:
+        body = await request.body()
+        content_type = request.headers.get("content-type") or content_type
+
+    if not body:
+        raise HTTPException(status_code=400, detail="Upload body is empty")
+
+    try:
+        upload_video_content(video_uid=row.cloudflare_video_uid, body=body, content_type=content_type)
+    except BunnyStreamError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    row.upload_status = "processing"
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "lesson_video_id": row.id,
+        "upload_status": row.upload_status,
+    }
 
 
 @router.get("/videos/{lesson_video_id}/status")
@@ -254,7 +307,7 @@ def stream_video_status(
                 row.thumbnail_url = details["thumbnail_url"]
             db.commit()
             db.refresh(row)
-        except CloudflareStreamError as exc:
+        except BunnyStreamError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return {
@@ -269,15 +322,23 @@ def stream_video_status(
     }
 
 
+@router.post("/webhooks/bunny")
 @router.post("/webhooks/cloudflare")
-async def cloudflare_stream_webhook(
+async def bunny_stream_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ):
     payload = await request.json()
     event = str(payload.get("type") or payload.get("event") or "stream.unknown")
     data = payload.get("data") or payload.get("result") or payload
-    uid = str(data.get("uid") or data.get("videoUID") or "").strip()
+    uid = str(
+        data.get("guid")
+        or data.get("videoGuid")
+        or data.get("videoId")
+        or data.get("uid")
+        or data.get("videoUID")
+        or "",
+    ).strip()
     if not uid:
         return {"ok": True, "ignored": True}
 
@@ -285,8 +346,15 @@ async def cloudflare_stream_webhook(
     if not row:
         return {"ok": True, "ignored": True}
 
-    state = str((data.get("status") or {}).get("state") or data.get("status") or "").strip().lower()
-    ready = bool(data.get("readyToStream") or (state == "ready") or ("ready" in event))
+    raw_status = data.get("status")
+    if isinstance(raw_status, dict):
+        state = str(raw_status.get("state") or "").strip().lower()
+    else:
+        state = str(raw_status or "").strip().lower()
+    encode_progress = float(data.get("encodeProgress") or 0.0)
+    ready = bool(data.get("readyToStream") or (state == "ready") or ("ready" in event) or encode_progress >= 100.0)
+    if not state:
+        state = "ready" if ready else ("processing" if encode_progress > 0 else "pending")
     duration = int(float(data.get("duration") or row.duration_seconds or 0))
     thumbnail = data.get("preview") or row.thumbnail_url
 
@@ -299,7 +367,7 @@ async def cloudflare_stream_webhook(
     db.add(
         AuditLog(
             actor_user_id=None,
-            action="cloudflare_stream_webhook",
+            action="bunny_stream_webhook",
             target_type="lesson_video",
             target_id=row.id,
             details_json={"event": event, "uid": uid, "state": row.upload_status, "ready": row.ready_status},
@@ -412,7 +480,7 @@ def issue_stream_playback_token(
     try:
         token = generate_playback_token(video_uid=video.cloudflare_video_uid, user_id=current_user.id, course_id=video.course_id)
         urls = build_playback_urls(video_uid=video.cloudflare_video_uid, token=token)
-    except CloudflareStreamError as exc:
+    except BunnyStreamError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     progress = db.scalar(

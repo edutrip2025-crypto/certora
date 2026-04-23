@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 from urllib.parse import quote, urlparse
+from urllib import error, request
 from uuid import uuid4
 
 try:
@@ -69,6 +71,46 @@ def _upload_file_to_s3(local_path: Path, *, object_path: str, content_type: str 
     return f"s3://{settings.aws_s3_bucket_name}/{key}"
 
 
+def _upload_file_to_bunny_storage(local_path: Path, *, object_path: str, content_type: str | None = None) -> str:
+    if not local_path.exists():
+        raise RuntimeError(f"Local file not found for upload: {local_path}")
+    settings = get_settings()
+    zone = str(settings.bunny_storage_zone or "").strip()
+    access_key = str(settings.bunny_storage_access_key or "").strip()
+    endpoint = str(settings.bunny_storage_endpoint or "storage.bunnycdn.com").strip()
+    if not (zone and access_key and endpoint):
+        raise RuntimeError("Bunny Storage settings are incomplete.")
+    key = object_path.lstrip("/")
+    url = f"https://{endpoint}/{zone}/{key}"
+    body = local_path.read_bytes()
+    ctype = content_type or mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    req = request.Request(
+        url,
+        data=body,
+        method="PUT",
+        headers={
+            "AccessKey": access_key,
+            "Content-Type": ctype,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=120) as resp:
+            status = int(getattr(resp, "status", 0) or 0)
+            if status not in {200, 201}:
+                raise RuntimeError(f"Bunny upload failed with HTTP {status}")
+    except error.HTTPError as exc:
+        body_text = ""
+        try:
+            body_text = (exc.read() or b"").decode("utf-8", errors="ignore")
+        except Exception:
+            body_text = ""
+        raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Bunny upload failed: {exc}") from exc
+    return f"bunny://{zone}/{key}"
+
+
 def upload_file_to_cloud_storage(
     local_path: Path,
     *,
@@ -76,6 +118,8 @@ def upload_file_to_cloud_storage(
     content_type: str | None = None,
 ) -> str:
     backend = get_settings().resolved_object_storage_backend
+    if backend == "bunny":
+        return _upload_file_to_bunny_storage(local_path, object_path=object_path, content_type=content_type)
     if backend == "s3":
         return _upload_file_to_s3(local_path, object_path=object_path, content_type=content_type)
     if backend == "firebase":
@@ -119,4 +163,17 @@ def resolve_media_url(value: str | None, *, expires_in_seconds: int = 3600) -> s
             Params={"Bucket": settings.aws_s3_bucket_name, "Key": key},
             ExpiresIn=max(60, min(expires_in_seconds, 7 * 24 * 3600)),
         )
+    if value.startswith("bunny://"):
+        settings = get_settings()
+        pull_zone = str(settings.bunny_storage_pull_zone or "").strip().strip("/")
+        if not pull_zone:
+            return None
+        key = value[len("bunny://"):]
+        parts = key.split("/", 1)
+        if len(parts) != 2:
+            return None
+        object_key = parts[1].lstrip("/")
+        if pull_zone.startswith("http://") or pull_zone.startswith("https://"):
+            return f"{pull_zone.rstrip('/')}/{object_key}"
+        return f"https://{pull_zone}/{object_key}"
     return value

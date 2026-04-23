@@ -303,8 +303,8 @@ def render_certificate_pdf(db: Session, certificate: Certificate, *, verificatio
     c.showPage()
     c.save()
     settings = get_settings()
-    if settings.resolved_object_storage_backend != "s3":
-        raise RuntimeError("Certificate storage requires AWS S3 backend configuration.")
+    if settings.resolved_object_storage_backend == "local":
+        raise RuntimeError("Certificate storage requires a cloud backend configuration (Bunny, S3, or Firebase).")
     return upload_file_to_cloud_storage(
         out_path,
         object_path=f"certificates/{CERTIFICATE_TEMPLATE_VERSION}/{certificate.certificate_id}.pdf",

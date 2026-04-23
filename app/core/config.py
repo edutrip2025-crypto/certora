@@ -25,11 +25,19 @@ class Settings(BaseSettings):
     firebase_messaging_sender_id: str = ""
     firebase_app_id: str = ""
     firebase_measurement_id: str = ""
-    object_storage_backend: str = "s3"  # s3 | firebase | local | auto
+    object_storage_backend: str = "s3"  # s3 | firebase | bunny | local | auto
     aws_region: str = ""
     aws_s3_bucket_name: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    bunny_storage_zone: str = ""
+    bunny_storage_access_key: str = ""
+    bunny_storage_endpoint: str = "storage.bunnycdn.com"
+    bunny_storage_pull_zone: str = ""
+    bunny_stream_library_id: int = 0
+    bunny_stream_api_key: str = ""
+    bunny_stream_pull_zone: str = ""
+    bunny_stream_embed_token_key: str = ""
     media_dir: str = "app/web/media"
     smtp_host: str = ""
     smtp_port: int = 587
@@ -118,8 +126,11 @@ class Settings(BaseSettings):
     @property
     def resolved_object_storage_backend(self) -> str:
         raw = (self.object_storage_backend or "auto").strip().lower()
-        if raw in {"s3", "firebase", "local"}:
+        if raw in {"s3", "firebase", "bunny", "local"}:
             return raw
+        has_bunny = bool(self.bunny_storage_zone and self.bunny_storage_access_key and self.bunny_storage_pull_zone)
+        if has_bunny:
+            return "bunny"
         has_s3 = bool(self.aws_region and self.aws_s3_bucket_name and self.aws_access_key_id and self.aws_secret_access_key)
         if has_s3:
             return "s3"
