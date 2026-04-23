@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import http.client
 import mimetypes
 from pathlib import Path
 import re
+import ssl
 import time
 from urllib.parse import quote, urlparse
 from urllib import error, request
@@ -100,42 +102,45 @@ def _upload_file_to_bunny_storage(local_path: Path, *, object_path: str, content
     timeout = max(60, int(settings.bunny_storage_upload_timeout_seconds or 900))
     retries = max(1, int(settings.bunny_storage_upload_retries or 3))
     key = object_path.lstrip("/")
-    url = f"https://{endpoint}/{zone}/{key}"
-    body = local_path.read_bytes()
     ctype = content_type or mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    content_length = int(local_path.stat().st_size)
+    target_path = f"/{zone}/{key}"
     for attempt in range(1, retries + 1):
-        req = request.Request(
-            url,
-            data=body,
-            method="PUT",
-            headers={
-                "AccessKey": access_key,
-                "Content-Type": ctype,
-                "Accept": "application/json",
-            },
-        )
+        conn = None
         try:
-            with request.urlopen(req, timeout=timeout) as resp:
-                status = int(getattr(resp, "status", 0) or 0)
-                if status in {200, 201}:
-                    break
-                raise RuntimeError(f"Bunny upload failed with HTTP {status}")
-        except error.HTTPError as exc:
-            body_text = ""
-            try:
-                body_text = (exc.read() or b"").decode("utf-8", errors="ignore")
-            except Exception:
-                body_text = ""
-            # Don't retry auth failures; they are configuration problems.
-            if exc.code in {401, 403}:
-                raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
+            conn = http.client.HTTPSConnection(endpoint, timeout=timeout, context=ssl.create_default_context())
+            conn.putrequest("PUT", target_path)
+            conn.putheader("AccessKey", access_key)
+            conn.putheader("Content-Type", ctype)
+            conn.putheader("Accept", "application/json")
+            conn.putheader("Content-Length", str(content_length))
+            conn.endheaders()
+            with local_path.open("rb") as fh:
+                while True:
+                    chunk = fh.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    conn.send(chunk)
+            resp = conn.getresponse()
+            status = int(getattr(resp, "status", 0) or 0)
+            body_text = (resp.read() or b"").decode("utf-8", errors="ignore")
+            if status in {200, 201}:
+                break
+            if status in {401, 403}:
+                raise RuntimeError(f"Bunny upload failed with HTTP {status}: {body_text[:400]}")
             if attempt >= retries:
-                raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
+                raise RuntimeError(f"Bunny upload failed with HTTP {status}: {body_text[:400]}")
             time.sleep(min(8, attempt * 2))
         except Exception as exc:
             if attempt >= retries:
                 raise RuntimeError(f"Bunny upload failed: {exc}") from exc
             time.sleep(min(8, attempt * 2))
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     return f"bunny://{zone}/{key}"
 
 

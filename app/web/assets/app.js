@@ -2968,8 +2968,25 @@ async function uploadLocalVideoInChunks(file, { progressStart = 5, progressEnd =
       });
       await Promise.all(workers);
 
-      renderCoursePublishProgress(Math.max(progressStart, progressEnd - 1), "Uploading video", true);
-      const done = await api("POST", `/provider/workspace/uploads/${init.session_id}/complete`);
+      renderCoursePublishProgress(Math.max(progressStart, progressEnd - 2), "Finalizing video", true);
+      const completeHeaders = await getHeaders(true);
+      const completeRes = await fetch(`/provider/workspace/uploads/${init.session_id}/complete`, {
+        method: "POST",
+        headers: completeHeaders,
+        signal: abortController.signal,
+      });
+      const completeRaw = await completeRes.text();
+      let done = {};
+      try {
+        done = completeRaw ? JSON.parse(completeRaw) : {};
+      } catch {
+        done = {};
+      }
+      if (!completeRes.ok) {
+        const err = new Error(done?.detail || `Upload failed (HTTP ${completeRes.status})`);
+        err.status = completeRes.status;
+        throw err;
+      }
       $("cwVideoUrl").value = done.storage_ref || done.file_url;
       state.wizardVideoPlaybackUrl = done.file_url || "";
       if (done.file_url && $("cwVideoPreview")) {
