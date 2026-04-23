@@ -62,6 +62,7 @@ const state = {
     available: [],
     enrolled: [],
   },
+  studentAssessments: [],
   studentLiveReminderTimers: {},
   studentLiveReminderSent: {},
   viewerTopics: [],
@@ -1242,6 +1243,12 @@ const el = {
   studentAvailableSort: $("studentAvailableSort"),
   studentAvailableFilterBtn: $("studentAvailableFilterBtn"),
   studentAvailableFilterMenu: $("studentAvailableFilterMenu"),
+  studentAssessmentsList: $("studentAssessmentsList"),
+  studentAssessmentsSearch: $("studentAssessmentsSearch"),
+  studentAssessmentsSort: $("studentAssessmentsSort"),
+  studentAssessmentsStatus: $("studentAssessmentsStatus"),
+  studentAssessmentsFilterBtn: $("studentAssessmentsFilterBtn"),
+  studentAssessmentsFilterMenu: $("studentAssessmentsFilterMenu"),
   studentEnrolledSearch: $("studentEnrolledSearch"),
   studentEnrolledSort: $("studentEnrolledSort"),
   studentEnrolledFilterBtn: $("studentEnrolledFilterBtn"),
@@ -1942,6 +1949,110 @@ function renderStudentHomeSnapshots() {
   );
 }
 
+function buildStudentAssessmentRows() {
+  const enrolled = Array.isArray(state.studentDashboard.enrolled) ? state.studentDashboard.enrolled : [];
+  return enrolled.map((c) => {
+    const published = Number(c.published_assessments || 0);
+    const examEligible = Boolean(c.exam_eligible);
+    const available = Boolean(c.assessment_available);
+    let status = "unavailable";
+    let statusLabel = "Unavailable";
+    if (!examEligible) {
+      status = "locked";
+      statusLabel = "Locked";
+    } else if (available && published > 0) {
+      status = "available";
+      statusLabel = "Available";
+    }
+    return {
+      course_id: Number(c.course_id || 0),
+      title: String(c.title || "Untitled Course"),
+      provider_name: String(c.provider_name || "Provider"),
+      category: String(c.category || "General"),
+      thumbnail_url: c.thumbnail_url || "",
+      progress_pct: Number(c.progress_pct || 0),
+      published_assessments: published,
+      status,
+      statusLabel,
+      created_at: c.created_at || c.enrolled_at || "",
+    };
+  });
+}
+
+function renderStudentAssessmentsList() {
+  if (!el.studentAssessmentsList) return;
+  const q = String(el.studentAssessmentsSearch?.value || "").trim().toLowerCase();
+  const statusFilter = String(el.studentAssessmentsStatus?.value || "all");
+  const sortKey = String(el.studentAssessmentsSort?.value || "latest");
+  let rows = Array.isArray(state.studentAssessments) ? [...state.studentAssessments] : [];
+  if (q) {
+    rows = rows.filter((r) => `${r.title} ${r.provider_name} ${r.category}`.toLowerCase().includes(q));
+  }
+  if (statusFilter !== "all") {
+    rows = rows.filter((r) => r.status === statusFilter);
+  }
+  rows.sort((a, b) => {
+    if (sortKey === "title_asc") return String(a.title).localeCompare(String(b.title));
+    if (sortKey === "provider_asc") return String(a.provider_name).localeCompare(String(b.provider_name));
+    if (sortKey === "status_available") {
+      const rank = { available: 0, locked: 1, unavailable: 2 };
+      const ra = rank[a.status] ?? 9;
+      const rb = rank[b.status] ?? 9;
+      if (ra !== rb) return ra - rb;
+    }
+    return Date.parse(String(b.created_at || "")) - Date.parse(String(a.created_at || ""));
+  });
+  if (!rows.length) {
+    el.studentAssessmentsList.innerHTML = `<div class="item"><div style="margin-top:4px;">No assessments found for current search/filter.</div></div>`;
+    return;
+  }
+  const cards = rows.map((r) => `
+    <article class="course-tile">
+      ${r.thumbnail_url ? `<img src="${escapeHtmlAttr(r.thumbnail_url)}" alt="" class="course-tile-thumb" />` : `<div class="course-tile-thumb"></div>`}
+      <div class="course-tile-body">
+        <h4 class="course-tile-title">${escapeHtmlAttr(r.title)}</h4>
+        <div class="course-tile-provider">${escapeHtmlAttr(r.provider_name)}</div>
+        <div class="course-tile-meta">${escapeHtmlAttr(r.category)} | Status: ${escapeHtmlAttr(r.statusLabel)}</div>
+        <div class="course-tile-meta">Published assessments: ${r.published_assessments}</div>
+        <div class="course-tile-meta">Progress: ${Number(r.progress_pct || 0).toFixed(0)}%</div>
+        <div class="actions">
+          <button class="btn small" data-student-assess-open-course="${r.course_id}">Open Course</button>
+          ${r.status === "available" ? `<button class="btn small" data-student-assess-start="${r.course_id}">Start Assessment</button>` : ""}
+        </div>
+      </div>
+    </article>
+  `).join("");
+  el.studentAssessmentsList.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+  document.querySelectorAll("[data-student-assess-open-course]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await openStudentCourseViewer(Number(btn.dataset.studentAssessOpenCourse || 0));
+      } catch (err) {
+        toast(err?.message || "Failed to open course", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-student-assess-start]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const courseId = Number(btn.dataset.studentAssessStart || 0);
+      if (!courseId) return;
+      try {
+        const out = await api("POST", `/student/courses/${courseId}/assessment-intent?ready=true`);
+        const exams = Array.isArray(out?.exams) ? out.exams : [];
+        if (!exams.length) throw new Error(out?.message || "No published assessment found for this course yet.");
+        await openStudentAssessmentAttempt(Number(exams[0].exam_id));
+      } catch (err) {
+        toast(err?.message || "Failed to start assessment", "error");
+      }
+    });
+  });
+}
+
+async function refreshStudentAssessments() {
+  state.studentAssessments = buildStudentAssessmentRows();
+  renderStudentAssessmentsList();
+}
+
 function activateProviderSubView(name) {
   if (name !== "assessments") {
     el.assessmentBuilderScreen?.classList.add("hidden");
@@ -1979,6 +2090,9 @@ function activateStudentSubView(name) {
   if (pane) pane.classList.remove("hidden");
   if (name === "live") {
     refreshStudentLiveClasses().catch(() => toast("Failed to load live classes", "error"));
+  }
+  if (name === "assessments") {
+    refreshStudentAssessments().catch(() => toast("Failed to load assessments", "error"));
   }
   if (name === "certifications") {
     refreshStudentCertifications().catch(() => toast("Failed to load certifications", "error"));
@@ -3434,8 +3548,10 @@ async function refreshStudentDashboard() {
   renderStudentHomeCards(el.studentStats, data.stats || {});
   state.studentDashboard.available = Array.isArray(data.available) ? data.available : [];
   state.studentDashboard.enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  state.studentAssessments = buildStudentAssessmentRows();
   renderStudentHomeSnapshots();
   renderStudentCourseCatalogs();
+  renderStudentAssessmentsList();
 }
 
 async function refreshStudentCertifications() {
@@ -8527,8 +8643,9 @@ function handleKeyboardShortcuts(event) {
     if (event.key === "1") activateStudentSubView("home");
     if (event.key === "2") activateStudentSubView("available");
     if (event.key === "3") activateStudentSubView("enrolled");
-    if (event.key === "4") activateStudentSubView("live");
-    if (event.key === "5") activateStudentSubView("certifications");
+    if (event.key === "4") activateStudentSubView("assessments");
+    if (event.key === "5") activateStudentSubView("live");
+    if (event.key === "6") activateStudentSubView("certifications");
   }
 }
 
@@ -9476,6 +9593,17 @@ function bindEvents() {
     toggleFilterPopover(el.studentAvailableFilterMenu, el.studentAvailableFilterBtn);
   });
   $("studentAvailableFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
+  $("refreshStudentAvailableBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshStudentAvailableBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshStudentDashboard();
+    } catch {
+      toast("Failed to refresh available courses", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
   $("studentEnrolledSearch")?.addEventListener("input", () => renderStudentCourseCatalogs());
   $("studentEnrolledSort")?.addEventListener("change", () => renderStudentCourseCatalogs());
   $("studentEnrolledFilterBtn")?.addEventListener("click", (event) => {
@@ -9483,6 +9611,26 @@ function bindEvents() {
     toggleFilterPopover(el.studentEnrolledFilterMenu, el.studentEnrolledFilterBtn);
   });
   $("studentEnrolledFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
+  $("studentAssessmentsSearch")?.addEventListener("input", () => renderStudentAssessmentsList());
+  $("studentAssessmentsSort")?.addEventListener("change", () => renderStudentAssessmentsList());
+  $("studentAssessmentsStatus")?.addEventListener("change", () => renderStudentAssessmentsList());
+  $("studentAssessmentsFilterBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFilterPopover(el.studentAssessmentsFilterMenu, el.studentAssessmentsFilterBtn);
+  });
+  $("studentAssessmentsFilterMenu")?.addEventListener("click", (event) => event.stopPropagation());
+  $("refreshStudentAssessmentsBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshStudentAssessmentsBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshStudentDashboard();
+      await refreshStudentAssessments();
+    } catch {
+      toast("Failed to refresh assessments", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
   $("providerCoursesSearch")?.addEventListener("input", () => renderProviderCourseCatalog());
   $("providerCoursesSort")?.addEventListener("change", () => renderProviderCourseCatalog());
   const syncProviderSortOptionState = () => {

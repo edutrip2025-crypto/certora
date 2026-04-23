@@ -106,7 +106,7 @@
   function toggleFilterPopover(menu, trigger, show) {
     if (!menu) return;
     const next = typeof show === "boolean" ? show : menu.classList.contains("hidden");
-    [el.studentAvailableFilterMenu, el.studentEnrolledFilterMenu, el.providerCoursesFilterMenu].forEach((node) => {
+    [el.studentAvailableFilterMenu, el.studentEnrolledFilterMenu, el.studentAssessmentsFilterMenu, el.providerCoursesFilterMenu].forEach((node) => {
       if (node && node !== menu) node.classList.add("hidden");
     });
     menu.classList.toggle("hidden", !next);
