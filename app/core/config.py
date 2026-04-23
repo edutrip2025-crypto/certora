@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     bunny_storage_access_key: str = ""
     bunny_storage_endpoint: str = "storage.bunnycdn.com"
     bunny_storage_pull_zone: str = ""
+    bunny_storage_upload_timeout_seconds: int = 900
+    bunny_storage_upload_retries: int = 3
     bunny_stream_library_id: int = 0
     bunny_stream_api_key: str = ""
     bunny_stream_pull_zone: str = ""

@@ -5,6 +5,7 @@ import binascii
 import mimetypes
 from pathlib import Path
 import re
+import time
 from urllib.parse import quote, urlparse
 from urllib import error, request
 from uuid import uuid4
@@ -85,34 +86,45 @@ def _upload_file_to_bunny_storage(local_path: Path, *, object_path: str, content
     endpoint = str(settings.bunny_storage_endpoint or "storage.bunnycdn.com").strip()
     if not (zone and access_key and endpoint):
         raise RuntimeError("Bunny Storage settings are incomplete.")
+    timeout = max(60, int(settings.bunny_storage_upload_timeout_seconds or 900))
+    retries = max(1, int(settings.bunny_storage_upload_retries or 3))
     key = object_path.lstrip("/")
     url = f"https://{endpoint}/{zone}/{key}"
     body = local_path.read_bytes()
     ctype = content_type or mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
-    req = request.Request(
-        url,
-        data=body,
-        method="PUT",
-        headers={
-            "AccessKey": access_key,
-            "Content-Type": ctype,
-            "Accept": "application/json",
-        },
-    )
-    try:
-        with request.urlopen(req, timeout=120) as resp:
-            status = int(getattr(resp, "status", 0) or 0)
-            if status not in {200, 201}:
-                raise RuntimeError(f"Bunny upload failed with HTTP {status}")
-    except error.HTTPError as exc:
-        body_text = ""
+    for attempt in range(1, retries + 1):
+        req = request.Request(
+            url,
+            data=body,
+            method="PUT",
+            headers={
+                "AccessKey": access_key,
+                "Content-Type": ctype,
+                "Accept": "application/json",
+            },
+        )
         try:
-            body_text = (exc.read() or b"").decode("utf-8", errors="ignore")
-        except Exception:
+            with request.urlopen(req, timeout=timeout) as resp:
+                status = int(getattr(resp, "status", 0) or 0)
+                if status in {200, 201}:
+                    break
+                raise RuntimeError(f"Bunny upload failed with HTTP {status}")
+        except error.HTTPError as exc:
             body_text = ""
-        raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Bunny upload failed: {exc}") from exc
+            try:
+                body_text = (exc.read() or b"").decode("utf-8", errors="ignore")
+            except Exception:
+                body_text = ""
+            # Don't retry auth failures; they are configuration problems.
+            if exc.code in {401, 403}:
+                raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
+            if attempt >= retries:
+                raise RuntimeError(f"Bunny upload failed with HTTP {exc.code}: {body_text[:400]}") from exc
+            time.sleep(min(8, attempt * 2))
+        except Exception as exc:
+            if attempt >= retries:
+                raise RuntimeError(f"Bunny upload failed: {exc}") from exc
+            time.sleep(min(8, attempt * 2))
     return f"bunny://{zone}/{key}"
 
 
