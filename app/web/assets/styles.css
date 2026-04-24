@@ -1733,6 +1733,10 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   top: 16px;
   right: 16px;
 }
+.video-shell:fullscreen .icon-corner-btn.corner-left,
+.video-shell:-webkit-full-screen .icon-corner-btn.corner-left {
+  right: 56px;
+}
 
 @container (max-width: 1040px) {
   .video-controls {

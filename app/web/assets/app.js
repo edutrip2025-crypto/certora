@@ -2841,8 +2841,7 @@ function bindCustomPlayerControls({
   shell?.addEventListener("mouseenter", () => showControls());
   shell?.addEventListener("mouseleave", () => {
     if (hideTimer) clearTimeout(hideTimer);
-    if (shell.classList.contains("minimized")) shell.classList.add("controls-hidden");
-    else shell.classList.remove("controls-hidden");
+    shell.classList.add("controls-hidden");
   });
   refreshFullscreenIcon();
   refreshMinimizeIcon();
