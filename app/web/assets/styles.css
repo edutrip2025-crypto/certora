@@ -1588,8 +1588,10 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   right: clamp(8px, 2vw, 18px);
   bottom: clamp(8px, 2vh, 18px);
   width: min(440px, calc(100vw - 16px));
-  padding: 4px;
+  padding: 0;
+  border: none;
   border-radius: 14px;
+  background: transparent;
   z-index: 1250;
   box-shadow: 0 20px 34px rgba(2, 6, 23, 0.42);
 }
@@ -3368,8 +3370,8 @@ textarea {
 }
 .student-course-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   align-items: stretch;
 }
 .student-course-hero-main {
@@ -3430,7 +3432,10 @@ textarea {
   padding: 12px;
 }
 .student-course-player-card .video-shell {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+.student-course-status {
+  margin-top: 4px;
 }
 .student-course-player-card .student-course-curriculum-block {
   margin-top: 12px;
