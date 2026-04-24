@@ -802,12 +802,15 @@
           </div>
         </div>
         <div id="studentEnrolledCourses" class="list"></div>
-        <section id="studentCourseViewer" class="moderation-toolbar student-course-viewer hidden">
+      </section>
+
+      <section class="panel content hidden" id="student-view-course">
+        <section id="studentCourseViewer" class="moderation-toolbar student-course-viewer">
           <div class="student-course-hero">
             <div class="student-course-hero-main">
               <div class="student-course-title-row">
                 <h3 id="scvTitle">Course Viewer</h3>
-                <button id="scvCloseBtn" class="btn small">Back to Courses</button>
+                <button id="scvCloseBtn" class="btn small">Back to Enrolled Courses</button>
               </div>
               <div id="scvMeta" class="meta student-course-subtitle"></div>
             </div>
@@ -867,6 +870,7 @@
               <div id="scvVideoShell" class="video-shell">
                 <iframe id="scvStreamFrame" class="stream-iframe hidden" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>
                 <video id="scvVideo" style="width:100%; border-radius:10px; background:#000;"></video>
+                <button id="scvMinimizeBtn" class="icon-corner-btn corner-left" title="Minimize player" aria-label="Minimize player"></button>
                 <button id="scvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
                 <div class="video-controls">
                   <button id="scvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">&#9654;</button>
@@ -900,19 +904,15 @@
                 <div id="scvStreamMeta" class="meta hidden" style="margin-top:8px;color:#e5e7eb;"></div>
               </div>
               <div id="scvMarkerTooltip" class="marker-tooltip hidden"></div>
+              <div class="student-course-curriculum-block">
+                <h4>Resources</h4>
+                <div id="scvResourceList" class="list"></div>
+              </div>
             </section>
             <aside class="student-course-curriculum">
               <div class="student-course-curriculum-block">
                 <h4>Curriculum</h4>
                 <div id="scvTopicList" class="list"></div>
-              </div>
-              <div class="student-course-curriculum-block">
-                <h4>Live Classes</h4>
-                <div id="scvLiveClassList" class="list"></div>
-              </div>
-              <div class="student-course-curriculum-block">
-                <h4>Resources</h4>
-                <div id="scvResourceList" class="list"></div>
               </div>
             </aside>
           </div>

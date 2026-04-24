@@ -1378,6 +1378,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   align-items: center;
   justify-content: center;
 }
+.icon-corner-btn.corner-left {
+  right: 52px;
+}
 .video-controls {
   --control-btn-w: 44px;
   --control-btn-h: 34px;
@@ -1579,6 +1582,92 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .video-shell.controls-hidden .icon-corner-btn {
   opacity: 0;
   pointer-events: none;
+}
+#scvVideoShell.minimized {
+  position: fixed;
+  right: clamp(8px, 2vw, 18px);
+  bottom: clamp(8px, 2vh, 18px);
+  width: min(440px, calc(100vw - 16px));
+  padding: 6px;
+  border-radius: 14px;
+  z-index: 1250;
+  box-shadow: 0 20px 34px rgba(2, 6, 23, 0.42);
+}
+#scvVideoShell.minimized .video-controls {
+  margin-top: 6px;
+  min-height: 42px;
+  padding: 6px;
+  gap: 6px;
+  grid-template-columns: 38px minmax(120px, 1fr) auto;
+}
+#scvVideoShell.minimized #scvBack10Btn,
+#scvVideoShell.minimized #scvFwd10Btn,
+#scvVideoShell.minimized #scvCurrentTopic,
+#scvVideoShell.minimized label.meta,
+#scvVideoShell.minimized #scvStreamMeta {
+  display: none;
+}
+#scvVideoShell.minimized .seek-wrap {
+  grid-column: 2 / 4;
+}
+#scvVideoShell.minimized .icon-corner-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (max-width: 640px) {
+  #scvVideoShell.minimized {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    border-radius: 12px;
+    padding: 5px;
+  }
+  #scvVideoShell.minimized video,
+  #scvVideoShell.minimized .stream-iframe {
+    border-radius: 8px;
+  }
+  #scvVideoShell.minimized .icon-corner-btn {
+    top: 8px;
+    width: 30px;
+    height: 30px;
+  }
+  #scvVideoShell.minimized .icon-corner-btn.corner-left {
+    right: 44px;
+  }
+}
+@media (max-width: 460px) {
+  #scvVideoShell.minimized .video-controls {
+    grid-template-columns: 34px minmax(94px, 1fr) auto;
+    min-height: 38px;
+    gap: 5px;
+    padding: 5px;
+  }
+  #scvVideoShell.minimized #scvTimeMeta {
+    font-size: .68rem;
+  }
+  #scvVideoShell.minimized .icon-btn {
+    width: 34px;
+    height: 30px;
+    border-radius: 7px;
+  }
+}
+@media (max-width: 380px), (max-height: 420px) {
+  #scvVideoShell.minimized {
+    width: calc(100vw - 12px);
+    right: 6px;
+    bottom: 6px;
+    border-radius: 10px;
+    padding: 4px;
+  }
+  #scvVideoShell.minimized .video-controls {
+    margin-top: 4px;
+    grid-template-columns: 32px minmax(82px, 1fr) auto;
+    min-height: 34px;
+    padding: 4px;
+  }
+  #scvVideoShell.minimized #scvTimeMeta {
+    font-size: .64rem;
+  }
 }
 .video-shell:fullscreen,
 .video-shell:-webkit-full-screen {
@@ -3230,6 +3319,10 @@ textarea {
   display: grid;
   gap: 14px;
 }
+#student-view-course .student-course-viewer {
+  max-width: min(1480px, 100%);
+  margin: 0 auto;
+}
 .student-course-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
@@ -3282,7 +3375,7 @@ textarea {
 }
 .student-course-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, .9fr);
   gap: 14px;
   align-items: start;
 }
@@ -3295,6 +3388,9 @@ textarea {
 }
 .student-course-player-card .video-shell {
   margin-bottom: 8px;
+}
+.student-course-player-card .student-course-curriculum-block {
+  margin-top: 12px;
 }
 .student-course-curriculum h4 {
   margin: 0 0 8px;

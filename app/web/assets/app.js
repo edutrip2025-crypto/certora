@@ -2091,12 +2091,17 @@ function ensureCourseWizardMounted() {
 }
 
 function activateStudentSubView(name) {
-  if (name !== "enrolled") {
+  const isCoursePage = name === "course";
+  if (!isCoursePage) {
     stopStudentStreamHeartbeat();
     setStudentViewerMode("legacy");
     el.studentCourseViewer?.classList.add("hidden");
+    $("scvVideoShell")?.classList.remove("minimized");
   }
-  document.querySelectorAll(".student-nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.studentView === name));
+  document.querySelectorAll(".student-nav-btn").forEach((b) => {
+    const target = String(b.dataset.studentView || "");
+    b.classList.toggle("active", isCoursePage ? target === "enrolled" : target === name);
+  });
   document.querySelectorAll('[id^="student-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`student-view-${name}`);
   if (pane) pane.classList.remove("hidden");
@@ -2650,6 +2655,7 @@ function bindCustomPlayerControls({
   speedId,
   volumeId,
   fullscreenBtnId,
+  minimizeBtnId,
   topicsGetter,
   updateTimeFn,
   canSeekTo,
@@ -2666,6 +2672,7 @@ function bindCustomPlayerControls({
   const speed = $(speedId);
   const volume = $(volumeId);
   const fullscreenBtn = $(fullscreenBtnId);
+  const minimizeBtn = $(minimizeBtnId);
   if (!video) return;
 
   const refreshPlayLabel = () => {
@@ -2679,9 +2686,28 @@ function bindCustomPlayerControls({
     fullscreenBtn.title = isFs ? "Exit Fullscreen" : "Fullscreen";
     fullscreenBtn.setAttribute("aria-label", isFs ? "Exit Fullscreen" : "Fullscreen");
   };
+  const refreshMinimizeIcon = () => {
+    if (!minimizeBtn || !shell) return;
+    const isMini = shell.classList.contains("minimized");
+    minimizeBtn.innerHTML = isMini ? materialIcon("close_fullscreen") : materialIcon("picture_in_picture_alt");
+    minimizeBtn.title = isMini ? "Restore player" : "Minimize player";
+    minimizeBtn.setAttribute("aria-label", isMini ? "Restore player" : "Minimize player");
+  };
+  const setMinimized = (next) => {
+    if (!shell) return;
+    if (next && document.fullscreenElement === shell) return;
+    shell.classList.toggle("minimized", Boolean(next));
+    if (!next) shell.classList.remove("controls-hidden");
+    refreshMinimizeIcon();
+    showControls();
+  };
   let hideTimer = null;
   const scheduleControlsHide = () => {
     if (!shell) return;
+    if (shell.classList.contains("minimized")) {
+      shell.classList.remove("controls-hidden");
+      return;
+    }
     if (hideTimer) clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       shell.classList.add("controls-hidden");
@@ -2791,21 +2817,35 @@ function bindCustomPlayerControls({
     }
     showControls();
   });
+  minimizeBtn?.addEventListener("click", () => {
+    if (!shell) return;
+    setMinimized(!shell.classList.contains("minimized"));
+  });
   video.addEventListener("loadedmetadata", () => {
     updateTimeFn();
     refreshPlayLabel();
     refreshFullscreenIcon();
+    refreshMinimizeIcon();
     showControls();
   });
   video.addEventListener("progress", updateTimeFn);
-  document.addEventListener("fullscreenchange", refreshFullscreenIcon);
+  document.addEventListener("fullscreenchange", () => {
+    refreshFullscreenIcon();
+    if (document.fullscreenElement === shell) {
+      shell?.classList.remove("minimized");
+      refreshMinimizeIcon();
+    }
+  });
   shell?.addEventListener("mousemove", () => showControls());
   shell?.addEventListener("mouseenter", () => showControls());
   shell?.addEventListener("mouseleave", () => {
     if (hideTimer) clearTimeout(hideTimer);
-    shell.classList.remove("controls-hidden");
+    if (!shell.classList.contains("minimized")) {
+      shell.classList.remove("controls-hidden");
+    }
   });
   refreshFullscreenIcon();
+  refreshMinimizeIcon();
 }
 
 function renderTimelineMarkers(container, tooltip, topics, duration, onSeek) {
@@ -7783,12 +7823,12 @@ function openCourseViewer(courseId) {
 
 async function openStudentCourseViewer(courseId) {
   const detail = await api("GET", `/student/courses/${courseId}/detail`);
+  activateStudentSubView("course");
   stopStudentStreamHeartbeat();
   setStudentViewerMode("legacy");
   state.studentActiveCourseId = Number(courseId);
   state.studentVideoCompletionSent[Number(courseId)] = false;
   const lesson = findPrimaryLesson(detail);
-  const liveLessons = findLiveLessons(detail);
 
   let streamReadyVideo = null;
   try {
@@ -7802,8 +7842,8 @@ async function openStudentCourseViewer(courseId) {
   }
 
   const useStreamPlayback = Boolean(streamReadyVideo);
-  if (!lesson?.recorded_video_url && !liveLessons.length && !useStreamPlayback) {
-    throw new Error("No recorded, stream, or live lesson available for this course.");
+  if (!lesson?.recorded_video_url && !useStreamPlayback) {
+    throw new Error("No recorded lesson available for this course.");
   }
 
   const video = $("scvVideo");
@@ -7832,11 +7872,11 @@ async function openStudentCourseViewer(courseId) {
   if (el.scvRateClarity) el.scvRateClarity.value = String(myFeedback.instructor_clarity_rating || 5);
   if (el.scvRatePractical) el.scvRatePractical.value = String(myFeedback.practical_usefulness_rating || 5);
   if (el.scvRatingComment) el.scvRatingComment.value = String(myFeedback.comment || "");
-  const canRateCourse = progressPct >= 100 || Boolean(detail.exam_eligible);
+  const canRateCourse = Boolean(detail.assessment_completed);
   if (el.scvSaveRatingBtn) el.scvSaveRatingBtn.disabled = !canRateCourse;
   if (el.scvRatingStatus) {
     if (!canRateCourse) {
-      el.scvRatingStatus.textContent = "Complete this course to enable rating.";
+      el.scvRatingStatus.textContent = "Complete at least one assessment attempt to enable rating.";
     } else if (myFeedback.feedback_id) {
       el.scvRatingStatus.textContent = `Your latest rating is saved (${Number(myFeedback.overall_rating || 0).toFixed(1)}/5).`;
     } else {
@@ -7855,18 +7895,6 @@ async function openStudentCourseViewer(courseId) {
       </div>
     `,
     hasPlayableLesson ? "No topics available for this lesson." : "No recorded lesson topics available.",
-  );
-  renderList(
-    el.scvLiveClassList,
-    liveLessons,
-    (l) => `
-      <div>
-        <div><strong>${l.title}</strong></div>
-        <div class="meta">${l.module_title || "Live class"}</div>
-        <div class="actions"><button class="btn small" data-scv-join-live="${l.id}">Join Live Class</button></div>
-      </div>
-    `,
-    "No live classes available right now.",
   );
   const resources = lesson?.resources || [];
   renderList(
@@ -7892,23 +7920,11 @@ async function openStudentCourseViewer(courseId) {
       video.play().catch(() => {});
     });
   });
-  document.querySelectorAll("[data-scv-join-live]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const lessonId = Number(btn.dataset.scvJoinLive || 0);
-      if (!lessonId) return;
-      try {
-        const out = await api("POST", `/student/lessons/${lessonId}/join-live`);
-        if (!out?.live_class_url) throw new Error("No live class link available");
-        window.open(out.live_class_url, "_blank", "noopener,noreferrer");
-      } catch (err) {
-        toast(err?.message || "Failed to join live class", "error");
-      }
-    });
-  });
   const videoShell = $("scvVideoShell");
   const timeline = $("scvTimelineMarkers");
   const tooltip = $("scvMarkerTooltip");
   if (videoShell) videoShell.classList.toggle("hidden", !hasPlayableLesson);
+  videoShell?.classList.remove("minimized");
   if (tooltip) tooltip.classList.add("hidden");
   refreshStudentSeekUi();
   el.studentCourseViewer?.classList.remove("hidden");
@@ -9342,12 +9358,18 @@ function bindEvents() {
   $("scvCloseBtn")?.addEventListener("click", () => {
     stopStudentStreamHeartbeat();
     setStudentViewerMode("legacy");
+    $("scvVideoShell")?.classList.remove("minimized");
     el.studentCourseViewer?.classList.add("hidden");
+    activateStudentSubView("enrolled");
   });
   $("scvSaveRatingBtn")?.addEventListener("click", async () => {
     const courseId = Number(state.studentActiveCourseId || 0);
     if (!courseId) {
       toast("Open a course first", "error");
+      return;
+    }
+    if (el.scvSaveRatingBtn?.disabled) {
+      toast("Complete at least one assessment attempt to submit rating.", "error");
       return;
     }
     try {
@@ -9410,6 +9432,7 @@ function bindEvents() {
     speedId: "scvSpeed",
     volumeId: "scvVolume",
     fullscreenBtnId: "scvFullscreenBtn",
+    minimizeBtnId: "scvMinimizeBtn",
     topicsGetter: () => state.studentViewerTopics || [],
     updateTimeFn: updateStudentViewerTimeMeta,
     canSeekTo: (targetSeconds, currentSeconds) => canStudentSeekTo(targetSeconds, currentSeconds),

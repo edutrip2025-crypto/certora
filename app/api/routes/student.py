@@ -138,6 +138,25 @@ def _student_feedback_map(db: Session, student_id: int, course_ids: set[int]) ->
     return out
 
 
+def _student_has_completed_assessment(db: Session, student_id: int, course_id: int) -> bool:
+    completed_count = int(
+        db.scalar(
+            select(func.count(Result.id))
+            .select_from(Result)
+            .join(ExamAttempt, ExamAttempt.id == Result.attempt_id)
+            .join(Exam, Exam.id == ExamAttempt.exam_id)
+            .where(
+                and_(
+                    ExamAttempt.student_id == student_id,
+                    Exam.course_id == course_id,
+                ),
+            ),
+        )
+        or 0,
+    )
+    return completed_count > 0
+
+
 @router.get("/dashboard")
 def dashboard(
     db: Session = Depends(get_db),
@@ -277,6 +296,7 @@ def course_detail(
     )
     rating_summary = _course_rating_summary(db, {int(course.id)}).get(int(course.id), {"average_rating": 0.0, "rating_count": 0})
     my_feedback = _student_feedback_map(db, current_user.id, {int(course.id)}).get(int(course.id))
+    assessment_completed = _student_has_completed_assessment(db, current_user.id, int(course.id))
     return {
         "id": course.id,
         "title": course.title,
@@ -287,6 +307,7 @@ def course_detail(
         "exam_eligible": enrollment.exam_eligible,
         "published_assessments": published_exam_count,
         "assessment_available": bool(enrollment.exam_eligible and published_exam_count > 0),
+        "assessment_completed": bool(assessment_completed),
         "average_rating": float(rating_summary.get("average_rating", 0.0)),
         "rating_count": int(rating_summary.get("rating_count", 0)),
         "my_feedback": my_feedback,
@@ -1364,11 +1385,8 @@ def add_course_feedback(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
-    completion = db.scalar(
-        select(CourseCompletion).where(and_(CourseCompletion.course_id == course_id, CourseCompletion.student_id == current_user.id)),
-    )
-    if not completion:
-        raise HTTPException(status_code=400, detail="Course must be completed before feedback")
+    if not _student_has_completed_assessment(db, current_user.id, course_id):
+        raise HTTPException(status_code=400, detail="Complete an assessment attempt before submitting feedback")
     existing = db.scalar(
         select(CourseFeedback).where(and_(CourseFeedback.course_id == course_id, CourseFeedback.student_id == current_user.id)),
     )
