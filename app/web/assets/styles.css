@@ -1588,31 +1588,54 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   right: clamp(8px, 2vw, 18px);
   bottom: clamp(8px, 2vh, 18px);
   width: min(440px, calc(100vw - 16px));
-  padding: 6px;
+  padding: 4px;
   border-radius: 14px;
   z-index: 1250;
   box-shadow: 0 20px 34px rgba(2, 6, 23, 0.42);
 }
 #scvVideoShell.minimized .video-controls {
-  margin-top: 6px;
-  min-height: 42px;
-  padding: 6px;
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  margin-top: 0;
+  min-height: 30px;
+  padding: 4px 6px;
   gap: 6px;
-  grid-template-columns: 38px minmax(120px, 1fr) auto;
+  grid-template-columns: 30px minmax(80px, 1fr);
+  border-radius: 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.26));
+  border: 1px solid rgba(255, 255, 255, 0.24);
 }
 #scvVideoShell.minimized #scvBack10Btn,
 #scvVideoShell.minimized #scvFwd10Btn,
 #scvVideoShell.minimized #scvCurrentTopic,
+#scvVideoShell.minimized #scvTimeMeta,
 #scvVideoShell.minimized label.meta,
 #scvVideoShell.minimized #scvStreamMeta {
   display: none;
 }
 #scvVideoShell.minimized .seek-wrap {
-  grid-column: 2 / 4;
+  min-height: 12px;
+  grid-column: 2 / 3;
 }
 #scvVideoShell.minimized .icon-corner-btn {
   opacity: 1;
   pointer-events: auto;
+}
+#scvVideoShell.minimized .yt-scrubber,
+#scvVideoShell.minimized .yt-buffered,
+#scvVideoShell.minimized .yt-progress {
+  height: 4px;
+}
+#scvVideoShell.minimized .yt-thumb {
+  width: 10px;
+  height: 10px;
+}
+#scvVideoShell.minimized .icon-btn {
+  width: 30px;
+  height: 24px;
+  border-radius: 6px;
 }
 @media (max-width: 640px) {
   #scvVideoShell.minimized {
@@ -1620,7 +1643,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     bottom: 8px;
     width: calc(100vw - 16px);
     border-radius: 12px;
-    padding: 5px;
+    padding: 4px;
   }
   #scvVideoShell.minimized video,
   #scvVideoShell.minimized .stream-iframe {
@@ -1637,17 +1660,14 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 @media (max-width: 460px) {
   #scvVideoShell.minimized .video-controls {
-    grid-template-columns: 34px minmax(94px, 1fr) auto;
-    min-height: 38px;
-    gap: 5px;
-    padding: 5px;
-  }
-  #scvVideoShell.minimized #scvTimeMeta {
-    font-size: .68rem;
+    grid-template-columns: 28px minmax(70px, 1fr);
+    min-height: 28px;
+    gap: 4px;
+    padding: 3px 5px;
   }
   #scvVideoShell.minimized .icon-btn {
-    width: 34px;
-    height: 30px;
+    width: 28px;
+    height: 22px;
     border-radius: 7px;
   }
 }
@@ -1660,13 +1680,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     padding: 4px;
   }
   #scvVideoShell.minimized .video-controls {
-    margin-top: 4px;
-    grid-template-columns: 32px minmax(82px, 1fr) auto;
-    min-height: 34px;
-    padding: 4px;
-  }
-  #scvVideoShell.minimized #scvTimeMeta {
-    font-size: .64rem;
+    grid-template-columns: 26px minmax(64px, 1fr);
+    min-height: 26px;
+    padding: 2px 4px;
   }
 }
 .video-shell:fullscreen,
@@ -3330,13 +3346,10 @@ textarea {
   align-items: stretch;
 }
 .student-course-hero-main {
-  border: 1px solid #d8e5ff;
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 8% 12%, rgba(37, 99, 235, 0.14), transparent 45%),
-    radial-gradient(circle at 95% 0%, rgba(14, 165, 233, 0.14), transparent 40%),
-    linear-gradient(160deg, #ffffff 0%, #f4f8ff 100%);
-  padding: 16px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 .student-course-title-row {
   display: flex;
@@ -3352,6 +3365,9 @@ textarea {
   margin-top: 6px;
   color: #1e293b;
   line-height: 1.55;
+}
+.student-course-subtitle:empty {
+  display: none;
 }
 .student-course-actions {
   border: 1px solid #d8e5ff;

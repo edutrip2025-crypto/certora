@@ -2051,7 +2051,7 @@ function renderStudentAssessmentsList() {
       try {
         const out = await api("POST", `/student/courses/${courseId}/assessment-intent?ready=true`);
         const exams = Array.isArray(out?.exams) ? out.exams : [];
-        if (!exams.length) throw new Error(out?.message || "No published assessment found for this course yet.");
+        if (!exams.length) throw new Error(out?.message || "Assessment is not available for this course right now.");
         await openStudentAssessmentAttempt(Number(exams[0].exam_id));
       } catch (err) {
         toast(err?.message || "Failed to start assessment", "error");
@@ -8031,13 +8031,7 @@ async function refreshStudentAssessmentPanel(courseId, options = {}) {
     publishedAssessments = Number(out.published_assessments || 0);
   }
   if (!exams.length) {
-    const reason = String(out?.message || "").trim()
-      || (assessmentAvailable
-        ? "Assessment is being prepared."
-        : publishedAssessments > 0
-          ? "Assessment cannot be started yet."
-          : "No published assessment found for this course yet. Ask provider to publish it.");
-    el.scvAssessmentPanel.innerHTML = `<span id="scvAssessmentStatus" class="meta">${reason}</span>`;
+    el.scvAssessmentPanel.innerHTML = "";
     return;
   }
   el.scvAssessmentPanel.innerHTML = exams
