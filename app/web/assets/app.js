@@ -9356,6 +9356,22 @@ function bindEvents() {
     el.studentCourseViewer?.classList.add("hidden");
     activateStudentSubView("enrolled");
   });
+  const scvShell = $("scvVideoShell");
+  const scvVolume = $("scvVolume");
+  const scvVolumeToggleBtn = $("scvVolumeToggleBtn");
+  const refreshScvVolumeIcon = () => {
+    if (!scvVolumeToggleBtn) return;
+    const vol = Number(scvVolume?.value || 0);
+    scvVolumeToggleBtn.innerHTML = materialIcon(vol <= 0.01 ? "volume_off" : "volume_up");
+  };
+  scvVolumeToggleBtn?.addEventListener("click", () => {
+    scvShell?.classList.toggle("volume-open");
+  });
+  scvVolume?.addEventListener("input", () => {
+    refreshScvVolumeIcon();
+    if (Number(scvVolume.value || 0) > 0.01) scvShell?.classList.add("volume-open");
+  });
+  refreshScvVolumeIcon();
   $("scvSaveRatingBtn")?.addEventListener("click", async () => {
     const courseId = Number(state.studentActiveCourseId || 0);
     if (!courseId) {

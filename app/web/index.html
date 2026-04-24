@@ -824,8 +824,6 @@
                 <button id="scvFullscreenBtn" class="icon-corner-btn" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
                 <div class="video-controls">
                   <button id="scvPlayBtn" class="icon-btn" title="Play/Pause" aria-label="Play/Pause">&#9654;</button>
-                  <button id="scvBack10Btn" class="icon-btn" title="Back 10 seconds" aria-label="Back 10 seconds">&#8630;10</button>
-                  <button id="scvFwd10Btn" class="icon-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10&#8631;</button>
                   <div class="seek-wrap">
                     <div id="scvScrubber" class="yt-scrubber">
                       <div id="scvBuffered" class="yt-buffered"></div>
@@ -836,20 +834,11 @@
                     <div id="scvHoverPreview" class="hover-preview hidden"></div>
                     <div id="scvHoverTime" class="hover-time hidden"></div>
                   </div>
-                  <span id="scvTimeMeta" class="meta">00:00 / 00:00</span>
-                  <span id="scvCurrentTopic" class="meta">Topic: -</span>
-                  <label class="meta">Speed
-                    <select id="scvSpeed" class="filter">
-                      <option value="0.75">0.75x</option>
-                      <option value="1" selected>1x</option>
-                      <option value="1.25">1.25x</option>
-                      <option value="1.5">1.5x</option>
-                      <option value="2">2x</option>
-                    </select>
-                  </label>
-                  <label class="meta">Vol
+                  <div id="scvVolumePack" class="scv-volume-pack">
+                    <button id="scvVolumeToggleBtn" class="icon-btn" title="Volume" aria-label="Volume"></button>
                     <input id="scvVolume" type="range" min="0" max="1" step="0.05" value="1" />
-                  </label>
+                  </div>
+                  <span id="scvTimeMeta" class="meta">00:00 / 00:00</span>
                 </div>
                 <div id="scvStreamMeta" class="meta hidden" style="margin-top:8px;color:#e5e7eb;"></div>
               </div>

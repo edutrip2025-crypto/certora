@@ -1623,27 +1623,22 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   pointer-events: auto;
 }
 #scvVideoShell.minimized #scvPlayBtn,
-#scvVideoShell.minimized #scvBack10Btn,
-#scvVideoShell.minimized #scvFwd10Btn {
+#scvVideoShell.minimized #scvVolumePack {
   flex: 0 0 auto;
 }
-#scvVideoShell.minimized #scvTimeMeta,
-#scvVideoShell.minimized #scvCurrentTopic {
+#scvVideoShell.minimized #scvTimeMeta {
   flex: 0 0 auto;
   font-size: .7rem;
 }
-#scvVideoShell.minimized label.meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-#scvVideoShell.minimized #scvSpeed {
-  min-width: 56px;
-  padding: 4px 6px;
-}
 #scvVideoShell.minimized #scvVolume {
-  width: 58px;
+  width: 0;
+  opacity: 0;
+  margin: 0;
+}
+#scvVideoShell.minimized.volume-open #scvVolume {
+  width: 64px;
+  opacity: 1;
+  margin-left: 5px;
 }
 #scvVideoShell.minimized .yt-scrubber,
 #scvVideoShell.minimized .yt-buffered,
@@ -1686,12 +1681,7 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     gap: 4px;
     padding: 3px 5px;
   }
-  #scvVideoShell.minimized #scvCurrentTopic {
-    display: none;
-  }
-  #scvVideoShell.minimized #scvVolume {
-    width: 48px;
-  }
+  #scvVideoShell.minimized #scvTimeMeta { display: none; }
 }
 @media (max-width: 380px), (max-height: 420px) {
   #scvVideoShell.minimized {
@@ -1705,14 +1695,8 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     min-height: 28px;
     padding: 2px 4px;
   }
-  #scvVideoShell.minimized #scvTimeMeta,
-  #scvVideoShell.minimized #scvCurrentTopic {
-    display: none;
-  }
-  #scvVideoShell.minimized #scvSpeed {
-    min-width: 50px;
-    padding: 3px 5px;
-  }
+  #scvVideoShell.minimized #scvTimeMeta { display: none; }
+  #scvVideoShell.minimized.volume-open #scvVolume { width: 52px; }
 }
 .video-shell:fullscreen,
 .video-shell:-webkit-full-screen {
@@ -3457,7 +3441,53 @@ textarea {
   bottom: 8px;
   margin-top: 0;
   z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 8px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.28));
+}
+#scvVideoShell .seek-wrap {
+  order: 1;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+#scvVideoShell #scvPlayBtn { order: 2; }
+#scvVideoShell #scvVolumePack { order: 3; }
+#scvVideoShell #scvTimeMeta { order: 4; }
+#scvVideoShell .icon-btn {
+  width: 28px;
+  height: 22px;
+  border-radius: 6px;
+}
+#scvVideoShell #scvPlayBtn .material-symbols-rounded,
+#scvVideoShell #scvVolumeToggleBtn .material-symbols-rounded {
+  font-size: .98rem;
+}
+#scvVideoShell .scv-volume-pack {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+}
+#scvVideoShell #scvVolume {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+  transition: width .22s ease, opacity .18s ease, margin-left .22s ease;
+}
+#scvVideoShell.volume-open #scvVolume {
+  width: 82px;
+  opacity: 1;
+  margin-left: 6px;
+  pointer-events: auto;
+}
+#scvVideoShell #scvTimeMeta {
+  flex: 0 0 auto;
+  font-size: .74rem;
 }
 .student-course-player-card .student-course-curriculum-block {
   margin-top: 12px;
