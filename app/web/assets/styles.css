@@ -1599,29 +1599,49 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   right: 4px;
   bottom: 4px;
   margin-top: 0;
-  min-height: 30px;
-  padding: 4px 6px;
-  gap: 6px;
-  grid-template-columns: 30px minmax(80px, 1fr);
+  min-height: 34px;
+  padding: 5px 7px;
+  gap: 7px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  white-space: nowrap;
   border-radius: 8px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.26));
   border: 1px solid rgba(255, 255, 255, 0.24);
 }
-#scvVideoShell.minimized #scvBack10Btn,
-#scvVideoShell.minimized #scvFwd10Btn,
-#scvVideoShell.minimized #scvCurrentTopic,
-#scvVideoShell.minimized #scvTimeMeta,
-#scvVideoShell.minimized label.meta,
-#scvVideoShell.minimized #scvStreamMeta {
-  display: none;
-}
 #scvVideoShell.minimized .seek-wrap {
-  min-height: 12px;
-  grid-column: 2 / 3;
+  min-height: 14px;
+  flex: 1 1 150px;
+  min-width: 110px;
 }
 #scvVideoShell.minimized .icon-corner-btn {
   opacity: 1;
   pointer-events: auto;
+}
+#scvVideoShell.minimized #scvPlayBtn,
+#scvVideoShell.minimized #scvBack10Btn,
+#scvVideoShell.minimized #scvFwd10Btn {
+  flex: 0 0 auto;
+}
+#scvVideoShell.minimized #scvTimeMeta,
+#scvVideoShell.minimized #scvCurrentTopic {
+  flex: 0 0 auto;
+  font-size: .7rem;
+}
+#scvVideoShell.minimized label.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+#scvVideoShell.minimized #scvSpeed {
+  min-width: 56px;
+  padding: 4px 6px;
+}
+#scvVideoShell.minimized #scvVolume {
+  width: 58px;
 }
 #scvVideoShell.minimized .yt-scrubber,
 #scvVideoShell.minimized .yt-buffered,
@@ -1633,8 +1653,8 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   height: 10px;
 }
 #scvVideoShell.minimized .icon-btn {
-  width: 30px;
-  height: 24px;
+  width: 28px;
+  height: 22px;
   border-radius: 6px;
 }
 @media (max-width: 640px) {
@@ -1660,15 +1680,15 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 @media (max-width: 460px) {
   #scvVideoShell.minimized .video-controls {
-    grid-template-columns: 28px minmax(70px, 1fr);
-    min-height: 28px;
+    min-height: 30px;
     gap: 4px;
     padding: 3px 5px;
   }
-  #scvVideoShell.minimized .icon-btn {
-    width: 28px;
-    height: 22px;
-    border-radius: 7px;
+  #scvVideoShell.minimized #scvCurrentTopic {
+    display: none;
+  }
+  #scvVideoShell.minimized #scvVolume {
+    width: 48px;
   }
 }
 @media (max-width: 380px), (max-height: 420px) {
@@ -1680,9 +1700,16 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
     padding: 4px;
   }
   #scvVideoShell.minimized .video-controls {
-    grid-template-columns: 26px minmax(64px, 1fr);
-    min-height: 26px;
+    min-height: 28px;
     padding: 2px 4px;
+  }
+  #scvVideoShell.minimized #scvTimeMeta,
+  #scvVideoShell.minimized #scvCurrentTopic {
+    display: none;
+  }
+  #scvVideoShell.minimized #scvSpeed {
+    min-width: 50px;
+    padding: 3px 5px;
   }
 }
 .video-shell:fullscreen,
@@ -3333,7 +3360,7 @@ textarea {
 
 .student-course-viewer {
   display: grid;
-  gap: 14px;
+  gap: 6px;
 }
 #student-view-course .student-course-viewer {
   max-width: min(1480px, 100%);
@@ -3391,7 +3418,7 @@ textarea {
 }
 .student-course-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(260px, .9fr);
+  grid-template-columns: minmax(0, 2.4fr) minmax(220px, .6fr);
   gap: 14px;
   align-items: start;
 }

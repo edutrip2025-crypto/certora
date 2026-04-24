@@ -2697,21 +2697,22 @@ function bindCustomPlayerControls({
     if (!shell) return;
     if (next && document.fullscreenElement === shell) return;
     shell.classList.toggle("minimized", Boolean(next));
-    if (!next) shell.classList.remove("controls-hidden");
+    if (hideTimer) clearTimeout(hideTimer);
+    if (next) {
+      shell.classList.add("controls-hidden");
+    } else {
+      shell.classList.remove("controls-hidden");
+    }
     refreshMinimizeIcon();
-    showControls();
+    if (!next) showControls();
   };
   let hideTimer = null;
   const scheduleControlsHide = () => {
     if (!shell) return;
-    if (shell.classList.contains("minimized")) {
-      shell.classList.remove("controls-hidden");
-      return;
-    }
     if (hideTimer) clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       shell.classList.add("controls-hidden");
-    }, 3000);
+    }, shell.classList.contains("minimized") ? 1200 : 3000);
   };
   const showControls = () => {
     if (!shell) return;
@@ -2840,9 +2841,8 @@ function bindCustomPlayerControls({
   shell?.addEventListener("mouseenter", () => showControls());
   shell?.addEventListener("mouseleave", () => {
     if (hideTimer) clearTimeout(hideTimer);
-    if (!shell.classList.contains("minimized")) {
-      shell.classList.remove("controls-hidden");
-    }
+    if (shell.classList.contains("minimized")) shell.classList.add("controls-hidden");
+    else shell.classList.remove("controls-hidden");
   });
   refreshFullscreenIcon();
   refreshMinimizeIcon();
