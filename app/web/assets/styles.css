@@ -3437,6 +3437,28 @@ textarea {
 .student-course-status {
   margin-top: 4px;
 }
+#scvVideoShell {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #000;
+}
+#scvVideoShell video,
+#scvVideoShell .stream-iframe {
+  display: block;
+  width: 100%;
+  border-radius: 0;
+  background: #000;
+}
+#scvVideoShell .video-controls {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  margin-top: 0;
+  z-index: 4;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.28));
+}
 .student-course-player-card .student-course-curriculum-block {
   margin-top: 12px;
 }
