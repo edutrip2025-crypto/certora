@@ -1381,6 +1381,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .icon-corner-btn.corner-left {
   right: 52px;
 }
+.icon-corner-btn.corner-close {
+  right: 92px;
+}
 .video-controls {
   --control-btn-w: 44px;
   --control-btn-h: 34px;
@@ -1622,6 +1625,19 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   opacity: 1;
   pointer-events: auto;
 }
+#scvMiniCloseBtn {
+  display: none;
+}
+#scvVideoShell.minimized #scvMiniCloseBtn {
+  display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
+}
+#scvVideoShell.minimized:hover #scvMiniCloseBtn,
+#scvVideoShell.minimized #scvMiniCloseBtn:focus-visible {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
 #scvVideoShell.minimized #scvPlayBtn,
 #scvVideoShell.minimized #scvVolumePack {
   flex: 0 0 auto;
@@ -1736,6 +1752,10 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .video-shell:fullscreen .icon-corner-btn.corner-left,
 .video-shell:-webkit-full-screen .icon-corner-btn.corner-left {
   right: 56px;
+}
+.video-shell:fullscreen .icon-corner-btn.corner-close,
+.video-shell:-webkit-full-screen .icon-corner-btn.corner-close {
+  right: 96px;
 }
 
 @container (max-width: 1040px) {

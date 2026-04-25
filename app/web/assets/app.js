@@ -2092,11 +2092,18 @@ function ensureCourseWizardMounted() {
 
 function activateStudentSubView(name) {
   const isCoursePage = name === "course";
+  const scvShell = $("scvVideoShell");
+  const scvVideo = $("scvVideo");
+  const scvFrame = $("scvStreamFrame");
+  const keepFloating = Boolean(scvShell?.classList.contains("minimized") && scvShell?.classList.contains("scv-shell-detached"));
   if (!isCoursePage) {
-    stopStudentStreamHeartbeat();
-    setStudentViewerMode("legacy");
+    if (!keepFloating) {
+      stopStudentStreamHeartbeat();
+      setStudentViewerMode("legacy");
+      try { scvVideo?.pause?.(); } catch {}
+      if (scvFrame) scvFrame.src = "";
+    }
     el.studentCourseViewer?.classList.add("hidden");
-    $("scvVideoShell")?.classList.remove("minimized");
   }
   document.querySelectorAll(".student-nav-btn").forEach((b) => {
     const target = String(b.dataset.studentView || "");
@@ -2704,6 +2711,7 @@ function bindCustomPlayerControls({
       shell.classList.remove("controls-hidden");
     }
     refreshMinimizeIcon();
+    shell.dispatchEvent(new CustomEvent("player-minimize-change", { detail: { minimized: Boolean(next) } }));
     if (!next) showControls();
   };
   let hideTimer = null;
@@ -9358,11 +9366,103 @@ function bindEvents() {
   const scvShell = $("scvVideoShell");
   const scvVolume = $("scvVolume");
   const scvVolumeToggleBtn = $("scvVolumeToggleBtn");
+  const scvMiniCloseBtn = $("scvMiniCloseBtn");
+  const scvVideo = $("scvVideo");
+  const scvStreamFrame = $("scvStreamFrame");
+  let scvMountParent = scvShell?.parentElement || null;
+  let scvMountNextSibling = scvShell?.nextSibling || null;
+  const restoreScvShell = () => {
+    if (!scvShell || !scvMountParent || scvShell.parentElement === scvMountParent) return;
+    if (scvMountNextSibling && scvMountNextSibling.parentNode === scvMountParent) {
+      scvMountParent.insertBefore(scvShell, scvMountNextSibling);
+    } else {
+      scvMountParent.appendChild(scvShell);
+    }
+    scvShell.classList.remove("scv-shell-detached");
+    scvShell.style.left = "";
+    scvShell.style.top = "";
+    scvShell.style.right = "";
+    scvShell.style.bottom = "";
+  };
+  const detachScvShell = () => {
+    if (!scvShell || scvShell.parentElement === document.body) return;
+    scvMountParent = scvShell.parentElement;
+    scvMountNextSibling = scvShell.nextSibling;
+    document.body.appendChild(scvShell);
+    scvShell.classList.add("scv-shell-detached");
+  };
+  const tryEnterPipForScv = async () => {
+    if (!scvVideo || state.studentViewerMode === "stream") return;
+    if (!document.pictureInPictureEnabled || typeof scvVideo.requestPictureInPicture !== "function") return;
+    if (document.pictureInPictureElement === scvVideo) return;
+    try { await scvVideo.requestPictureInPicture(); } catch {}
+  };
+  const tryExitPipForScv = async () => {
+    if (document.pictureInPictureElement !== scvVideo || typeof document.exitPictureInPicture !== "function") return;
+    try { await document.exitPictureInPicture(); } catch {}
+  };
+  scvShell?.addEventListener("player-minimize-change", (event) => {
+    const minimized = Boolean(event?.detail?.minimized);
+    if (minimized) {
+      detachScvShell();
+      tryEnterPipForScv().catch(() => {});
+    } else {
+      restoreScvShell();
+      tryExitPipForScv().catch(() => {});
+    }
+  });
+  scvMiniCloseBtn?.addEventListener("click", () => {
+    if (!scvShell) return;
+    scvShell.classList.remove("minimized", "controls-hidden", "volume-open");
+    stopStudentStreamHeartbeat();
+    setStudentViewerMode("legacy");
+    try { scvVideo?.pause?.(); } catch {}
+    if (scvStreamFrame) scvStreamFrame.src = "";
+    restoreScvShell();
+    tryExitPipForScv().catch(() => {});
+    const coursePaneVisible = !document.getElementById("student-view-course")?.classList.contains("hidden");
+    if (coursePaneVisible) activateStudentSubView("enrolled");
+  });
+  let scvDragActive = false;
+  let scvDragOffsetX = 0;
+  let scvDragOffsetY = 0;
+  scvShell?.addEventListener("pointerdown", (event) => {
+    if (!scvShell.classList.contains("minimized")) return;
+    if (event.target?.closest(".video-controls, .icon-corner-btn, input, button, select, textarea")) return;
+    const rect = scvShell.getBoundingClientRect();
+    scvShell.style.left = `${Math.round(rect.left)}px`;
+    scvShell.style.top = `${Math.round(rect.top)}px`;
+    scvShell.style.right = "auto";
+    scvShell.style.bottom = "auto";
+    scvDragActive = true;
+    scvDragOffsetX = event.clientX - rect.left;
+    scvDragOffsetY = event.clientY - rect.top;
+    scvShell.setPointerCapture?.(event.pointerId);
+  });
+  scvShell?.addEventListener("pointermove", (event) => {
+    if (!scvDragActive || !scvShell.classList.contains("minimized")) return;
+    const width = scvShell.offsetWidth || 0;
+    const height = scvShell.offsetHeight || 0;
+    const maxX = Math.max(0, window.innerWidth - width);
+    const maxY = Math.max(0, window.innerHeight - height);
+    const nextLeft = Math.max(0, Math.min(maxX, event.clientX - scvDragOffsetX));
+    const nextTop = Math.max(0, Math.min(maxY, event.clientY - scvDragOffsetY));
+    scvShell.style.left = `${Math.round(nextLeft)}px`;
+    scvShell.style.top = `${Math.round(nextTop)}px`;
+  });
+  const stopScvDrag = (event) => {
+    if (!scvDragActive) return;
+    scvDragActive = false;
+    scvShell?.releasePointerCapture?.(event.pointerId);
+  };
+  scvShell?.addEventListener("pointerup", stopScvDrag);
+  scvShell?.addEventListener("pointercancel", stopScvDrag);
   const refreshScvVolumeIcon = () => {
     if (!scvVolumeToggleBtn) return;
     const vol = Number(scvVolume?.value || 0);
     scvVolumeToggleBtn.innerHTML = materialIcon(vol <= 0.01 ? "volume_off" : "volume_up");
   };
+  if (scvMiniCloseBtn) scvMiniCloseBtn.innerHTML = materialIcon("close");
   scvVolumeToggleBtn?.addEventListener("click", () => {
     scvShell?.classList.toggle("volume-open");
   });
