@@ -3524,6 +3524,10 @@ textarea {
   color: rgba(255, 255, 255, 0.9);
   background: rgba(0, 0, 0, 0.36);
   letter-spacing: .02em;
+  max-width: 78%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   user-select: none;
 }

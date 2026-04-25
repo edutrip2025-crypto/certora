@@ -2255,6 +2255,21 @@ function stopStudentStreamHeartbeat() {
   sp.drmLicenseExpiresAt = 0;
 }
 
+function forceStopStudentStreamPlayback(reason = "") {
+  stopStudentStreamHeartbeat();
+  const sp = state.studentStreamPlayback;
+  sp.sessionId = 0;
+  sp.lessonVideoId = 0;
+  sp.positionSeconds = 0;
+  sp.durationSeconds = 0;
+  const frame = $("scvStreamFrame");
+  if (frame) frame.src = "about:blank";
+  if (state.studentViewerMode === "stream") {
+    setStudentViewerMode("legacy");
+  }
+  if (reason) toast(String(reason), "error");
+}
+
 function releaseWizardLocalVideoObjectUrl() {
   const prev = String(state.wizardLocalVideoObjectUrl || "");
   if (prev && prev.startsWith("blob:")) {
@@ -2409,7 +2424,7 @@ async function sendStudentStreamHeartbeat() {
   const flags = (usage.status_flags || []).join(", ");
   updateStudentStreamMeta(flags || "");
   if (out?.credits_required) {
-    stopStudentStreamHeartbeat();
+    forceStopStudentStreamPlayback();
     throw new Error("Maximum watch allowance reached. Buy credits to continue this course.");
   }
   const ratio = Number(sp.durationSeconds || 0) > 0
@@ -2450,8 +2465,7 @@ async function startStudentStreamPlayback(courseId, lessonVideo) {
   updateStudentStreamMeta();
   state.studentStreamPlayback.heartbeatId = setInterval(() => {
     sendStudentStreamHeartbeat().catch((err) => {
-      stopStudentStreamHeartbeat();
-      toast(err?.message || "Stream progress sync failed", "error");
+      forceStopStudentStreamPlayback(err?.message || "Stream access failed");
     });
   }, 20000);
   return true;
@@ -8831,9 +8845,7 @@ function bindEvents() {
     if (state.studentViewerMode === "stream") {
       const frame = $("scvStreamFrame");
       if (frame && !frame.classList.contains("hidden")) {
-        stopStudentStreamHeartbeat();
-        frame.src = "";
-        setStudentViewerMode("legacy");
+        forceStopStudentStreamPlayback();
       }
     }
     if (showHint) {
@@ -9533,9 +9545,11 @@ function bindEvents() {
     }
     node.classList.remove("hidden");
     const userLabel = String(state.auth?.currentUser?.email || state.auth?.currentUser?.uid || "student").trim();
-    const stamp = new Date().toLocaleTimeString();
-    node.textContent = `${userLabel} • ${stamp}`;
-    const pos = Math.floor((Date.now() / 12000) % 4);
+    const courseId = Number(state.studentActiveCourseId || 0);
+    const sessionId = Number(state.studentStreamPlayback?.sessionId || 0);
+    const stamp = new Date().toISOString().replace("T", " ").slice(0, 19);
+    node.textContent = `${userLabel} | C:${courseId || "-"} | S:${sessionId || "-"} | ${stamp}`;
+    const pos = Math.floor((Date.now() / 7000) % 4);
     node.classList.remove("pos-a", "pos-b", "pos-c", "pos-d");
     if (pos === 0) node.classList.add("pos-a");
     if (pos === 1) node.classList.add("pos-b");
@@ -9543,7 +9557,7 @@ function bindEvents() {
     if (pos === 3) node.classList.add("pos-d");
   };
   refreshScvWatermark();
-  setInterval(refreshScvWatermark, 12000);
+  setInterval(refreshScvWatermark, 7000);
   scvMiniCloseBtn?.addEventListener("click", () => {
     if (!scvShell) return;
     scvShell.classList.remove("minimized", "controls-hidden", "volume-open");

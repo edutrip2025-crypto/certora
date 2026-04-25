@@ -165,6 +165,20 @@ function nextDrmNonce() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function forceStopPlayback(reason = "") {
+  if (state.heartbeatId) {
+    clearInterval(state.heartbeatId);
+    state.heartbeatId = null;
+  }
+  state.activeSessionId = 0;
+  state.activeVideoId = 0;
+  state.lastPosition = 0;
+  state.drmLicenseToken = "";
+  state.drmLicenseExpiresAt = 0;
+  el.playerFrame.src = "about:blank";
+  if (reason) el.streamNotice.textContent = String(reason);
+}
+
 function startHeartbeat() {
   if (state.heartbeatId) {
     clearInterval(state.heartbeatId);
@@ -204,7 +218,7 @@ function startHeartbeat() {
       el.usageInfo.textContent = `Fair usage: ${ratioPct}% (${Math.round((Number(usage.consumed_seconds || 0) / 60))}m / ${Math.round((Number(usage.allowance_seconds || 0) / 60))}m)${flags ? ` | ${flags}` : ""}`;
       el.resumeInfo.textContent = `Resume: ${Math.max(0, Number(out.resume_position_seconds || state.lastPosition))}s`;
     } catch (err) {
-      el.streamNotice.textContent = `Progress save failed: ${err.message || err}`;
+      forceStopPlayback(`Playback blocked: ${err.message || err}`);
     }
   }, 10000);
 }
