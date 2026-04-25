@@ -8766,6 +8766,47 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
   });
+  const pauseProtectedPlayback = (showHint = false) => {
+    const now = Date.now();
+    const cw = $("cwVideoPreview");
+    const pcv = $("pcvVideo");
+    const scv = $("scvVideo");
+    [cw, pcv, scv].forEach((video) => {
+      try {
+        if (video && !video.paused) video.pause();
+      } catch {}
+    });
+    if (state.studentViewerMode === "stream") {
+      const frame = $("scvStreamFrame");
+      if (frame && !frame.classList.contains("hidden")) {
+        stopStudentStreamHeartbeat();
+        frame.src = "";
+        setStudentViewerMode("legacy");
+      }
+    }
+    if (showHint) {
+      const last = Number(state.studentSeekHintAt || 0);
+      if (now - last > 2500) {
+        state.studentSeekHintAt = now;
+        toast("Playback paused for content protection.", "error");
+      }
+    }
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseProtectedPlayback(true);
+  });
+  window.addEventListener("blur", () => {
+    pauseProtectedPlayback(true);
+  });
+  document.addEventListener("keydown", (event) => {
+    const key = String(event.key || "");
+    const lower = key.toLowerCase();
+    const suspiciousCaptureCombo = key === "PrintScreen"
+      || ((event.ctrlKey || event.metaKey) && event.shiftKey && (lower === "s" || lower === "r" || lower === "5"));
+    if (suspiciousCaptureCombo) {
+      pauseProtectedPlayback(true);
+    }
+  });
   el.liveRoomStageShell?.addEventListener("mousemove", () => {
     pokeLiveControlDock();
   });
@@ -9411,6 +9452,46 @@ function bindEvents() {
       tryExitPipForScv().catch(() => {});
     }
   });
+  const attachPlaybackHardening = (node) => {
+    if (!node) return;
+    node.addEventListener("contextmenu", (event) => event.preventDefault());
+    node.addEventListener("dragstart", (event) => event.preventDefault());
+  };
+  attachPlaybackHardening($("cwVideoShell"));
+  attachPlaybackHardening($("pcvVideoShell"));
+  attachPlaybackHardening(scvShell);
+  const ensureScvWatermark = () => {
+    if (!scvShell) return null;
+    let node = scvShell.querySelector(".scv-watermark");
+    if (!node) {
+      node = document.createElement("div");
+      node.className = "scv-watermark";
+      scvShell.appendChild(node);
+    }
+    return node;
+  };
+  const refreshScvWatermark = () => {
+    const node = ensureScvWatermark();
+    if (!node) return;
+    const courseOpen = !document.getElementById("student-view-course")?.classList.contains("hidden");
+    const minimized = Boolean(scvShell?.classList.contains("minimized"));
+    if (!courseOpen && !minimized) {
+      node.classList.add("hidden");
+      return;
+    }
+    node.classList.remove("hidden");
+    const userLabel = String(state.auth?.currentUser?.email || state.auth?.currentUser?.uid || "student").trim();
+    const stamp = new Date().toLocaleTimeString();
+    node.textContent = `${userLabel} • ${stamp}`;
+    const pos = Math.floor((Date.now() / 12000) % 4);
+    node.classList.remove("pos-a", "pos-b", "pos-c", "pos-d");
+    if (pos === 0) node.classList.add("pos-a");
+    if (pos === 1) node.classList.add("pos-b");
+    if (pos === 2) node.classList.add("pos-c");
+    if (pos === 3) node.classList.add("pos-d");
+  };
+  refreshScvWatermark();
+  setInterval(refreshScvWatermark, 12000);
   scvMiniCloseBtn?.addEventListener("click", () => {
     if (!scvShell) return;
     scvShell.classList.remove("minimized", "controls-hidden", "volume-open");

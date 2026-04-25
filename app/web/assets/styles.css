@@ -3513,6 +3513,24 @@ textarea {
   flex: 0 0 auto;
   font-size: .74rem;
 }
+#scvVideoShell .scv-watermark {
+  position: absolute;
+  z-index: 3;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  font-size: .68rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.36);
+  letter-spacing: .02em;
+  pointer-events: none;
+  user-select: none;
+}
+#scvVideoShell .scv-watermark.pos-a { top: 14%; left: 6%; }
+#scvVideoShell .scv-watermark.pos-b { top: 18%; right: 8%; }
+#scvVideoShell .scv-watermark.pos-c { bottom: 20%; left: 10%; }
+#scvVideoShell .scv-watermark.pos-d { bottom: 16%; right: 7%; }
 .student-course-player-card .student-course-curriculum-block {
   margin-top: 12px;
 }
