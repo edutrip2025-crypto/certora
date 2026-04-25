@@ -78,6 +78,9 @@ const state = {
     courseId: 0,
     lessonVideoId: 0,
     sessionId: 0,
+    clientApp: "web",
+    drmLicenseToken: "",
+    drmLicenseExpiresAt: 0,
     positionSeconds: 0,
     durationSeconds: 0,
     heartbeatId: null,
@@ -2242,11 +2245,14 @@ function updateStudentViewerTimeMeta() {
 }
 
 function stopStudentStreamHeartbeat() {
-  const hb = state.studentStreamPlayback.heartbeatId;
+  const sp = state.studentStreamPlayback;
+  const hb = sp.heartbeatId;
   if (hb) {
     clearInterval(hb);
-    state.studentStreamPlayback.heartbeatId = null;
+    sp.heartbeatId = null;
   }
+  sp.drmLicenseToken = "";
+  sp.drmLicenseExpiresAt = 0;
 }
 
 function releaseWizardLocalVideoObjectUrl() {
@@ -2339,23 +2345,66 @@ function updateStudentStreamMeta(extra = "") {
   node.textContent = extra ? `${base} | ${extra}` : base;
 }
 
+async function issueStudentStreamLicense() {
+  const sp = state.studentStreamPlayback;
+  if (!sp.sessionId || !sp.lessonVideoId) return "";
+  const out = await api("POST", "/stream/license/issue", {
+    session_id: Number(sp.sessionId),
+    lesson_video_id: Number(sp.lessonVideoId),
+    client_app: String(sp.clientApp || "web"),
+  });
+  const ttl = Math.max(15, Number(out?.expires_in_seconds || 0));
+  sp.drmLicenseToken = String(out?.license_token || "");
+  sp.drmLicenseExpiresAt = Date.now() + (ttl * 1000);
+  return sp.drmLicenseToken;
+}
+
+async function ensureStudentStreamLicense() {
+  const sp = state.studentStreamPlayback;
+  const now = Date.now();
+  const remainingMs = Number(sp.drmLicenseExpiresAt || 0) - now;
+  if (sp.drmLicenseToken && remainingMs > 15000) return sp.drmLicenseToken;
+  return issueStudentStreamLicense();
+}
+
+function nextStudentDrmNonce() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 async function sendStudentStreamHeartbeat() {
   const sp = state.studentStreamPlayback;
   if (!sp.sessionId || !sp.lessonVideoId || !sp.courseId) return;
   if (document.visibilityState === "hidden") return;
   if (state.studentViewerMode !== "stream") return;
   if (Number(state.studentActiveCourseId || 0) !== Number(sp.courseId)) return;
+  await ensureStudentStreamLicense();
 
   const delta = 20; // Lower heartbeat frequency to reduce API calls/cost
   sp.positionSeconds = Math.min(Math.max(0, Number(sp.durationSeconds || 0)), Number(sp.positionSeconds || 0) + delta);
-  const out = await api("POST", "/stream/watch/heartbeat", {
+  let out = null;
+  const payload = {
     session_id: Number(sp.sessionId),
     lesson_video_id: Number(sp.lessonVideoId),
     watched_seconds_delta: delta,
     position_seconds: Math.max(0, Math.floor(sp.positionSeconds || 0)),
     player_state: "playing",
+    drm_license_token: String(sp.drmLicenseToken || ""),
+    drm_heartbeat_nonce: nextStudentDrmNonce(),
     ended: false,
-  });
+  };
+  try {
+    out = await api("POST", "/stream/watch/heartbeat", payload);
+  } catch (err) {
+    const parsed = parseApiErrorMessage(err);
+    if (Number(parsed.status || 0) === 401) {
+      await issueStudentStreamLicense();
+      payload.drm_license_token = String(sp.drmLicenseToken || "");
+      payload.drm_heartbeat_nonce = nextStudentDrmNonce();
+      out = await api("POST", "/stream/watch/heartbeat", payload);
+    } else {
+      throw err;
+    }
+  }
   const usage = out?.fair_usage || {};
   const flags = (usage.status_flags || []).join(", ");
   updateStudentStreamMeta(flags || "");
@@ -2388,6 +2437,9 @@ async function startStudentStreamPlayback(courseId, lessonVideo) {
     courseId: cid,
     lessonVideoId,
     sessionId: Number(tok.session_id || 0),
+    clientApp: "web",
+    drmLicenseToken: String(tok.drm_license_token || ""),
+    drmLicenseExpiresAt: Date.now() + (Math.max(15, Number(tok.drm_license_expires_in_seconds || 0)) * 1000),
     positionSeconds: Math.max(0, Number(tok.resume_position_seconds || 0)),
     durationSeconds: Math.max(0, Number(lessonVideo?.duration_seconds || 0)),
     heartbeatId: null,

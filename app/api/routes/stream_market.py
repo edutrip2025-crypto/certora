@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.entities import (
     AuditLog,
@@ -27,6 +28,8 @@ from app.schemas import (
     StreamCourseCreate,
     StreamFairUsageOverrideRequest,
     StreamLessonCreate,
+    StreamLicenseIssueRequest,
+    StreamLicenseIssueResponse,
     StreamLiveSessionCreate,
     StreamPlaybackTokenRequest,
     StreamPricingRecommendationRequest,
@@ -46,8 +49,10 @@ from app.services.bunny_stream import (
 )
 from app.services.fair_usage import evaluate_fair_usage, log_fair_usage_transition
 from app.services.pricing_recommendation import analytics_total_uploaded_minutes, pricing_recommendation_for_course
+from app.services.stream_drm import StreamDrmError, issue_stream_license, verify_stream_license
 
 router = APIRouter(prefix="/stream", tags=["stream-market"])
+_drm_nonce_cache: dict[str, datetime] = {}
 
 
 def _provider_profile_or_403(db: Session, user_id: int) -> ProviderProfile:
@@ -80,6 +85,26 @@ def _must_have_course_purchase(db: Session, *, user_id: int, course_id: int) -> 
     if not purchase:
         raise HTTPException(status_code=403, detail="Course not purchased")
     return purchase
+
+
+def _drm_nonce_key(*, session_id: int, nonce: str) -> str:
+    return f"{int(session_id)}:{str(nonce).strip()}"
+
+
+def _assert_fresh_drm_nonce(*, session_id: int, nonce: str) -> None:
+    now = datetime.now(timezone.utc)
+    ttl_seconds = max(30, int(get_settings().stream_drm_nonce_ttl_seconds or 240))
+    cutoff = now - timedelta(seconds=ttl_seconds)
+
+    expired_keys = [k for k, v in _drm_nonce_cache.items() if v < cutoff]
+    for key in expired_keys:
+        _drm_nonce_cache.pop(key, None)
+
+    key = _drm_nonce_key(session_id=session_id, nonce=nonce)
+    last_seen = _drm_nonce_cache.get(key)
+    if last_seen and last_seen >= cutoff:
+        raise HTTPException(status_code=409, detail="Duplicate stream heartbeat detected")
+    _drm_nonce_cache[key] = now
 
 
 @router.post("/courses")
@@ -500,6 +525,13 @@ def issue_stream_playback_token(
     db.add(session)
     db.commit()
     db.refresh(session)
+    license_token, license_ttl = issue_stream_license(
+        user_id=current_user.id,
+        course_id=video.course_id,
+        lesson_video_id=video.id,
+        session_id=session.id,
+        client_app=str(payload.client_app or "web"),
+    )
 
     return {
         "session_id": session.id,
@@ -507,9 +539,35 @@ def issue_stream_playback_token(
         "video_uid": video.cloudflare_video_uid,
         "playback": urls,
         "expires_in_seconds": 900,
+        "drm_license_token": license_token,
+        "drm_license_expires_in_seconds": int(license_ttl),
         "resume_position_seconds": resume_position,
         "fair_usage": usage_before,
     }
+
+
+@router.post("/license/issue", response_model=StreamLicenseIssueResponse)
+def issue_stream_license_token(
+    payload: StreamLicenseIssueRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT, UserRole.ADMIN, UserRole.PROVIDER)),
+):
+    sess = db.get(VideoWatchSession, int(payload.session_id))
+    if not sess or int(sess.user_id) != int(current_user.id):
+        raise HTTPException(status_code=404, detail="Watch session not found")
+    if int(sess.lesson_video_id) != int(payload.lesson_video_id):
+        raise HTTPException(status_code=400, detail="Session lesson video mismatch")
+    token, ttl = issue_stream_license(
+        user_id=current_user.id,
+        course_id=sess.course_id,
+        lesson_video_id=sess.lesson_video_id,
+        session_id=sess.id,
+        client_app=str(payload.client_app or "web"),
+    )
+    return StreamLicenseIssueResponse(
+        license_token=token,
+        expires_in_seconds=int(ttl),
+    )
 
 
 @router.post("/watch/heartbeat")
@@ -522,6 +580,26 @@ def stream_watch_heartbeat(
     sess = db.get(VideoWatchSession, int(payload.session_id))
     if not sess or int(sess.user_id) != int(current_user.id):
         raise HTTPException(status_code=404, detail="Watch session not found")
+    if int(payload.lesson_video_id) != int(sess.lesson_video_id):
+        raise HTTPException(status_code=400, detail="Session lesson video mismatch")
+
+    if bool(get_settings().stream_drm_enforce_heartbeat):
+        if not str(payload.drm_license_token or "").strip():
+            raise HTTPException(status_code=401, detail="DRM license token required")
+        if not str(payload.drm_heartbeat_nonce or "").strip():
+            raise HTTPException(status_code=400, detail="DRM heartbeat nonce required")
+        try:
+            verify_stream_license(
+                token=str(payload.drm_license_token),
+                user_id=current_user.id,
+                course_id=sess.course_id,
+                lesson_video_id=sess.lesson_video_id,
+                session_id=sess.id,
+                client_app=str(sess.client_app or "web"),
+            )
+            _assert_fresh_drm_nonce(session_id=sess.id, nonce=str(payload.drm_heartbeat_nonce))
+        except StreamDrmError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     before_usage = evaluate_fair_usage(db, user_id=current_user.id, course_id=sess.course_id)
     old_level = int(before_usage.get("warning_level") or 0)
@@ -536,7 +614,7 @@ def stream_watch_heartbeat(
 
     progress = db.scalar(
         select(VideoWatchProgress).where(
-            and_(VideoWatchProgress.user_id == current_user.id, VideoWatchProgress.lesson_video_id == int(payload.lesson_video_id)),
+            and_(VideoWatchProgress.user_id == current_user.id, VideoWatchProgress.lesson_video_id == int(sess.lesson_video_id)),
         ),
     )
     if not progress:
@@ -555,6 +633,8 @@ def stream_watch_heartbeat(
         progress.resume_position_seconds = max(int(progress.resume_position_seconds or 0), int(payload.position_seconds or 0))
 
     video = db.get(LessonVideo, int(payload.lesson_video_id))
+    if not video:
+        video = db.get(LessonVideo, int(sess.lesson_video_id))
     duration = int(video.duration_seconds or 0) if video else 0
     if duration > 0:
         progress.completion_ratio = min(1.0, float(progress.resume_position_seconds) / float(duration))

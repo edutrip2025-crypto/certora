@@ -556,7 +556,20 @@ class StreamWatchHeartbeatRequest(BaseModel):
     watched_seconds_delta: int = Field(ge=0, le=120)
     position_seconds: int = Field(ge=0)
     player_state: str | None = Field(default=None, max_length=40)
+    drm_license_token: str | None = Field(default=None, min_length=16, max_length=4096)
+    drm_heartbeat_nonce: str | None = Field(default=None, min_length=8, max_length=120)
     ended: bool = False
+
+
+class StreamLicenseIssueRequest(BaseModel):
+    session_id: int
+    lesson_video_id: int
+    client_app: str = Field(default="web", max_length=30)
+
+
+class StreamLicenseIssueResponse(BaseModel):
+    license_token: str
+    expires_in_seconds: int
 
 
 class StreamPricingRecommendationRequest(BaseModel):
