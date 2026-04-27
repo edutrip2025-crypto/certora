@@ -13,6 +13,7 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
+  updateEmail,
   updatePassword,
   updateProfile,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -1717,25 +1718,86 @@ function ensureAuthReady() {
 
 function setSessionBadge(text) {
   state.sessionBadgeText = String(text || "").trim();
-  const uid = String(state.sessionBadgeUid || "").trim();
-  const combined = uid ? `${state.sessionBadgeText} | UID: ${uid}` : state.sessionBadgeText;
   el.sessionBadges.forEach((b) => {
-    b.textContent = combined;
+    b.textContent = state.sessionBadgeText;
+    b.title = state.sessionBadgeText;
   });
 }
 
 function setUserUidBadge(publicUid) {
   const uid = String(publicUid || "").trim();
   state.sessionBadgeUid = uid;
-  const base = String(state.sessionBadgeText || "").trim();
-  const combined = uid ? `${base} | UID: ${uid}` : base;
-  el.sessionBadges.forEach((b) => {
-    b.textContent = combined;
-  });
   el.userUidBadges.forEach((b) => {
-    b.classList.add("hidden");
+    b.classList.toggle("hidden", !uid);
     b.textContent = uid ? `UID: ${uid}` : "UID: -";
+    b.title = uid ? `UID: ${uid}` : "";
   });
+}
+
+function fillProfileForm(prefix, context) {
+  const nameInput = $(`${prefix}ProfileName`);
+  const uidInput = $(`${prefix}ProfileUid`);
+  const phoneInput = $(`${prefix}ProfilePhone`);
+  const roleInput = $(`${prefix}ProfileRole`);
+  if (nameInput) nameInput.value = String(context?.full_name || "");
+  if (uidInput) uidInput.value = String(context?.public_uid || "");
+  if (phoneInput) phoneInput.value = String(context?.phone_number || "-");
+  if (roleInput) roleInput.value = String(context?.role || "");
+  const emailInput = $(`${prefix}ProfileEmail`);
+  if (emailInput) emailInput.value = String(context?.email || "");
+  const status = $(`${prefix}ProfileStatus`);
+  if (status) status.textContent = "";
+}
+
+function openCurrentUserProfilePage() {
+  if (!state.context?.role) return;
+  el.settingsMenus.forEach((m) => m.classList.add("hidden"));
+  if (state.context.role === "provider") {
+    fillProfileForm("provider", state.context);
+    activateProviderSubView("profile");
+    return;
+  }
+  if (state.context.role === "student") {
+    fillProfileForm("student", state.context);
+    activateStudentSubView("profile");
+    return;
+  }
+  if (state.context.role === "admin") {
+    fillProfileForm("admin", state.context);
+    activateAdminSubView("profile");
+  }
+}
+
+async function saveProfileEmail(prefix) {
+  const emailInput = $(`${prefix}ProfileEmail`);
+  const status = $(`${prefix}ProfileStatus`);
+  const nextEmail = String(emailInput?.value || "").trim().toLowerCase();
+  if (!nextEmail) {
+    if (status) status.textContent = "Email is required.";
+    return;
+  }
+  if (!state.auth?.currentUser) {
+    if (status) status.textContent = "Login required.";
+    return;
+  }
+  if (status) status.textContent = "Updating email...";
+  try {
+    await updateEmail(state.auth.currentUser, nextEmail);
+    await state.auth.currentUser.getIdToken(true);
+    await loadSessionContext();
+    fillProfileForm(prefix, state.context);
+    if (status) status.textContent = "Email updated.";
+    toast("Email updated");
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (msg.includes("requires-recent-login")) {
+      if (status) status.textContent = "Please login again and retry email change.";
+      toast("Please login again and retry email change.", "error");
+      return;
+    }
+    if (status) status.textContent = "Failed to update email.";
+    toast(formatAuthError(err, "Failed to update email"), "error");
+  }
 }
 
 function applyWorkspaceCollapse(collapsed) {
@@ -9247,6 +9309,11 @@ function bindEvents() {
       if (willOpen) menu.classList.remove("hidden");
     });
   });
+  el.sessionBadges.forEach((badge) => {
+    badge.addEventListener("click", () => {
+      openCurrentUserProfilePage();
+    });
+  });
   el.collapseWorkspaceBtns.forEach((btn) => {
     btn.addEventListener("click", () => toggleWorkspaceCollapse());
   });
@@ -9264,6 +9331,18 @@ function bindEvents() {
     btn.addEventListener("click", () => {
       runAdminSetUserPasswordFlow().catch(() => {});
     });
+  });
+  $("providerProfileBackBtn")?.addEventListener("click", () => activateProviderSubView("home"));
+  $("studentProfileBackBtn")?.addEventListener("click", () => activateStudentSubView("home"));
+  $("adminProfileBackBtn")?.addEventListener("click", () => activateAdminSubView("home"));
+  $("providerProfileSaveEmailBtn")?.addEventListener("click", () => {
+    saveProfileEmail("provider").catch(() => {});
+  });
+  $("studentProfileSaveEmailBtn")?.addEventListener("click", () => {
+    saveProfileEmail("student").catch(() => {});
+  });
+  $("adminProfileSaveEmailBtn")?.addEventListener("click", () => {
+    saveProfileEmail("admin").catch(() => {});
   });
   el.workspaceExpandFab?.addEventListener("click", () => {
     if (!document.body.classList.contains("workspace-collapsed")) return;

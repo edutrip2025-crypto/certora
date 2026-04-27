@@ -132,8 +132,6 @@
             </div>
             <div class="settings-actions">
               <button class="btn small js-change-password-btn" type="button">Change Password</button>
-              <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
-              <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
               <button class="btn ghost js-logout-btn" disabled>Logout</button>
             </div>
           </div>
@@ -148,7 +146,7 @@
 
       <section class="panel content hidden" id="provider-view-courses">
         <h2>My Courses</h2>
-        <div class="row between provider-courses-toolbar" id="providerCoursesHeader">
+        <div class="row provider-courses-toolbar" id="providerCoursesHeader">
           <div class="search-with-icon">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
             <input id="providerCoursesSearch" class="search" type="text" placeholder="Search your courses" />
@@ -393,7 +391,7 @@
       <section class="panel content hidden" id="provider-view-assessments">
         <h2>Assessments</h2>
         <p class="muted">Build MCQ assessments with pooled questions and random delivery per student attempt.</p>
-        <div class="row between">
+        <div class="row">
           <h3>Assessment List</h3>
           <div class="row wrap gap-sm provider-course-actions">
             <div class="search-with-icon">
@@ -601,6 +599,38 @@
         </div>
         <div id="providerCertsList" class="list"></div>
       </section>
+
+      <section class="panel content hidden" id="provider-view-profile">
+        <div class="row between">
+          <h2>Profile</h2>
+          <button id="providerProfileBackBtn" class="btn small">Back</button>
+        </div>
+        <div class="item" style="max-width:760px;">
+          <div class="row wrap gap-sm">
+            <label style="flex:1 1 280px;">Full Name
+              <input id="providerProfileName" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Public UID
+              <input id="providerProfileUid" class="search" type="text" readonly />
+            </label>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <label style="flex:1 1 280px;">Phone Number
+              <input id="providerProfilePhone" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Role
+              <input id="providerProfileRole" class="search" type="text" readonly />
+            </label>
+          </div>
+          <label style="margin-top:10px;">Email
+            <input id="providerProfileEmail" class="search" type="email" placeholder="Enter updated email" />
+          </label>
+          <div class="row" style="margin-top:10px;">
+            <button id="providerProfileSaveEmailBtn" class="btn primary">Update Email</button>
+            <span id="providerProfileStatus" class="meta"></span>
+          </div>
+        </div>
+      </section>
     </section>
 
     <section id="assessmentPreviewScreen" class="assessment-screen assessment-preview hidden">
@@ -737,8 +767,6 @@
             </div>
             <div class="settings-actions">
               <button class="btn small js-change-password-btn" type="button">Change Password</button>
-              <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
-              <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
               <button class="btn ghost js-logout-btn" disabled>Logout</button>
             </div>
           </div>
@@ -771,7 +799,7 @@
 
       <section class="panel content hidden" id="student-view-available">
         <h2>Available Courses</h2>
-        <div class="row between provider-courses-toolbar course-grid-controls">
+        <div class="row provider-courses-toolbar course-grid-controls">
           <div class="search-with-icon">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
             <input id="studentAvailableSearch" class="search" type="text" placeholder="Search by course or provider" />
@@ -802,7 +830,7 @@
 
       <section class="panel content hidden" id="student-view-enrolled">
         <h2>My Enrolled Courses</h2>
-        <div class="row between provider-courses-toolbar course-grid-controls">
+        <div class="row provider-courses-toolbar course-grid-controls">
           <div class="search-with-icon">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
             <input id="studentEnrolledSearch" class="search" type="text" placeholder="Search by course or provider" />
@@ -988,6 +1016,38 @@
           </div>
         </div>
         <div id="studentCertificatesTabList" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="student-view-profile">
+        <div class="row between">
+          <h2>Profile</h2>
+          <button id="studentProfileBackBtn" class="btn small">Back</button>
+        </div>
+        <div class="item" style="max-width:760px;">
+          <div class="row wrap gap-sm">
+            <label style="flex:1 1 280px;">Full Name
+              <input id="studentProfileName" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Public UID
+              <input id="studentProfileUid" class="search" type="text" readonly />
+            </label>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <label style="flex:1 1 280px;">Phone Number
+              <input id="studentProfilePhone" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Role
+              <input id="studentProfileRole" class="search" type="text" readonly />
+            </label>
+          </div>
+          <label style="margin-top:10px;">Email
+            <input id="studentProfileEmail" class="search" type="email" placeholder="Enter updated email" />
+          </label>
+          <div class="row" style="margin-top:10px;">
+            <button id="studentProfileSaveEmailBtn" class="btn primary">Update Email</button>
+            <span id="studentProfileStatus" class="meta"></span>
+          </div>
+        </div>
       </section>
     </section>
 
@@ -1286,8 +1346,6 @@
             </div>
             <div class="settings-actions">
               <button class="btn small js-change-password-btn" type="button">Change Password</button>
-              <button class="btn small js-admin-recovery-btn" type="button">Admin Recovery</button>
-              <button class="btn small js-admin-password-btn" type="button">Set User Password</button>
               <button class="btn small js-collapse-workspace-btn">Collapse Workspace</button>
               <button class="btn ghost js-logout-btn" disabled>Logout</button>
             </div>
@@ -1376,6 +1434,38 @@
       <section class="panel content hidden" id="view-billing">
         <h2>Billing & Payments</h2>
         <div id="billingPanel" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="view-profile">
+        <div class="row between">
+          <h2>Profile</h2>
+          <button id="adminProfileBackBtn" class="btn small">Back</button>
+        </div>
+        <div class="item" style="max-width:760px;">
+          <div class="row wrap gap-sm">
+            <label style="flex:1 1 280px;">Full Name
+              <input id="adminProfileName" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Public UID
+              <input id="adminProfileUid" class="search" type="text" readonly />
+            </label>
+          </div>
+          <div class="row wrap gap-sm" style="margin-top:8px;">
+            <label style="flex:1 1 280px;">Phone Number
+              <input id="adminProfilePhone" class="search" type="text" readonly />
+            </label>
+            <label style="flex:1 1 280px;">Role
+              <input id="adminProfileRole" class="search" type="text" readonly />
+            </label>
+          </div>
+          <label style="margin-top:10px;">Email
+            <input id="adminProfileEmail" class="search" type="email" placeholder="Enter updated email" />
+          </label>
+          <div class="row" style="margin-top:10px;">
+            <button id="adminProfileSaveEmailBtn" class="btn primary">Update Email</button>
+            <span id="adminProfileStatus" class="meta"></span>
+          </div>
+        </div>
       </section>
     </section>
 

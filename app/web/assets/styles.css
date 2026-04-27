@@ -1080,6 +1080,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   min-width: 220px;
 }
 .provider-courses-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
@@ -1112,6 +1115,9 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 }
 .provider-course-actions {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .toolbar-icon-btn {
   width: 36px;
@@ -2781,6 +2787,9 @@ input:focus, select:focus, textarea:focus {
 
 .settings-menu {
   min-width: 270px;
+  max-width: min(320px, calc(100vw - 20px));
+  max-height: min(64vh, 420px);
+  overflow: auto;
   padding: 12px 12px 10px;
   border-radius: 14px;
   border: 1px solid #c8d7ef;
@@ -2801,8 +2810,9 @@ input:focus, select:focus, textarea:focus {
 }
 .settings-session {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   padding: 7px 10px;
   border: 1px solid #c6d8f5;
   border-radius: 10px;
@@ -2812,14 +2822,20 @@ input:focus, select:focus, textarea:focus {
   border: none;
   background: transparent;
   padding: 0;
-  max-width: none;
-  overflow: visible;
-  text-overflow: clip;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: .8rem;
   color: #1e293b;
 }
+.settings-session .js-session-badge {
+  cursor: pointer;
+}
 .settings-session .js-user-uid-badge {
-  display: none !important;
+  display: inline-block !important;
+  opacity: 0.82;
 }
 .settings-actions {
   display: grid;
