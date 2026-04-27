@@ -14,17 +14,23 @@ def extract_last_digit_stem(filename: str) -> int | None:
     return int(m.group(1))
 
 
-def auto_label_row(modality: str, filename: str) -> int:
+def auto_label_row(modality: str, filename: str, existing_label: str) -> int:
     # OEP heuristic:
     # - video clip ending with "...1" => normal (0)
     # - video clip ending with "...2" => cheating (1)
     # - audio rows default to 0 for now unless manually overridden later.
+    if str(existing_label).strip() in {"0", "1"}:
+        base_label = int(existing_label)
+    else:
+        base_label = 0
     if modality != "video":
-        return 0
+        return base_label
     d = extract_last_digit_stem(filename)
     if d == 2:
         return 1
-    return 0
+    if d == 1:
+        return 0
+    return base_label
 
 
 def main() -> None:
@@ -46,7 +52,8 @@ def main() -> None:
         for r in reader:
             modality = str(r.get("modality", "")).strip().lower()
             filename = str(r.get("filename", "")).strip()
-            r["label"] = str(auto_label_row(modality, filename))
+            existing_label = str(r.get("label", "")).strip()
+            r["label"] = str(auto_label_row(modality, filename, existing_label))
             rows.append(r)
 
     out = Path(args.output).resolve()

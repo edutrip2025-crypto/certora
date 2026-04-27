@@ -145,6 +145,12 @@ def _download_hf(dataset_id: str, out_dir: Path) -> None:
     print(f"hf dataset downloaded: {dataset_id} -> {out_dir}")
 
 
+def _dir_has_files(path: Path) -> bool:
+    if not path.exists() or not path.is_dir():
+        return False
+    return any(path.rglob("*"))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bulk downloader for proctoring audio datasets.")
     parser.add_argument("--root", default="data/proctoring/audio_pack", help="Root download directory")
@@ -211,6 +217,10 @@ def main() -> None:
         for name, ds in KAGGLE_DATASETS.items():
             out = kaggle_dir / name
             out.mkdir(parents=True, exist_ok=True)
+            if not args.force and _dir_has_files(out):
+                print(f"skip existing kaggle dataset dir: {out}")
+                downloaded["kaggle"].append({"name": name, "dataset": ds, "dir": str(out), "skipped_existing": True})
+                continue
             cmd = [*kaggle_cmd, "datasets", "download", "-d", ds, "-p", str(out)]
             if args.kaggle_unzip:
                 cmd.append("--unzip")

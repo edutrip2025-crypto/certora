@@ -11,9 +11,14 @@ import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
+try:
+    from tqdm import trange
+except Exception:  # pragma: no cover
+    trange = None
 
 try:
     from xgboost import XGBClassifier  # type: ignore
@@ -67,13 +72,19 @@ def train_logistic(X_train: np.ndarray, y_train: np.ndarray) -> Any:
     return model
 
 
-def train_xgb(X_train: np.ndarray, y_train: np.ndarray) -> Any | None:
+def train_xgb(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    n_estimators: int,
+    max_depth: int,
+    learning_rate: float,
+) -> Any | None:
     if XGBClassifier is None:
         return None
     model = XGBClassifier(
-        n_estimators=300,
-        max_depth=4,
-        learning_rate=0.05,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        learning_rate=learning_rate,
         subsample=0.9,
         colsample_bytree=0.9,
         reg_lambda=1.0,
@@ -104,7 +115,14 @@ if nn is not None:
             return self.net(x)
 
 
-def train_cnn(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> dict[str, Any] | None:
+def train_cnn(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    epochs: int,
+    lr: float,
+) -> dict[str, Any] | None:
     if torch is None or nn is None:
         return None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -114,11 +132,12 @@ def train_cnn(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val
     n_features = X_train.shape[1]
 
     model = TinyCNN(n_features).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.BCEWithLogitsLoss()
 
     model.train()
-    for _ in range(40):
+    loop = trange(epochs, desc="cnn-train", leave=False) if trange is not None else range(epochs)
+    for _ in loop:
         opt.zero_grad()
         logits = model(xtr)
         loss = loss_fn(logits, ytr)
@@ -136,6 +155,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train supervised proctor models and export conservative policy.")
     parser.add_argument("--features", required=True, help="Feature CSV with label column")
     parser.add_argument("--out-dir", required=True, help="Output directory")
+    parser.add_argument("--test-size", type=float, default=0.2, help="Holdout split ratio")
+    parser.add_argument("--random-state", type=int, default=42, help="Random seed")
+    parser.add_argument("--xgb-estimators", type=int, default=300, help="XGBoost number of trees")
+    parser.add_argument("--xgb-max-depth", type=int, default=4, help="XGBoost max tree depth")
+    parser.add_argument("--xgb-learning-rate", type=float, default=0.05, help="XGBoost learning rate")
+    parser.add_argument("--cnn-epochs", type=int, default=40, help="CNN training epochs")
+    parser.add_argument("--cnn-lr", type=float, default=1e-3, help="CNN learning rate")
+    parser.add_argument(
+        "--disable-group-split",
+        action="store_true",
+        help="Disable group-aware split (not recommended when using video window augmentation).",
+    )
     args = parser.parse_args()
 
     df = pd.read_csv(args.features)
@@ -150,13 +181,35 @@ def main() -> None:
         raise RuntimeError("Need both classes (0 and 1) for supervised training.")
 
     X = df[feature_cols].to_numpy()
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=42,
-        stratify=y,
-    )
+    split_meta: dict[str, Any] = {"group_split_used": False}
+    if (not args.disable_group_split) and "path" in df.columns:
+        base_path = (
+            df["path"]
+            .astype(str)
+            .str.replace(r"#w\d+$", "", regex=True)
+            .to_numpy()
+        )
+        n_splits = max(2, min(5, int(round(1.0 / max(args.test_size, 0.05)))))
+        sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=args.random_state)
+        train_idx, test_idx = next(sgkf.split(X, y, groups=base_path))
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        split_meta = {
+            "group_split_used": True,
+            "group_column": "path(base video id)",
+            "groups_train": int(len(np.unique(base_path[train_idx]))),
+            "groups_test": int(len(np.unique(base_path[test_idx]))),
+            "rows_train": int(len(train_idx)),
+            "rows_test": int(len(test_idx)),
+        }
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=args.test_size,
+            random_state=args.random_state,
+            stratify=y,
+        )
 
     pre = Pipeline(
         [
@@ -180,7 +233,13 @@ def main() -> None:
 
     # XGBoost (optional)
     if XGBClassifier is not None:
-        xgb = train_xgb(X_train_t, y_train)
+        xgb = train_xgb(
+            X_train_t,
+            y_train,
+            n_estimators=max(50, args.xgb_estimators),
+            max_depth=max(2, args.xgb_max_depth),
+            learning_rate=max(0.005, args.xgb_learning_rate),
+        )
         if xgb is not None:
             xgb_prob = xgb.predict_proba(X_test_t)[:, 1]
             xgb_auc = roc_auc_score(y_test, xgb_prob)
@@ -192,7 +251,14 @@ def main() -> None:
 
     # CNN (optional torch)
     if torch is not None and nn is not None:
-        cnn_out = train_cnn(X_train_t, y_train, X_test_t, y_test)
+        cnn_out = train_cnn(
+            X_train_t,
+            y_train,
+            X_test_t,
+            y_test,
+            epochs=max(10, args.cnn_epochs),
+            lr=max(1e-5, args.cnn_lr),
+        )
         if cnn_out is not None:
             cnn_prob = cnn_out["prob"]
             cnn_auc = roc_auc_score(y_test, cnn_prob)
@@ -247,6 +313,7 @@ def main() -> None:
                 "rows_total": int(len(df)),
                 "rows_train": int(len(X_train)),
                 "rows_test": int(len(X_test)),
+                "split": split_meta,
                 "class_distribution": {str(int(k)): int((y == k).sum()) for k in np.unique(y)},
                 "reports": reports,
                 "chosen_model": best_name,
