@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     pricing_stream_delivery_cost_per_minute: float = 0.03
     pricing_platform_fee_pct: float = 0.1
     pricing_creator_margin_floor_pct: float = 0.35
+    course_pricing_default_currency: str = "INR"
+    course_pricing_gst_rate: float = 0.18
+    course_pricing_platform_commission_rate: float = 0.25
+    course_pricing_one_time_hosting_fee: float = 2500
     cors_allow_origins: str = ""
     trusted_hosts: str = ""
     enable_gzip: bool = True

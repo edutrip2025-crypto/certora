@@ -166,6 +166,13 @@ const state = {
   },
 };
 
+const COURSE_PRICING = {
+  currency: "INR",
+  gstRate: 0.18,
+  platformCommissionRate: 0.25,
+  hostingFee: 2500,
+};
+
 window.__certoraDebug = {
   getState() {
     return state;
@@ -1298,6 +1305,7 @@ const el = {
   cwStepDetails: $("cwStepDetails"),
   cwStepVideo: $("cwStepVideo"),
   cwStepTopics: $("cwStepTopics"),
+  cwStepPricing: $("cwStepPricing"),
   cwTopicsDraftList: $("cwTopicsDraftList"),
   cwTimelineMarkers: $("cwTimelineMarkers"),
   cwMarkerTooltip: $("cwMarkerTooltip"),
@@ -2975,10 +2983,49 @@ function setCourseWizardStep(step) {
   el.cwStepDetails?.classList.toggle("hidden", step !== "details");
   el.cwStepVideo?.classList.toggle("hidden", step !== "video");
   el.cwStepTopics?.classList.toggle("hidden", step !== "topics");
+  el.cwStepPricing?.classList.toggle("hidden", step !== "pricing");
   if (step === "topics") {
     ensureCourseVideoPreview();
     renderDraftTopics();
   }
+  if (step === "pricing") {
+    refreshWizardPricing();
+  }
+}
+
+function coursePricingBreakdownFromBase(baseInput) {
+  const base = Math.max(0, Number(baseInput || 0));
+  const gstAmount = base * COURSE_PRICING.gstRate;
+  const commissionAmount = base * COURSE_PRICING.platformCommissionRate;
+  const finalAmount = base + gstAmount + commissionAmount + COURSE_PRICING.hostingFee;
+  return {
+    base: Number(base.toFixed(2)),
+    gstAmount: Number(gstAmount.toFixed(2)),
+    commissionAmount: Number(commissionAmount.toFixed(2)),
+    hostingFee: Number(COURSE_PRICING.hostingFee.toFixed(2)),
+    finalAmount: Number(finalAmount.toFixed(2)),
+  };
+}
+
+function formatInrAmount(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "₹0.00";
+  return `₹${numeric.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function refreshWizardPricing() {
+  const baseInput = $("cwBasePriceAmount");
+  const breakdown = coursePricingBreakdownFromBase(baseInput?.value || 0);
+  const baseNode = $("cwPricingBase");
+  const gstNode = $("cwPricingGst");
+  const commissionNode = $("cwPricingCommission");
+  const hostingNode = $("cwPricingHosting");
+  const finalNode = $("cwPricingFinal");
+  if (baseNode) baseNode.textContent = formatInrAmount(breakdown.base);
+  if (gstNode) gstNode.textContent = formatInrAmount(breakdown.gstAmount);
+  if (commissionNode) commissionNode.textContent = formatInrAmount(breakdown.commissionAmount);
+  if (hostingNode) hostingNode.textContent = formatInrAmount(breakdown.hostingFee);
+  if (finalNode) finalNode.textContent = formatInrAmount(breakdown.finalAmount);
 }
 
 function renderDraftTopics() {
@@ -3036,7 +3083,7 @@ function resetCourseWizard() {
   state.wizardVideoUploadPromise = null;
   state.wizardUploadAbortController = null;
   releaseWizardLocalVideoObjectUrl();
-  ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwVideoUrl", "cwTopicTitle", "cwTopicTime"].forEach((id) => {
+  ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwVideoUrl", "cwTopicTitle", "cwTopicTime", "cwBasePriceAmount"].forEach((id) => {
     const node = $(id);
     if (node) node.value = "";
   });
@@ -3050,6 +3097,7 @@ function resetCourseWizard() {
   hideMarkerTooltip(el.cwMarkerTooltip);
   const timeMeta = $("cwVideoTimeMeta");
   if (timeMeta) timeMeta.textContent = "Current: 00:00";
+  refreshWizardPricing();
   setCourseWizardStep("details");
   const progress = $("cwUploadProgress");
   if (progress) progress.textContent = "";
@@ -3122,6 +3170,7 @@ function captureFrameFromVideoElement(videoEl) {
 function wizardPayload() {
   const rawVideoUrl = $("cwVideoUrl")?.value?.trim() || "";
   const safeVideoUrl = rawVideoUrl.startsWith("blob:") ? "" : rawVideoUrl;
+  const priceBreakdown = coursePricingBreakdownFromBase($("cwBasePriceAmount")?.value || 0);
   return {
     draft_id: state.activeDraftId,
     title: $("cwCourseTitle")?.value?.trim() || "",
@@ -3131,6 +3180,7 @@ function wizardPayload() {
     thumbnail_url: $("cwCourseThumbnail")?.value?.trim() || null,
     includes_exam: Boolean($("cwIncludesExam")?.checked),
     video_url: safeVideoUrl || null,
+    base_price_amount: priceBreakdown.base,
     topics: state.draftTopics,
   };
 }
@@ -3184,6 +3234,8 @@ async function refreshProviderDrafts() {
         refreshThumbnailPreview();
         $("cwIncludesExam").checked = Boolean(draft.includes_exam);
         $("cwVideoUrl").value = draft.video_url || "";
+        $("cwBasePriceAmount").value = String(Number(draft.base_price_amount || 0));
+        refreshWizardPricing();
         state.wizardVideoPlaybackUrl = draft.video_play_url || "";
         if (draft.video_play_url && $("cwVideoPreview")) {
           $("cwVideoPreview").setAttribute("src", draft.video_play_url);
@@ -8565,6 +8617,7 @@ async function createCourseFromWizard() {
   const videoUrl = $("cwVideoUrl")?.value?.trim();
   const localVideoFile = $("cwVideoFile")?.files?.[0] || null;
   const includesExam = Boolean($("cwIncludesExam")?.checked);
+  const priceBreakdown = coursePricingBreakdownFromBase($("cwBasePriceAmount")?.value || 0);
 
   if (!title) throw new Error("Course name is required");
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
@@ -8582,6 +8635,7 @@ async function createCourseFromWizard() {
     category,
     thumbnail_url: thumbnail,
     includes_certification_exam: includesExam,
+    base_price_amount: priceBreakdown.base,
   });
   if (!safeRecordedVideoUrl && localVideoFile) {
     safeRecordedVideoUrl = await uploadLocalVideoInChunks(localVideoFile, { progressStart: 56, progressEnd: 86, courseId: course.id });
@@ -9353,6 +9407,15 @@ function bindEvents() {
       toast("Failed to save draft", "error");
     }
   });
+  $("cwSaveDraftBtn3")?.addEventListener("click", async () => {
+    try {
+      const out = await saveDraftFromWizard();
+      toast(`Draft saved (#${out.draft_id})`);
+      await refreshProviderDrafts();
+    } catch {
+      toast("Failed to save draft", "error");
+    }
+  });
   $("cwUploadVideoBtn")?.addEventListener("click", () => $("cwVideoFile")?.click());
   $("cwVideoFile")?.addEventListener("change", async () => {
     const file = $("cwVideoFile")?.files?.[0];
@@ -9419,6 +9482,11 @@ function bindEvents() {
     setCourseWizardStep("topics");
   });
   $("cwBackToVideoBtn")?.addEventListener("click", () => setCourseWizardStep("video"));
+  $("cwNextToPricingBtn")?.addEventListener("click", () => {
+    setCourseWizardStep("pricing");
+  });
+  $("cwBackToTopicsBtn")?.addEventListener("click", () => setCourseWizardStep("topics"));
+  $("cwBasePriceAmount")?.addEventListener("input", () => refreshWizardPricing());
   $("cwLoadVideoPreviewBtn")?.addEventListener("click", () => {
     ensureCourseVideoPreview();
     updateVideoTimeMeta();

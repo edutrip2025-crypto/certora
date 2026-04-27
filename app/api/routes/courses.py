@@ -4,6 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.entities import Course, CourseModule, Lesson, ProviderProfile, Resource, User, UserRole
 from app.schemas import CourseCreate, CourseOut, CourseUpdate, LessonCreate, ModuleCreate, ResourceCreate
@@ -32,6 +33,27 @@ def _course_out_payload(course: Course) -> dict:
     out = CourseOut.model_validate(course).model_dump()
     out["thumbnail_url"] = resolve_media_url(course.thumbnail_url) or course.thumbnail_url
     return out
+
+
+def _pricing_breakdown_from_base(base_price_amount: float) -> dict:
+    s = get_settings()
+    base = max(0.0, float(base_price_amount or 0.0))
+    gst_rate = max(0.0, float(s.course_pricing_gst_rate or 0.18))
+    commission_rate = max(0.0, float(s.course_pricing_platform_commission_rate or 0.25))
+    hosting_fee = max(0.0, float(s.course_pricing_one_time_hosting_fee or 2500.0))
+    gst_amount = round(base * gst_rate, 2)
+    commission_amount = round(base * commission_rate, 2)
+    final_amount = round(base + gst_amount + commission_amount + hosting_fee, 2)
+    return {
+        "price_currency": str(s.course_pricing_default_currency or "INR").upper(),
+        "base_price_amount": round(base, 2),
+        "gst_rate": gst_rate,
+        "platform_commission_rate": commission_rate,
+        "hosting_fee_amount": round(hosting_fee, 2),
+        "gst_amount": gst_amount,
+        "platform_commission_amount": commission_amount,
+        "final_price_amount": final_amount,
+    }
 
 
 def _cleanup_storage_refs(refs: set[str]) -> None:
@@ -64,6 +86,7 @@ def create_course(
         category=payload.category,
         thumbnail_url=thumbnail_ref,
         includes_certification_exam=payload.includes_certification_exam,
+        **_pricing_breakdown_from_base(float(payload.base_price_amount or 0.0)),
         is_published=False,
     )
     db.add(course)
@@ -95,7 +118,22 @@ def update_course(
             raise HTTPException(status_code=400, detail=f"Invalid course thumbnail: {exc}") from exc
 
     for key, value in updates.items():
+        if key in {
+            "base_price_amount",
+            "price_currency",
+            "gst_rate",
+            "platform_commission_rate",
+            "hosting_fee_amount",
+            "gst_amount",
+            "platform_commission_amount",
+            "final_price_amount",
+        }:
+            continue
         setattr(course, key, value)
+    if "base_price_amount" in updates:
+        breakdown = _pricing_breakdown_from_base(float(payload.base_price_amount or 0.0))
+        for key, value in breakdown.items():
+            setattr(course, key, value)
     db.commit()
     db.refresh(course)
     return _course_out_payload(course)

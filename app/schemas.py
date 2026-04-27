@@ -106,6 +106,14 @@ class CourseCreate(BaseModel):
     category: str
     thumbnail_url: str | None = None
     includes_certification_exam: bool = False
+    price_currency: str = Field(default="INR", min_length=3, max_length=8)
+    base_price_amount: float = Field(default=0, ge=0)
+    gst_rate: float = Field(default=0.18, ge=0)
+    platform_commission_rate: float = Field(default=0.25, ge=0)
+    hosting_fee_amount: float = Field(default=2500, ge=0)
+    gst_amount: float = Field(default=0, ge=0)
+    platform_commission_amount: float = Field(default=0, ge=0)
+    final_price_amount: float = Field(default=0, ge=0)
 
 
 class CourseUpdate(BaseModel):
@@ -114,6 +122,14 @@ class CourseUpdate(BaseModel):
     category: str | None = None
     thumbnail_url: str | None = None
     includes_certification_exam: bool | None = None
+    price_currency: str | None = Field(default=None, min_length=3, max_length=8)
+    base_price_amount: float | None = Field(default=None, ge=0)
+    gst_rate: float | None = Field(default=None, ge=0)
+    platform_commission_rate: float | None = Field(default=None, ge=0)
+    hosting_fee_amount: float | None = Field(default=None, ge=0)
+    gst_amount: float | None = Field(default=None, ge=0)
+    platform_commission_amount: float | None = Field(default=None, ge=0)
+    final_price_amount: float | None = Field(default=None, ge=0)
 
 
 class CourseOut(BaseModel):
@@ -124,6 +140,14 @@ class CourseOut(BaseModel):
     category: str
     thumbnail_url: str | None
     includes_certification_exam: bool
+    price_currency: str = "INR"
+    base_price_amount: float = 0
+    gst_rate: float = 0.18
+    platform_commission_rate: float = 0.25
+    hosting_fee_amount: float = 2500
+    gst_amount: float = 0
+    platform_commission_amount: float = 0
+    final_price_amount: float = 0
     is_published: bool
 
     model_config = {"from_attributes": True}

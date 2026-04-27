@@ -159,6 +159,22 @@ def _migrate_stream_market_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "courses", "fair_usage_multiplier", "FLOAT DEFAULT 2.5")
     _sqlite_add_column_if_missing(conn, "courses", "fair_usage_override_seconds", "INTEGER")
     _sqlite_add_column_if_missing(conn, "courses", "admin_fair_usage_override_enabled", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "courses", "price_currency", "TEXT DEFAULT 'INR'")
+    _sqlite_add_column_if_missing(conn, "courses", "base_price_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "courses", "gst_rate", "FLOAT DEFAULT 0.18")
+    _sqlite_add_column_if_missing(conn, "courses", "platform_commission_rate", "FLOAT DEFAULT 0.25")
+    _sqlite_add_column_if_missing(conn, "courses", "hosting_fee_amount", "FLOAT DEFAULT 2500")
+    _sqlite_add_column_if_missing(conn, "courses", "gst_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "courses", "platform_commission_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "courses", "final_price_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "base_price_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "price_currency", "TEXT DEFAULT 'INR'")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "gst_rate", "FLOAT DEFAULT 0.18")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "platform_commission_rate", "FLOAT DEFAULT 0.25")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "hosting_fee_amount", "FLOAT DEFAULT 2500")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "gst_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "platform_commission_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "final_price_amount", "FLOAT DEFAULT 0")
     try:
         conn.execute(text("UPDATE courses SET fair_usage_multiplier = 2.5 WHERE fair_usage_multiplier IS NULL OR fair_usage_multiplier > 2.5"))
     except Exception:
@@ -170,6 +186,22 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_multiplier FLOAT DEFAULT 2.5",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_override_seconds INTEGER",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS admin_fair_usage_override_enabled BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS price_currency VARCHAR(8) DEFAULT 'INR'",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS base_price_amount FLOAT DEFAULT 0",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS gst_rate FLOAT DEFAULT 0.18",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS platform_commission_rate FLOAT DEFAULT 0.25",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS hosting_fee_amount FLOAT DEFAULT 2500",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS gst_amount FLOAT DEFAULT 0",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS platform_commission_amount FLOAT DEFAULT 0",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS final_price_amount FLOAT DEFAULT 0",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS base_price_amount FLOAT DEFAULT 0",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS price_currency VARCHAR(8) DEFAULT 'INR'",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS gst_rate FLOAT DEFAULT 0.18",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS platform_commission_rate FLOAT DEFAULT 0.25",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS hosting_fee_amount FLOAT DEFAULT 2500",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS gst_amount FLOAT DEFAULT 0",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS platform_commission_amount FLOAT DEFAULT 0",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS final_price_amount FLOAT DEFAULT 0",
         "ALTER TABLE courses ALTER COLUMN fair_usage_multiplier SET DEFAULT 2.5",
         "UPDATE courses SET fair_usage_multiplier = 2.5 WHERE fair_usage_multiplier IS NULL OR fair_usage_multiplier > 2.5",
     ]

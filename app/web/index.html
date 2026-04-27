@@ -350,6 +350,32 @@
             <div class="row" style="margin-top:10px;">
               <button id="cwBackToVideoBtn" class="btn small">&lt; Back</button>
               <button id="cwSaveDraftBtn2" class="btn small">Save Draft</button>
+              <button id="cwNextToPricingBtn" class="btn">Next: Pricing ></button>
+            </div>
+          </section>
+
+          <section id="cwStepPricing" class="hidden">
+            <h3>Step 4: Pricing</h3>
+            <div class="item">
+              <div class="row wrap gap-sm">
+                <label style="flex:1 1 260px;">
+                  Base Course Price (INR)
+                  <input id="cwBasePriceAmount" class="search" type="number" min="0" step="0.01" placeholder="Enter base amount" />
+                </label>
+              </div>
+              <div class="meta" style="margin-top:8px;">Final applicable learner price updates instantly as you enter the amount.</div>
+              <div id="cwPricingBreakdown" style="margin-top:12px;">
+                <div class="row between"><span class="meta">Base Amount</span><strong id="cwPricingBase">₹0.00</strong></div>
+                <div class="row between"><span class="meta">GST (18%)</span><strong id="cwPricingGst">₹0.00</strong></div>
+                <div class="row between"><span class="meta">Platform Commission (25%)</span><strong id="cwPricingCommission">₹0.00</strong></div>
+                <div class="row between"><span class="meta">One-time Hosting Fee</span><strong id="cwPricingHosting">₹2,500.00</strong></div>
+                <hr style="margin:10px 0; border:0; border-top:1px solid #e5e7eb;" />
+                <div class="row between"><span><strong>Final Applicable Price</strong></span><strong id="cwPricingFinal">₹2,500.00</strong></div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="cwBackToTopicsBtn" class="btn small">&lt; Back</button>
+              <button id="cwSaveDraftBtn3" class="btn small">Save Draft</button>
               <button id="cwCreateCourseBtn" class="btn primary">Create Course</button>
             </div>
           </section>

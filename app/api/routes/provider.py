@@ -74,6 +74,27 @@ _LIVE_SCHEMA_GUARD_DONE = False
 _BUSINESS_REG_ALLOWED = {"cin", "pan", "gst", "national_id", "passport", "tax_id", "other"}
 
 
+def _draft_pricing_breakdown(base_price_amount: float) -> dict:
+    s = get_settings()
+    base = max(0.0, float(base_price_amount or 0.0))
+    gst_rate = max(0.0, float(s.course_pricing_gst_rate or 0.18))
+    commission_rate = max(0.0, float(s.course_pricing_platform_commission_rate or 0.25))
+    hosting_fee = max(0.0, float(s.course_pricing_one_time_hosting_fee or 2500.0))
+    gst_amount = round(base * gst_rate, 2)
+    commission_amount = round(base * commission_rate, 2)
+    final_amount = round(base + gst_amount + commission_amount + hosting_fee, 2)
+    return {
+        "price_currency": str(s.course_pricing_default_currency or "INR").upper(),
+        "base_price_amount": round(base, 2),
+        "gst_rate": gst_rate,
+        "platform_commission_rate": commission_rate,
+        "hosting_fee_amount": round(hosting_fee, 2),
+        "gst_amount": gst_amount,
+        "platform_commission_amount": commission_amount,
+        "final_price_amount": final_amount,
+    }
+
+
 def _public_request_base_url(request: Request) -> str:
     xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
     xf_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
@@ -874,6 +895,16 @@ def save_course_draft(
         raise HTTPException(status_code=400, detail=f"Invalid draft thumbnail: {exc}") from exc
     draft.includes_exam = bool(payload.get("includes_exam", True))
     draft.video_url = payload.get("video_url")
+    base_price_amount = float(payload.get("base_price_amount") or 0.0)
+    breakdown = _draft_pricing_breakdown(base_price_amount)
+    draft.price_currency = breakdown["price_currency"]
+    draft.base_price_amount = breakdown["base_price_amount"]
+    draft.gst_rate = breakdown["gst_rate"]
+    draft.platform_commission_rate = breakdown["platform_commission_rate"]
+    draft.hosting_fee_amount = breakdown["hosting_fee_amount"]
+    draft.gst_amount = breakdown["gst_amount"]
+    draft.platform_commission_amount = breakdown["platform_commission_amount"]
+    draft.final_price_amount = breakdown["final_price_amount"]
     draft.topics_json = payload.get("topics") or []
     db.commit()
     db.refresh(draft)
@@ -886,6 +917,14 @@ def save_course_draft(
         "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
         "video_url": draft.video_url,
+        "price_currency": draft.price_currency,
+        "base_price_amount": float(draft.base_price_amount or 0.0),
+        "gst_rate": float(draft.gst_rate or 0.0),
+        "platform_commission_rate": float(draft.platform_commission_rate or 0.0),
+        "hosting_fee_amount": float(draft.hosting_fee_amount or 0.0),
+        "gst_amount": float(draft.gst_amount or 0.0),
+        "platform_commission_amount": float(draft.platform_commission_amount or 0.0),
+        "final_price_amount": float(draft.final_price_amount or 0.0),
         "topics": draft.topics_json,
         "updated_at": draft.updated_at,
     }
@@ -907,6 +946,9 @@ def list_course_drafts(
             "level": d.level,
             "category": d.category,
             "video_url": d.video_url,
+            "price_currency": d.price_currency,
+            "base_price_amount": float(d.base_price_amount or 0.0),
+            "final_price_amount": float(d.final_price_amount or 0.0),
             "topics_count": len(d.topics_json or []),
             "updated_at": d.updated_at,
         }
@@ -934,6 +976,14 @@ def get_course_draft(
         "includes_exam": draft.includes_exam,
         "video_url": draft.video_url,
         "video_play_url": resolve_media_url(draft.video_url),
+        "price_currency": draft.price_currency,
+        "base_price_amount": float(draft.base_price_amount or 0.0),
+        "gst_rate": float(draft.gst_rate or 0.0),
+        "platform_commission_rate": float(draft.platform_commission_rate or 0.0),
+        "hosting_fee_amount": float(draft.hosting_fee_amount or 0.0),
+        "gst_amount": float(draft.gst_amount or 0.0),
+        "platform_commission_amount": float(draft.platform_commission_amount or 0.0),
+        "final_price_amount": float(draft.final_price_amount or 0.0),
         "topics": draft.topics_json or [],
         "updated_at": draft.updated_at,
     }
