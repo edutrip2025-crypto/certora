@@ -3288,38 +3288,52 @@ textarea {
 }
 body.app-workspace-active {
   overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow-y: hidden !important;
 }
 body.app-workspace-active main {
   min-height: calc(100dvh - 16px) !important;
-  height: auto !important;
+  height: calc(100dvh - 16px) !important;
   margin-bottom: 0 !important;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 body.app-workspace-active .admin-layout {
   min-height: calc(100dvh - 16px) !important;
-  height: auto !important;
+  height: calc(100dvh - 16px) !important;
   align-items: stretch !important;
 }
 body.app-workspace-active #adminView .sidebar,
 body.app-workspace-active #providerView .sidebar,
 body.app-workspace-active #studentView .sidebar {
-  position: relative !important;
-  top: 0 !important;
-  min-height: calc(100dvh - 42px) !important;
-  max-height: none !important;
-  height: auto !important;
-  overflow: visible !important;
+  position: sticky !important;
+  top: 8px !important;
+  min-height: calc(100dvh - 32px) !important;
+  max-height: calc(100dvh - 32px) !important;
+  height: calc(100dvh - 32px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 0 !important;
 }
 body.app-workspace-active #adminView .content,
 body.app-workspace-active #providerView .content,
 body.app-workspace-active #studentView .content {
   margin-top: 0 !important;
-  min-height: calc(100dvh - 42px) !important;
-  height: auto !important;
-  overflow: visible !important;
+  min-height: calc(100dvh - 32px) !important;
+  max-height: calc(100dvh - 32px) !important;
+  height: calc(100dvh - 32px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 6px !important;
+}
+body.app-workspace-active #adminView .sidebar-tools,
+body.app-workspace-active #providerView .sidebar-tools,
+body.app-workspace-active #studentView .sidebar-tools {
+  position: sticky !important;
+  bottom: 0 !important;
+  margin-top: 10px !important;
+  padding-bottom: 8px !important;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(248, 250, 252, 0.95) 36%, rgba(248, 250, 252, 1) 100%) !important;
 }
 @media (max-width: 1040px) {
   #adminView .provider-sidebar-logo,

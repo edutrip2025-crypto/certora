@@ -68,12 +68,15 @@ class Settings(BaseSettings):
     cloudflare_stream_customer_code: str = ""
     cloudflare_stream_signing_key_id: str = ""
     cloudflare_stream_signing_key_secret: str = ""
-    stream_playback_token_ttl_seconds: int = 900
+    stream_playback_token_ttl_seconds: int = 180
     stream_direct_upload_expiry_seconds: int = 3600
     stream_drm_license_secret: str = ""
     stream_drm_license_ttl_seconds: int = 180
     stream_drm_nonce_ttl_seconds: int = 240
     stream_drm_enforce_heartbeat: bool = True
+    stream_drm_max_concurrent_sessions_per_course: int = 2
+    stream_drm_auto_revoke_on_ip_mismatch: bool = False
+    stream_drm_auto_revoke_on_user_agent_mismatch: bool = False
     fair_usage_default_multiplier: float = 2.5
     fair_usage_warn_threshold_1: float = 0.8
     fair_usage_warn_threshold_2: float = 1.0

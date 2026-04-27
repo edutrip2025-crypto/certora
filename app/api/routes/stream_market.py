@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -34,6 +35,8 @@ from app.schemas import (
     StreamPlaybackTokenRequest,
     StreamPricingRecommendationRequest,
     StreamPurchaseRequest,
+    StreamBulkRevokeRequest,
+    StreamSessionRevokeRequest,
     StreamVideoUploadInitResponse,
     StreamVideoUploadInitRequest,
     StreamWatchHeartbeatRequest,
@@ -53,6 +56,7 @@ from app.services.stream_drm import StreamDrmError, issue_stream_license, verify
 
 router = APIRouter(prefix="/stream", tags=["stream-market"])
 _drm_nonce_cache: dict[str, datetime] = {}
+_drm_event_dedupe_cache: dict[str, datetime] = {}
 
 
 def _provider_profile_or_403(db: Session, user_id: int) -> ProviderProfile:
@@ -91,6 +95,11 @@ def _drm_nonce_key(*, session_id: int, nonce: str) -> str:
     return f"{int(session_id)}:{str(nonce).strip()}"
 
 
+def _ua_fingerprint(value: str) -> str:
+    raw = str(value or "").encode("utf-8", errors="ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
 def _assert_fresh_drm_nonce(*, session_id: int, nonce: str) -> None:
     now = datetime.now(timezone.utc)
     ttl_seconds = max(30, int(get_settings().stream_drm_nonce_ttl_seconds or 240))
@@ -105,6 +114,45 @@ def _assert_fresh_drm_nonce(*, session_id: int, nonce: str) -> None:
     if last_seen and last_seen >= cutoff:
         raise HTTPException(status_code=409, detail="Duplicate stream heartbeat detected")
     _drm_nonce_cache[key] = now
+
+
+def _drm_event_dedupe(event_key: str, ttl_seconds: int = 300) -> bool:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=max(30, int(ttl_seconds)))
+    expired_keys = [k for k, v in _drm_event_dedupe_cache.items() if v < cutoff]
+    for k in expired_keys:
+        _drm_event_dedupe_cache.pop(k, None)
+    if _drm_event_dedupe_cache.get(event_key):
+        return False
+    _drm_event_dedupe_cache[event_key] = now
+    return True
+
+
+def _revoke_watch_session(
+    db: Session,
+    *,
+    session: VideoWatchSession,
+    actor_user_id: int | None,
+    reason: str,
+    details: dict | None = None,
+) -> None:
+    if not session.ended_at:
+        session.ended_at = datetime.now(timezone.utc)
+    db.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action="stream_session_revoked",
+            target_type="video_watch_session",
+            target_id=int(session.id),
+            details_json={
+                "reason": str(reason or "revoked"),
+                "user_id": int(session.user_id),
+                "course_id": int(session.course_id),
+                "lesson_video_id": int(session.lesson_video_id),
+                **(details or {}),
+            },
+        ),
+    )
 
 
 @router.post("/courses")
@@ -502,8 +550,14 @@ def issue_stream_playback_token(
             },
         )
 
+    playback_ttl = max(60, int(get_settings().stream_playback_token_ttl_seconds or 900))
     try:
-        token = generate_playback_token(video_uid=video.cloudflare_video_uid, user_id=current_user.id, course_id=video.course_id)
+        token = generate_playback_token(
+            video_uid=video.cloudflare_video_uid,
+            user_id=current_user.id,
+            course_id=video.course_id,
+            ttl_seconds=playback_ttl,
+        )
         urls = build_playback_urls(video_uid=video.cloudflare_video_uid, token=token)
     except BunnyStreamError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -514,6 +568,29 @@ def issue_stream_playback_token(
         ),
     )
     resume_position = int(progress.resume_position_seconds) if progress else 0
+
+    max_sessions = max(1, int(get_settings().stream_drm_max_concurrent_sessions_per_course or 2))
+    active_sessions = db.scalars(
+        select(VideoWatchSession)
+        .where(
+            and_(
+                VideoWatchSession.user_id == int(current_user.id),
+                VideoWatchSession.course_id == int(video.course_id),
+                VideoWatchSession.ended_at.is_(None),
+            ),
+        )
+        .order_by(VideoWatchSession.started_at.asc()),
+    ).all()
+    if len(active_sessions) >= max_sessions:
+        to_revoke_count = len(active_sessions) - max_sessions + 1
+        for stale in active_sessions[:to_revoke_count]:
+            _revoke_watch_session(
+                db,
+                session=stale,
+                actor_user_id=current_user.id,
+                reason="max_concurrent_sessions_exceeded",
+                details={"max_sessions": max_sessions},
+            )
 
     session = VideoWatchSession(
         user_id=current_user.id,
@@ -538,7 +615,7 @@ def issue_stream_playback_token(
         "lesson_video_id": video.id,
         "video_uid": video.cloudflare_video_uid,
         "playback": urls,
-        "expires_in_seconds": 900,
+        "expires_in_seconds": playback_ttl,
         "drm_license_token": license_token,
         "drm_license_expires_in_seconds": int(license_ttl),
         "resume_position_seconds": resume_position,
@@ -580,6 +657,8 @@ def stream_watch_heartbeat(
     sess = db.get(VideoWatchSession, int(payload.session_id))
     if not sess or int(sess.user_id) != int(current_user.id):
         raise HTTPException(status_code=404, detail="Watch session not found")
+    if sess.ended_at and not payload.ended:
+        raise HTTPException(status_code=410, detail="Watch session has ended")
     if int(payload.lesson_video_id) != int(sess.lesson_video_id):
         raise HTTPException(status_code=400, detail="Session lesson video mismatch")
 
@@ -601,14 +680,79 @@ def stream_watch_heartbeat(
         except StreamDrmError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
+    req_ip = str(request.client.host or "").strip() if request.client else ""
+    req_ua = str(request.headers.get("user-agent") or "").strip()
+    auto_revoke_ip = bool(get_settings().stream_drm_auto_revoke_on_ip_mismatch)
+    auto_revoke_ua = bool(get_settings().stream_drm_auto_revoke_on_user_agent_mismatch)
+
+    if sess.ip_address and req_ip and str(sess.ip_address) != req_ip:
+        event_key = f"ip:{sess.id}:{sess.ip_address}->{req_ip}"
+        if _drm_event_dedupe(event_key):
+            db.add(
+                AuditLog(
+                    actor_user_id=current_user.id,
+                    action="stream_drm_anomaly",
+                    target_type="video_watch_session",
+                    target_id=int(sess.id),
+                    details_json={
+                        "reason": "ip_mismatch",
+                        "old_ip": str(sess.ip_address),
+                        "new_ip": req_ip,
+                        "course_id": int(sess.course_id),
+                        "lesson_video_id": int(sess.lesson_video_id),
+                    },
+                ),
+            )
+        if auto_revoke_ip:
+            _revoke_watch_session(
+                db,
+                session=sess,
+                actor_user_id=current_user.id,
+                reason="ip_mismatch",
+                details={"old_ip": str(sess.ip_address), "new_ip": req_ip},
+            )
+            db.commit()
+            raise HTTPException(status_code=403, detail="Session revoked due to IP mismatch")
+
+    if sess.user_agent and req_ua and str(sess.user_agent) != req_ua:
+        old_ua_fp = _ua_fingerprint(str(sess.user_agent))
+        new_ua_fp = _ua_fingerprint(req_ua)
+        event_key = f"ua:{sess.id}:{old_ua_fp}:{new_ua_fp}"
+        if _drm_event_dedupe(event_key):
+            db.add(
+                AuditLog(
+                    actor_user_id=current_user.id,
+                    action="stream_drm_anomaly",
+                    target_type="video_watch_session",
+                    target_id=int(sess.id),
+                    details_json={
+                        "reason": "user_agent_mismatch",
+                        "old_user_agent_hash": old_ua_fp,
+                        "new_user_agent_hash": new_ua_fp,
+                        "course_id": int(sess.course_id),
+                        "lesson_video_id": int(sess.lesson_video_id),
+                    },
+                ),
+            )
+        if auto_revoke_ua:
+            _revoke_watch_session(
+                db,
+                session=sess,
+                actor_user_id=current_user.id,
+                reason="user_agent_mismatch",
+                details={"old_user_agent_hash": old_ua_fp, "new_user_agent_hash": new_ua_fp},
+            )
+            db.commit()
+            raise HTTPException(status_code=403, detail="Session revoked due to device fingerprint mismatch")
+
     before_usage = evaluate_fair_usage(db, user_id=current_user.id, course_id=sess.course_id)
     old_level = int(before_usage.get("warning_level") or 0)
 
     delta = int(payload.watched_seconds_delta or 0)
     sess.consumed_seconds = int(sess.consumed_seconds or 0) + max(0, delta)
     sess.last_position_seconds = max(int(sess.last_position_seconds or 0), int(payload.position_seconds or 0))
-    sess.ip_address = request.client.host if request.client else sess.ip_address
-    sess.user_agent = request.headers.get("user-agent") or sess.user_agent
+    sess.ip_address = req_ip or sess.ip_address
+    sess.user_agent = req_ua or sess.user_agent
     if payload.ended:
         sess.ended_at = datetime.now(timezone.utc)
 
@@ -683,6 +827,100 @@ def stream_pricing_recommendation(
         entered_price=float(payload.entered_price),
         expected_views_per_month=int(payload.expected_views_per_month),
     )
+
+
+@router.patch("/admin/watch-sessions/{session_id}/revoke")
+def admin_revoke_watch_session(
+    session_id: int,
+    payload: StreamSessionRevokeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    sess = db.get(VideoWatchSession, int(session_id))
+    if not sess:
+        raise HTTPException(status_code=404, detail="Watch session not found")
+    _revoke_watch_session(
+        db,
+        session=sess,
+        actor_user_id=current_user.id,
+        reason=str(payload.reason or "admin_revoke"),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "session_id": int(sess.id),
+        "revoked": True,
+        "ended_at": sess.ended_at,
+        "reason": str(payload.reason or "admin_revoke"),
+    }
+
+
+@router.get("/admin/security-events")
+def stream_admin_security_events(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    max_limit = max(1, min(500, int(limit or 100)))
+    rows = db.scalars(
+        select(AuditLog)
+        .where(
+            AuditLog.action.in_(
+                [
+                    "stream_drm_anomaly",
+                    "stream_session_revoked",
+                ],
+            ),
+        )
+        .order_by(AuditLog.id.desc())
+        .limit(max_limit),
+    ).all()
+    return {
+        "events": [
+            {
+                "id": int(x.id),
+                "action": str(x.action),
+                "target_type": str(x.target_type or ""),
+                "target_id": int(x.target_id) if x.target_id is not None else None,
+                "actor_user_id": int(x.actor_user_id) if x.actor_user_id is not None else None,
+                "details": x.details_json or {},
+                "created_at": x.created_at,
+            }
+            for x in rows
+        ],
+    }
+
+
+@router.patch("/admin/users/{user_id}/revoke-sessions")
+def admin_revoke_user_sessions(
+    user_id: int,
+    payload: StreamBulkRevokeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    where_clause = [VideoWatchSession.user_id == int(user_id), VideoWatchSession.ended_at.is_(None)]
+    if payload.course_id is not None:
+        where_clause.append(VideoWatchSession.course_id == int(payload.course_id))
+    sessions = db.scalars(
+        select(VideoWatchSession).where(and_(*where_clause)),
+    ).all()
+    revoked = 0
+    for sess in sessions:
+        _revoke_watch_session(
+            db,
+            session=sess,
+            actor_user_id=current_user.id,
+            reason=str(payload.reason or "security_incident"),
+            details={"bulk_revoke": True},
+        )
+        revoked += 1
+    db.commit()
+    return {
+        "ok": True,
+        "user_id": int(user_id),
+        "course_id": int(payload.course_id) if payload.course_id is not None else None,
+        "revoked_sessions": int(revoked),
+    }
 
 
 @router.post("/live/sessions")

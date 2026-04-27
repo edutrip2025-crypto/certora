@@ -572,6 +572,15 @@ class StreamLicenseIssueResponse(BaseModel):
     expires_in_seconds: int
 
 
+class StreamSessionRevokeRequest(BaseModel):
+    reason: str = Field(default="admin_revoke", min_length=3, max_length=240)
+
+
+class StreamBulkRevokeRequest(BaseModel):
+    course_id: int | None = None
+    reason: str = Field(default="security_incident", min_length=3, max_length=240)
+
+
 class StreamPricingRecommendationRequest(BaseModel):
     entered_price: float = Field(ge=0)
     expected_views_per_month: int = Field(default=100, ge=1, le=1000000)

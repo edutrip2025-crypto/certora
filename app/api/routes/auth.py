@@ -439,6 +439,7 @@ def me_context(
         "id": current_user.id,
         "public_uid": _public_uid(current_user.id),
         "email": current_user.email,
+        "phone_number": current_user.phone_number,
         "full_name": current_user.full_name,
         "role": current_user.role,
         "account_state": str(current_user.account_state or "active"),

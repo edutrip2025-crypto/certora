@@ -2465,7 +2465,12 @@ async function startStudentStreamPlayback(courseId, lessonVideo) {
   updateStudentStreamMeta();
   state.studentStreamPlayback.heartbeatId = setInterval(() => {
     sendStudentStreamHeartbeat().catch((err) => {
-      forceStopStudentStreamPlayback(err?.message || "Stream access failed");
+      const parsed = parseApiErrorMessage(err);
+      const reason = (typeof parsed?.detail === "string" && parsed.detail)
+        || parsed?.detail?.message
+        || err?.message
+        || "Stream access failed";
+      forceStopStudentStreamPlayback(reason);
     });
   }, 20000);
   return true;
@@ -9544,12 +9549,11 @@ function bindEvents() {
       return;
     }
     node.classList.remove("hidden");
-    const userLabel = String(state.auth?.currentUser?.email || state.auth?.currentUser?.uid || "student").trim();
-    const courseId = Number(state.studentActiveCourseId || 0);
-    const sessionId = Number(state.studentStreamPlayback?.sessionId || 0);
+    const userName = String(state.context?.full_name || state.auth?.currentUser?.displayName || "student").trim();
+    const phone = String(state.context?.phone_number || "").trim() || "-";
     const stamp = new Date().toISOString().replace("T", " ").slice(0, 19);
-    node.textContent = `${userLabel} | C:${courseId || "-"} | S:${sessionId || "-"} | ${stamp}`;
-    const pos = Math.floor((Date.now() / 7000) % 4);
+    node.textContent = `${userName} | ${phone} | ${stamp}`;
+    const pos = Math.floor((Date.now() / 20000) % 4);
     node.classList.remove("pos-a", "pos-b", "pos-c", "pos-d");
     if (pos === 0) node.classList.add("pos-a");
     if (pos === 1) node.classList.add("pos-b");
@@ -9557,7 +9561,7 @@ function bindEvents() {
     if (pos === 3) node.classList.add("pos-d");
   };
   refreshScvWatermark();
-  setInterval(refreshScvWatermark, 7000);
+  setInterval(refreshScvWatermark, 20000);
   scvMiniCloseBtn?.addEventListener("click", () => {
     if (!scvShell) return;
     scvShell.classList.remove("minimized", "controls-hidden", "volume-open");
