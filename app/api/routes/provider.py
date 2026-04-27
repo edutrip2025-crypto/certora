@@ -884,6 +884,7 @@ def save_course_draft(
     draft.title = str(payload.get("title") or "")
     draft.level = str(payload.get("level") or "Beginner")
     draft.category = str(payload.get("category") or "General")
+    draft.suitable_age_ranges = list(payload.get("suitable_age_ranges") or [])
     draft.description = str(payload.get("description") or "")
     thumbnail_input = payload.get("thumbnail_url")
     try:
@@ -913,6 +914,7 @@ def save_course_draft(
         "title": draft.title,
         "level": draft.level,
         "category": draft.category,
+        "suitable_age_ranges": list(draft.suitable_age_ranges or []),
         "description": draft.description,
         "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
@@ -945,6 +947,7 @@ def list_course_drafts(
             "title": d.title,
             "level": d.level,
             "category": d.category,
+            "suitable_age_ranges": list(d.suitable_age_ranges or []),
             "video_url": d.video_url,
             "price_currency": d.price_currency,
             "base_price_amount": float(d.base_price_amount or 0.0),
@@ -971,6 +974,7 @@ def get_course_draft(
         "title": draft.title,
         "level": draft.level,
         "category": draft.category,
+        "suitable_age_ranges": list(draft.suitable_age_ranges or []),
         "description": draft.description,
         "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,

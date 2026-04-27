@@ -70,6 +70,9 @@
         <p>Create your student or provider account.</p>
         <label>Full Name<input id="signupName" type="text" /></label>
         <label>Email<input id="signupEmail" type="email" /></label>
+        <label>Student Age (for student role)
+          <input id="signupStudentAge" type="number" min="1" max="120" placeholder="Age in years" />
+        </label>
         <label>Password
           <div class="password-field">
             <input id="signupPassword" type="password" />
@@ -253,6 +256,18 @@
             <label>Description
               <textarea id="cwCourseDescription" rows="3" placeholder="What will students learn?"></textarea>
             </label>
+            <div class="item" style="padding:10px; margin-top:10px;">
+              <div><strong>Suitable Student Age Ranges</strong></div>
+              <div class="meta" style="margin-top:4px;">Select one or more ranges.</div>
+              <div class="row wrap gap-sm" style="margin-top:8px;">
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="under_13" /><span>Under 13</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="13_17" /><span>13 - 17</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="18_24" /><span>18 - 24</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="25_34" /><span>25 - 34</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="35_44" /><span>35 - 44</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-cw-age-range="45_plus" /><span>45+</span></label>
+              </div>
+            </div>
             <label class="checkbox-row">
               <input id="cwIncludesExam" type="checkbox" checked />
               <span>Include certification exam</span>
@@ -782,17 +797,10 @@
         <section class="admin-glimpse-grid">
           <div class="moderation-toolbar" style="margin-top:0;">
             <div class="row between">
-              <h3 style="margin:0;">Available Courses Snapshot</h3>
-              <div class="meta">Latest published courses</div>
+              <h3 style="margin:0;">Suggested Courses</h3>
+              <div class="meta">Matched to your age range</div>
             </div>
             <div id="studentHomeAvailableList" class="list glimpse-list"></div>
-          </div>
-          <div class="moderation-toolbar" style="margin-top:0;">
-            <div class="row between">
-              <h3 style="margin:0;">My Courses Snapshot</h3>
-              <div class="meta">Recent enrolled progress</div>
-            </div>
-            <div id="studentHomeEnrolledList" class="list glimpse-list"></div>
           </div>
         </section>
       </section>

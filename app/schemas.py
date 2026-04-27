@@ -44,6 +44,7 @@ class UserOut(BaseModel):
 class RegisterRoleRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     role: UserRole
+    student_age: int | None = Field(default=None, ge=1, le=120)
     verification_id_type: str | None = None
     verification_id_number: str | None = None
     verification_country_code: str | None = None
@@ -104,6 +105,7 @@ class CourseCreate(BaseModel):
     title: str
     description: str
     category: str
+    suitable_age_ranges: list[str] = Field(default_factory=list)
     thumbnail_url: str | None = None
     includes_certification_exam: bool = False
     price_currency: str = Field(default="INR", min_length=3, max_length=8)
@@ -120,6 +122,7 @@ class CourseUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     category: str | None = None
+    suitable_age_ranges: list[str] | None = None
     thumbnail_url: str | None = None
     includes_certification_exam: bool | None = None
     price_currency: str | None = Field(default=None, min_length=3, max_length=8)
@@ -138,6 +141,7 @@ class CourseOut(BaseModel):
     title: str
     description: str
     category: str
+    suitable_age_ranges: list[str] = Field(default_factory=list)
     thumbnail_url: str | None
     includes_certification_exam: bool
     price_currency: str = "INR"

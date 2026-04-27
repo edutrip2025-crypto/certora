@@ -62,6 +62,7 @@ const state = {
   studentDashboard: {
     available: [],
     enrolled: [],
+    suggested: [],
   },
   studentAssessments: [],
   studentCertificates: [],
@@ -173,6 +174,8 @@ const COURSE_PRICING = {
   platformCommissionRate: 0.25,
   hostingFee: 2500,
 };
+
+const COURSE_AGE_RANGE_KEYS = ["under_13", "13_17", "18_24", "25_34", "35_44", "45_plus"];
 
 window.__certoraDebug = {
   getState() {
@@ -1189,6 +1192,7 @@ const el = {
   loginCard: $("loginCard"),
   signupName: $("signupName"),
   signupEmail: $("signupEmail"),
+  signupStudentAge: $("signupStudentAge"),
   signupPassword: $("signupPassword"),
   signupShowPasswordBtn: $("signupShowPasswordBtn"),
   signupRole: $("signupRole"),
@@ -1683,12 +1687,19 @@ function refreshSignupVerificationOptions() {
   select.innerHTML = options.map((item) => `<option value="${item.value}">${item.label}</option>`).join("");
   const hasCurrent = options.some((item) => item.value === current);
   select.value = hasCurrent ? current : options[0]?.value || "aadhaar";
+  const ageInput = el.signupStudentAge;
+  if (ageInput) {
+    const show = role === "student";
+    ageInput.closest("label")?.classList.toggle("hidden", !show);
+  }
 }
 
 function buildRoleRegistrationPayload(fullName, role) {
+  const age = Number(el.signupStudentAge?.value || 0);
   return {
     full_name: fullName,
     role,
+    student_age: role === "student" && Number.isFinite(age) && age > 0 ? Math.floor(age) : null,
     verification_id_type: String(el.signupVerificationType?.value || "").trim().toLowerCase() || null,
     verification_id_number: String(el.signupVerificationNumber?.value || "").trim() || null,
     verification_country_code: String(el.signupVerificationCountry?.value || "").trim().toUpperCase() || null,
@@ -2006,25 +2017,15 @@ function renderStudentHomeCards(target, data) {
 }
 
 function renderStudentHomeSnapshots() {
-  const available = Array.isArray(state.studentDashboard.available) ? state.studentDashboard.available.slice(0, 4) : [];
-  const enrolled = Array.isArray(state.studentDashboard.enrolled) ? state.studentDashboard.enrolled.slice(0, 4) : [];
+  const suggested = Array.isArray(state.studentDashboard.suggested) ? state.studentDashboard.suggested.slice(0, 6) : [];
   renderList(
     el.studentHomeAvailableList,
-    available,
+    suggested,
     (c) => `
       <div><strong>${escapeHtmlAttr(c.title || "Untitled Course")}</strong></div>
       <div class="meta">${escapeHtmlAttr(c.provider_name || "Provider")} | ${escapeHtmlAttr(c.category || "General")}</div>
     `,
-    "No available courses.",
-  );
-  renderList(
-    el.studentHomeEnrolledList,
-    enrolled,
-    (c) => `
-      <div><strong>${escapeHtmlAttr(c.title || "Untitled Course")}</strong></div>
-      <div class="meta">${escapeHtmlAttr(c.provider_name || "Provider")} | Progress: ${Number(c.progress_pct || 0).toFixed(0)}%</div>
-    `,
-    "No enrolled courses yet.",
+    "No suggested courses yet.",
   );
 }
 
@@ -3069,6 +3070,20 @@ function coursePricingBreakdownFromBase(baseInput) {
   };
 }
 
+function getWizardSuitableAgeRanges() {
+  return Array.from(document.querySelectorAll("[data-cw-age-range]:checked"))
+    .map((node) => String(node.getAttribute("data-cw-age-range") || "").trim())
+    .filter((key) => COURSE_AGE_RANGE_KEYS.includes(key));
+}
+
+function setWizardSuitableAgeRanges(values) {
+  const selected = new Set(Array.isArray(values) ? values.map((v) => String(v || "").trim()) : []);
+  document.querySelectorAll("[data-cw-age-range]").forEach((node) => {
+    const key = String(node.getAttribute("data-cw-age-range") || "").trim();
+    node.checked = selected.has(key);
+  });
+}
+
 function formatInrAmount(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return "₹0.00";
@@ -3153,6 +3168,7 @@ function resetCourseWizard() {
   if (level) level.value = "Beginner";
   const includesExam = $("cwIncludesExam");
   if (includesExam) includesExam.checked = true;
+  setWizardSuitableAgeRanges([]);
   const preview = $("cwVideoPreview");
   if (preview) preview.removeAttribute("src");
   if (el.cwTimelineMarkers) el.cwTimelineMarkers.innerHTML = "";
@@ -3238,6 +3254,7 @@ function wizardPayload() {
     title: $("cwCourseTitle")?.value?.trim() || "",
     level: $("cwCourseLevel")?.value || "Beginner",
     category: $("cwCourseCategory")?.value?.trim() || "General",
+    suitable_age_ranges: getWizardSuitableAgeRanges(),
     description: $("cwCourseDescription")?.value?.trim() || "",
     thumbnail_url: $("cwCourseThumbnail")?.value?.trim() || null,
     includes_exam: Boolean($("cwIncludesExam")?.checked),
@@ -3291,6 +3308,7 @@ async function refreshProviderDrafts() {
         $("cwCourseTitle").value = draft.title || "";
         $("cwCourseLevel").value = draft.level || "Beginner";
         $("cwCourseCategory").value = draft.category || "General";
+        setWizardSuitableAgeRanges(draft.suitable_age_ranges || []);
         $("cwCourseDescription").value = draft.description || "";
         $("cwCourseThumbnail").value = draft.thumbnail_url || "";
         refreshThumbnailPreview();
@@ -3802,6 +3820,7 @@ async function refreshStudentDashboard() {
   renderStudentHomeCards(el.studentStats, data.stats || {});
   const available = Array.isArray(data.available) ? data.available : [];
   const enrolled = Array.isArray(data.enrolled) ? data.enrolled : [];
+  const suggested = Array.isArray(data.suggested) ? data.suggested : [];
   const enrolledIds = new Set(enrolled.map((c) => Number(c.course_id || 0)));
   const availableIds = new Set(available.map((c) => Number(c.course_id || 0)));
   const publicList = Array.isArray(publicCourses) ? publicCourses : [];
@@ -3813,6 +3832,7 @@ async function refreshStudentDashboard() {
       course_id: cid,
       title: c?.title || "Untitled Course",
       category: c?.category || "General",
+      suitable_age_ranges: Array.isArray(c?.suitable_age_ranges) ? c.suitable_age_ranges : [],
       provider_name: "Provider",
       thumbnail_url: c?.thumbnail_url || null,
       average_rating: Number(c?.average_rating || 0),
@@ -3823,6 +3843,7 @@ async function refreshStudentDashboard() {
   }
   state.studentDashboard.available = mergedAvailable;
   state.studentDashboard.enrolled = enrolled;
+  state.studentDashboard.suggested = suggested.length ? suggested : mergedAvailable;
   state.studentAssessments = buildStudentAssessmentRows();
   renderStudentHomeSnapshots();
   renderStudentCourseCatalogs();
@@ -8674,6 +8695,7 @@ async function createCourseFromWizard() {
   const title = $("cwCourseTitle")?.value?.trim();
   const level = $("cwCourseLevel")?.value || "Beginner";
   const category = $("cwCourseCategory")?.value?.trim() || "General";
+  const suitableAgeRanges = getWizardSuitableAgeRanges();
   const description = $("cwCourseDescription")?.value?.trim() || "";
   let thumbnail = $("cwCourseThumbnail")?.value?.trim() || null;
   const videoUrl = $("cwVideoUrl")?.value?.trim();
@@ -8695,6 +8717,7 @@ async function createCourseFromWizard() {
     title,
     description: `${description}\n\nLevel: ${level}`.trim(),
     category,
+    suitable_age_ranges: suitableAgeRanges,
     thumbnail_url: thumbnail,
     includes_certification_exam: includesExam,
     base_price_amount: priceBreakdown.base,

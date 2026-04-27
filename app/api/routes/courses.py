@@ -84,6 +84,7 @@ def create_course(
         title=payload.title,
         description=payload.description,
         category=payload.category,
+        suitable_age_ranges=list(payload.suitable_age_ranges or []),
         thumbnail_url=thumbnail_ref,
         includes_certification_exam=payload.includes_certification_exam,
         **_pricing_breakdown_from_base(float(payload.base_price_amount or 0.0)),
@@ -108,6 +109,8 @@ def update_course(
         raise HTTPException(status_code=404, detail="Course not found")
 
     updates = payload.model_dump(exclude_none=True)
+    if "suitable_age_ranges" in updates:
+        updates["suitable_age_ranges"] = list(payload.suitable_age_ranges or [])
     if "thumbnail_url" in updates:
         try:
             updates["thumbnail_url"] = normalize_image_storage_reference(

@@ -59,6 +59,15 @@ from app.services.media_storage import resolve_media_url
 
 router = APIRouter(prefix="/student", tags=["student"])
 
+AGE_RANGE_BOUNDS: dict[str, tuple[int | None, int | None]] = {
+    "under_13": (0, 12),
+    "13_17": (13, 17),
+    "18_24": (18, 24),
+    "25_34": (25, 34),
+    "35_44": (35, 44),
+    "45_plus": (45, None),
+}
+
 
 def _public_request_base_url(request: Request) -> str:
     xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
@@ -81,6 +90,33 @@ def _latest_training_feedback(db: Session, attempt_id: int) -> tuple[ProctorTrai
         .order_by(ProctorTrainingFeedback.created_at.desc(), ProctorTrainingFeedback.id.desc()),
     )
     return latest, count
+
+
+def _normalized_age_ranges(values: list | None) -> list[str]:
+    if not values:
+        return []
+    out: list[str] = []
+    for raw in values:
+        key = str(raw or "").strip().lower()
+        if key in AGE_RANGE_BOUNDS and key not in out:
+            out.append(key)
+    return out
+
+
+def _student_matches_course_age(student_age: int | None, ranges: list[str] | None) -> bool:
+    valid = _normalized_age_ranges(ranges)
+    if not valid:
+        return True
+    if student_age is None or student_age <= 0:
+        return False
+    for key in valid:
+        low, high = AGE_RANGE_BOUNDS.get(key, (None, None))
+        if low is not None and student_age < low:
+            continue
+        if high is not None and student_age > high:
+            continue
+        return True
+    return False
 
 
 def _course_rating_summary(db: Session, course_ids: set[int]) -> dict[int, dict]:
@@ -198,6 +234,10 @@ def dashboard(
             .group_by(Exam.course_id),
         ).all()
     }
+    student_age = int(current_user.student_age) if current_user.student_age else None
+    suggested_courses = [c for c in available_courses if _student_matches_course_age(student_age, c.suitable_age_ranges)]
+    if not suggested_courses:
+        suggested_courses = available_courses
 
     return {
         "stats": {
@@ -212,6 +252,7 @@ def dashboard(
                 "course_id": course.id,
                 "title": course.title,
                 "category": course.category,
+                "suitable_age_ranges": _normalized_age_ranges(course.suitable_age_ranges),
                 "provider_name": provider_map.get(int(course.provider_id), "Provider"),
                 "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
                 "progress_pct": enr.progress_pct,
@@ -232,6 +273,7 @@ def dashboard(
                 "course_id": c.id,
                 "title": c.title,
                 "category": c.category,
+                "suitable_age_ranges": _normalized_age_ranges(c.suitable_age_ranges),
                 "provider_name": provider_map.get(int(c.provider_id), "Provider"),
                 "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
@@ -239,6 +281,20 @@ def dashboard(
                 "created_at": c.created_at,
             }
             for c in available_courses
+        ],
+        "suggested": [
+            {
+                "course_id": c.id,
+                "title": c.title,
+                "category": c.category,
+                "suitable_age_ranges": _normalized_age_ranges(c.suitable_age_ranges),
+                "provider_name": provider_map.get(int(c.provider_id), "Provider"),
+                "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
+                "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
+                "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
+                "created_at": c.created_at,
+            }
+            for c in suggested_courses
         ],
     }
 

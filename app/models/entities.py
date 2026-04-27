@@ -88,6 +88,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), index=True)
+    student_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     account_state: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active | frozen | banned | deleted
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -175,6 +176,7 @@ class Course(Base):
     title: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(100), index=True)
+    suitable_age_ranges: Mapped[list] = mapped_column(JSON, default=list)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     includes_certification_exam: Mapped[bool] = mapped_column(Boolean, default=False)
     fair_usage_multiplier: Mapped[float] = mapped_column(Float, default=2.5)
@@ -843,6 +845,7 @@ class ProviderCourseDraft(Base):
     title: Mapped[str] = mapped_column(String(255), default="")
     level: Mapped[str] = mapped_column(String(50), default="Beginner")
     category: Mapped[str] = mapped_column(String(100), default="General")
+    suitable_age_ranges: Mapped[list] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     includes_exam: Mapped[bool] = mapped_column(Boolean, default=True)

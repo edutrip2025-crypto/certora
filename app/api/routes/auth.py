@@ -440,6 +440,7 @@ def me_context(
         "public_uid": _public_uid(current_user.id),
         "email": current_user.email,
         "phone_number": current_user.phone_number,
+        "student_age": current_user.student_age,
         "full_name": current_user.full_name,
         "role": current_user.role,
         "account_state": str(current_user.account_state or "active"),
@@ -490,6 +491,7 @@ def register_role(
             full_name=payload.full_name or fallback_name,
             password_hash="firebase",
             role=payload.role,
+            student_age=int(payload.student_age) if payload.student_age else None,
             is_active=True,
             account_state="active",
         )
@@ -501,6 +503,7 @@ def register_role(
             current_user.phone_number = phone_number
         current_user.full_name = payload.full_name or fallback_name
         current_user.role = payload.role
+        current_user.student_age = int(payload.student_age) if payload.student_age else None
         if str(current_user.account_state or "active").lower() in {"banned", "deleted"}:
             raise HTTPException(status_code=403, detail="This account is not allowed to access the platform.")
         if str(current_user.account_state or "active").lower() == "frozen":
@@ -545,6 +548,7 @@ def register_role(
                 full_name=payload.full_name or fallback_name,
                 password_hash="firebase",
                 role=payload.role,
+                student_age=int(payload.student_age) if payload.student_age else None,
                 is_active=True,
                 account_state="active",
             )
@@ -553,6 +557,7 @@ def register_role(
 
         recovered.full_name = payload.full_name or fallback_name
         recovered.role = payload.role
+        recovered.student_age = int(payload.student_age) if payload.student_age else None
         _upsert_identity_verification(
             db=db,
             user_id=recovered.id,

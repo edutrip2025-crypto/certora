@@ -159,6 +159,7 @@ def _migrate_stream_market_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "courses", "fair_usage_multiplier", "FLOAT DEFAULT 2.5")
     _sqlite_add_column_if_missing(conn, "courses", "fair_usage_override_seconds", "INTEGER")
     _sqlite_add_column_if_missing(conn, "courses", "admin_fair_usage_override_enabled", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "courses", "suitable_age_ranges", "TEXT DEFAULT '[]'")
     _sqlite_add_column_if_missing(conn, "courses", "price_currency", "TEXT DEFAULT 'INR'")
     _sqlite_add_column_if_missing(conn, "courses", "base_price_amount", "FLOAT DEFAULT 0")
     _sqlite_add_column_if_missing(conn, "courses", "gst_rate", "FLOAT DEFAULT 0.18")
@@ -168,6 +169,7 @@ def _migrate_stream_market_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "courses", "platform_commission_amount", "FLOAT DEFAULT 0")
     _sqlite_add_column_if_missing(conn, "courses", "final_price_amount", "FLOAT DEFAULT 0")
     _sqlite_add_column_if_missing(conn, "provider_course_drafts", "base_price_amount", "FLOAT DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "provider_course_drafts", "suitable_age_ranges", "TEXT DEFAULT '[]'")
     _sqlite_add_column_if_missing(conn, "provider_course_drafts", "price_currency", "TEXT DEFAULT 'INR'")
     _sqlite_add_column_if_missing(conn, "provider_course_drafts", "gst_rate", "FLOAT DEFAULT 0.18")
     _sqlite_add_column_if_missing(conn, "provider_course_drafts", "platform_commission_rate", "FLOAT DEFAULT 0.25")
@@ -186,6 +188,7 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_multiplier FLOAT DEFAULT 2.5",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS fair_usage_override_seconds INTEGER",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS admin_fair_usage_override_enabled BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS suitable_age_ranges JSON DEFAULT '[]'::json",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS price_currency VARCHAR(8) DEFAULT 'INR'",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS base_price_amount FLOAT DEFAULT 0",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS gst_rate FLOAT DEFAULT 0.18",
@@ -195,6 +198,7 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS platform_commission_amount FLOAT DEFAULT 0",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS final_price_amount FLOAT DEFAULT 0",
         "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS base_price_amount FLOAT DEFAULT 0",
+        "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS suitable_age_ranges JSON DEFAULT '[]'::json",
         "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS price_currency VARCHAR(8) DEFAULT 'INR'",
         "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS gst_rate FLOAT DEFAULT 0.18",
         "ALTER TABLE provider_course_drafts ADD COLUMN IF NOT EXISTS platform_commission_rate FLOAT DEFAULT 0.25",
@@ -268,6 +272,7 @@ def _migrate_exam_schema_postgres(conn) -> None:
 
 def _migrate_admin_user_controls_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "users", "phone_number", "TEXT")
+    _sqlite_add_column_if_missing(conn, "users", "student_age", "INTEGER")
     _sqlite_add_column_if_missing(conn, "users", "account_state", "TEXT DEFAULT 'active'")
     conn.execute(
         text(
@@ -295,6 +300,7 @@ def _migrate_admin_user_controls_sqlite(conn) -> None:
 def _migrate_admin_user_controls_postgres(conn) -> None:
     statements = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(32)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS student_age INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_state VARCHAR(20) DEFAULT 'active'",
         "UPDATE users SET account_state = 'active' WHERE account_state IS NULL",
         """
