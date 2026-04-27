@@ -2018,15 +2018,40 @@ function renderStudentHomeCards(target, data) {
 
 function renderStudentHomeSnapshots() {
   const suggested = Array.isArray(state.studentDashboard.suggested) ? state.studentDashboard.suggested.slice(0, 6) : [];
-  renderList(
-    el.studentHomeAvailableList,
-    suggested,
-    (c) => `
-      <div><strong>${escapeHtmlAttr(c.title || "Untitled Course")}</strong></div>
-      <div class="meta">${escapeHtmlAttr(c.provider_name || "Provider")} | ${escapeHtmlAttr(c.category || "General")}</div>
-    `,
-    "No suggested courses yet.",
-  );
+  const target = el.studentHomeAvailableList;
+  if (!target) return;
+  if (!suggested.length) {
+    target.innerHTML = `<div class="item"><div class="meta">No suggested courses yet.</div></div>`;
+    return;
+  }
+  const fallbackThumb = "/assets/classagon_logo.png?v=20260422c";
+  const cards = suggested.map((c) => `
+    <article class="course-tile">
+      <img src="${escapeHtmlAttr(c.thumbnail_url || fallbackThumb)}" alt="" class="${c.thumbnail_url ? "course-tile-thumb" : "course-tile-thumb is-logo"}" onerror="this.onerror=null;this.src='${fallbackThumb}';this.className='course-tile-thumb is-logo';" />
+      <div class="course-tile-body">
+        <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
+        <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
+        <div class="course-tile-meta">${escapeHtmlAttr(c.category || "General")} | ${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+        <div class="actions">
+          <button class="btn small" data-student-home-enroll="${Number(c.course_id || 0)}">Enroll</button>
+        </div>
+      </div>
+    </article>
+  `).join("");
+  target.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+  target.querySelectorAll("[data-student-home-enroll]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const cid = Number(btn.dataset.studentHomeEnroll || 0);
+        if (!cid) return;
+        await api("POST", "/student/enroll", { course_id: cid });
+        toast("Enrollment successful");
+        await refreshStudentDashboard();
+      } catch {
+        toast("Failed to enroll", "error");
+      }
+    });
+  });
 }
 
 function buildStudentAssessmentRows() {
