@@ -1744,10 +1744,12 @@ function ensureAuthReady() {
 }
 
 function setSessionBadge(text) {
-  state.sessionBadgeText = String(text || "").trim();
+  const full = String(text || "").trim();
+  const maxLen = 34;
+  state.sessionBadgeText = full.length > maxLen ? `${full.slice(0, maxLen - 2)}..` : full;
   el.sessionBadges.forEach((b) => {
     b.textContent = state.sessionBadgeText;
-    b.title = state.sessionBadgeText;
+    b.title = full;
   });
 }
 
@@ -7928,6 +7930,7 @@ function openCourseViewer(courseId) {
   $("courseWizard")?.classList.add("hidden");
   host.classList.remove("hidden");
   studentViewer.classList.remove("hidden");
+  if ($("scvCloseBtn")) $("scvCloseBtn").textContent = "Back to My Courses";
   if (el.scvTitle) el.scvTitle.textContent = `${course.title} - Class Viewer`;
   if (el.scvMeta) el.scvMeta.textContent = `${course.category || "General"} | Provider Preview`;
   if (el.scvAssessmentStatus) el.scvAssessmentStatus.textContent = "Provider preview mode";
@@ -8028,6 +8031,7 @@ function closeProviderUnifiedViewer() {
 
 async function openStudentCourseViewer(courseId) {
   const detail = await api("GET", `/student/courses/${courseId}/detail`);
+  if ($("scvCloseBtn")) $("scvCloseBtn").textContent = "Back to Enrolled Courses";
   activateStudentSubView("course");
   stopStudentStreamHeartbeat();
   setStudentViewerMode("legacy");

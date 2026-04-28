@@ -2834,6 +2834,10 @@ input:focus, select:focus, textarea:focus {
 }
 .settings-session .js-session-badge {
   cursor: pointer;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .settings-session .js-user-uid-badge {
   display: inline-block !important;
@@ -2853,6 +2857,40 @@ input:focus, select:focus, textarea:focus {
   border-color: #f3c2c2;
   color: #9f1239;
   background: linear-gradient(180deg, #fff7f7 0%, #ffeaea 100%);
+}
+
+.provider-assessment-toolbar {
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+.provider-assessment-toolbar > h3 {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.provider-assessment-actions {
+  margin-left: auto;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.provider-assessment-actions .search-with-icon {
+  min-width: 260px;
+  width: min(420px, 48vw);
+}
+@media (max-width: 960px) {
+  .provider-assessment-toolbar {
+    flex-wrap: wrap;
+  }
+  .provider-assessment-actions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .provider-assessment-actions .search-with-icon {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .content {
