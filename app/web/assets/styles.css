@@ -3343,12 +3343,17 @@ textarea {
 #adminView .sidebar-tools .settings-menu,
 #providerView .sidebar-tools .settings-menu,
 #studentView .sidebar-tools .settings-menu {
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 52px !important;
+  position: fixed !important;
+  left: 12px !important;
+  right: auto !important;
+  bottom: 12px !important;
   min-width: 0 !important;
-  width: auto !important;
-  max-width: 100% !important;
+  width: min(340px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100vh - 24px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  z-index: 3200 !important;
 }
 .workspace-brand .brand-logo {
   width: 128px !important;

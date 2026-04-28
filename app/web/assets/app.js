@@ -9243,7 +9243,7 @@ function bindEvents() {
       await updateProfile(cred.user, { displayName: name });
       let roleSetupDone = false;
       let lastRoleErr = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
           await api("POST", "/auth/register-role", buildRoleRegistrationPayload(name, role));
           roleSetupDone = true;
@@ -9251,7 +9251,7 @@ function bindEvents() {
         } catch (roleErr) {
           lastRoleErr = roleErr;
           await cred.user.getIdToken(true).catch(() => {});
-          await new Promise((r) => setTimeout(r, 350));
+          await new Promise((r) => setTimeout(r, 350 + (attempt * 250)));
         }
       }
       if (!roleSetupDone && lastRoleErr) throw lastRoleErr;
@@ -9274,15 +9274,25 @@ function bindEvents() {
       if (requestedEmail && currentEmail && currentEmail === requestedEmail) {
         try {
           const fallbackRole = String(localStorage.getItem("certora_signup_role_intent") || "").trim().toLowerCase();
-          let context = await loadSessionContext();
-          if (["student", "provider"].includes(fallbackRole) && context?.role && context.role !== fallbackRole) {
-            await api(
-              "POST",
-              "/auth/register-role",
-              buildRoleRegistrationPayload(el.signupName?.value?.trim() || "User", fallbackRole),
-            );
-            await state.auth.currentUser.getIdToken(true).catch(() => {});
-            context = await loadSessionContext();
+          let context = null;
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            try {
+              context = await loadSessionContext();
+              if (["student", "provider"].includes(fallbackRole) && context?.role && context.role !== fallbackRole) {
+                await api(
+                  "POST",
+                  "/auth/register-role",
+                  buildRoleRegistrationPayload(el.signupName?.value?.trim() || "User", fallbackRole),
+                );
+                await state.auth.currentUser.getIdToken(true).catch(() => {});
+                await new Promise((r) => setTimeout(r, 300 + (attempt * 250)));
+                context = await loadSessionContext();
+              }
+              break;
+            } catch {
+              await state.auth?.currentUser?.getIdToken?.(true).catch(() => {});
+              await new Promise((r) => setTimeout(r, 350 + (attempt * 250)));
+            }
           }
           try {
             localStorage.removeItem("certora_signup_role_intent");
