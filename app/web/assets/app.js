@@ -361,7 +361,7 @@ function defaultProctorState() {
     handModel: null,
     handModelReady: false,
     startingUp: false,
-    warnCooldownMs: 4500,
+    warnCooldownMs: 10000,
     lastWarnAt: {},
     visibilityHandler: null,
     blurHandler: null,
@@ -482,14 +482,14 @@ function computeFaceMetrics(lm) {
 /** Three-layer gaze policy: raw zones â†’ scored suspicion events â†’ rolling-window thresholds (no instant â€œlooked awayâ€ warnings). */
 const GAZE_ROLLING_MS = 120000;
 const GAZE_UI_GRACE_MS = 700;
-const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 520;
+const GAZE_QUESTION_OPTIONS_AWAY_MARK_MS = 700;
 const GAZE_QUESTION_OPTIONS_AWAY_REPEAT_COUNT = 2;
-const GAZE_LAPTOP_AWAY_LIMIT_MS = 850;
-const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 900;
-const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 1400;
+const GAZE_LAPTOP_AWAY_LIMIT_MS = 1200;
+const GAZE_CONTINUOUS_WARNING_INITIAL_MS = 2600;
+const GAZE_CONTINUOUS_WARNING_REPEAT_MS = 2600;
 const GAZE_STATIC_LOW_VAR = 0.03;
 const GAZE_STATIC_PTS_MS = 900;
-const GAZE_EVENT_DEBOUNCE_MS = 4200;
+const GAZE_EVENT_DEBOUNCE_MS = 10000;
 
 function computeQuestionPanelAllowedGazeZones() {
   const screenRect = el.assessmentPreviewScreen?.getBoundingClientRect?.();
@@ -844,7 +844,7 @@ function tickGazeThreeLayerModel(p, metrics, now) {
     p.gazeContinuousWarningCount = 0;
     p.gazeNextContinuousWarningMs = 0;
   }
-  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 900 && canEmitGazeEvent(p, "look_away_over_2s")) {
+  if (p.lookAwaySinceMs && now - p.lookAwaySinceMs >= 1600 && canEmitGazeEvent(p, "look_away_over_2s")) {
     markGazeEventEmitted(p, "look_away_over_2s");
     pushProctorWarning(
       "Eyes moved away from the question area for too long. Keep attention on the question and options.",
@@ -1161,13 +1161,13 @@ function evaluateAttentionChallengeResponse() {
   const leftShift = leftBase - leftNow;
   const rightShift = rightNow - rightBase;
   const passed = p.challengeTarget === "left"
-    ? leftShift > 0.08 && rightShift < 0.22
-    : rightShift > 0.08 && leftShift < 0.22;
+    ? ((leftShift > 0.06 && rightShift < 0.28) || leftShift > 0.075)
+    : ((rightShift > 0.06 && leftShift < 0.28) || rightShift > 0.075);
   if (passed) {
     completeAttentionChallenge(true);
     return;
   }
-  if (Date.now() >= p.challengeDeadlineMs) {
+  if (Date.now() >= p.challengeDeadlineMs + 700) {
     completeAttentionChallenge(false);
   }
 }
