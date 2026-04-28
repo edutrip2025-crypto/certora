@@ -2792,12 +2792,18 @@ input:focus, select:focus, textarea:focus {
   max-width: min(320px, calc(100vw - 20px));
   max-height: min(64vh, 420px);
   overflow: auto;
+  overflow-x: hidden;
   padding: 12px 12px 10px;
   border-radius: 14px;
   border: 1px solid #c8d7ef;
   background: linear-gradient(170deg, #ebf3ff 0%, #dfeeff 100%);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
   gap: 8px;
+  box-sizing: border-box;
+}
+.settings-menu * {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .settings-header {
   display: flex;
@@ -2813,7 +2819,8 @@ input:focus, select:focus, textarea:focus {
 .settings-session {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  min-width: 0;
   gap: 4px;
   padding: 7px 10px;
   border: 1px solid #c6d8f5;
@@ -2829,7 +2836,7 @@ input:focus, select:focus, textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: .8rem;
+  font-size: .76rem;
   color: #1e293b;
 }
 .settings-session .js-session-badge {
@@ -2851,7 +2858,10 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   justify-content: flex-start;
   text-align: left;
-  font-size: .82rem;
+  font-size: .76rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 .settings-actions .btn.ghost {
   border-color: #f3c2c2;
