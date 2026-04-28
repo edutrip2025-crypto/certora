@@ -3230,6 +3230,8 @@ textarea {
   background: #ffffff !important;
   border: 1px solid #d7e3f3 !important;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12) !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 #adminView .provider-sidebar-brand,
 #providerView .provider-sidebar-brand,
@@ -3354,8 +3356,8 @@ body.app-workspace-active #studentView .content {
 }
 /* Keep admin spacing aligned with provider/student workspace rhythm */
 #adminView .content {
-  padding-left: 2px !important;
-  padding-right: 6px !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
 }
 #adminView .content > h2,
 #adminView .content .row > h2 {
@@ -3370,9 +3372,16 @@ body.app-workspace-active #providerView .sidebar-tools,
 body.app-workspace-active #studentView .sidebar-tools {
   position: sticky !important;
   bottom: 0 !important;
-  margin-top: 10px !important;
+  margin-top: auto !important;
   padding-bottom: 8px !important;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(248, 250, 252, 0.95) 36%, rgba(248, 250, 252, 1) 100%) !important;
+}
+#adminView .sidebar-tools {
+  margin-top: auto !important;
+}
+#adminView #view-profile {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
 }
 @media (max-width: 1040px) {
   #adminView .provider-sidebar-logo,

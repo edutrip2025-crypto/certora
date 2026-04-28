@@ -7,6 +7,7 @@
   formatSecondsToClock,
   escapeHtmlAttr,
   openStudentCourseViewer,
+  openStudentAvailableCourseDetail,
   refreshStudentDashboard,
   findPrimaryLesson,
   findLiveLessons,
@@ -166,7 +167,10 @@
               ${
                 enrolled
                   ? `<button class="btn small" data-student-view-course="${Number(c.course_id || 0)}">View Course</button>`
-                  : `<button class="btn small" data-student-enroll="${Number(c.course_id || 0)}">Enroll</button>`
+                  : `
+                    <button class="btn small" data-student-course-detail="${Number(c.course_id || 0)}">View Details</button>
+                    <button class="btn small" data-student-enroll="${Number(c.course_id || 0)}">Enroll</button>
+                  `
               }
             </div>
           </div>
@@ -198,6 +202,15 @@
           await refreshStudentDashboard();
         } catch {
           toast("Failed to enroll", "error");
+        }
+      });
+    });
+    document.querySelectorAll("[data-student-course-detail]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await openStudentAvailableCourseDetail(Number(btn.dataset.studentCourseDetail || 0));
+        } catch (err) {
+          toast(err?.message || "Failed to open course details", "error");
         }
       });
     });

@@ -64,6 +64,7 @@ const state = {
     enrolled: [],
     suggested: [],
   },
+  studentAvailableDetailCourseId: 0,
   studentAssessments: [],
   studentCertificates: [],
   studentLiveReminderTimers: {},
@@ -1253,6 +1254,12 @@ const el = {
   studentCertificationsFilterBtn: $("studentCertificationsFilterBtn"),
   studentCertificationsFilterMenu: $("studentCertificationsFilterMenu"),
   studentAvailableCourses: $("studentAvailableCourses"),
+  studentAvailableCourseTitle: $("studentAvailableCourseTitle"),
+  studentAvailableCourseMeta: $("studentAvailableCourseMeta"),
+  studentAvailableCourseDescription: $("studentAvailableCourseDescription"),
+  studentAvailableCoursePreviewVideo: $("studentAvailableCoursePreviewVideo"),
+  studentAvailableCourseEnrollBtn: $("studentAvailableCourseEnrollBtn"),
+  studentAvailableCourseBackBtn: $("studentAvailableCourseBackBtn"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentAvailableSearch: $("studentAvailableSearch"),
   studentAvailableSort: $("studentAvailableSort"),
@@ -1538,6 +1545,7 @@ const courseCatalogUi = createCourseCatalogUi({
   formatSecondsToClock,
   escapeHtmlAttr,
   openStudentCourseViewer,
+  openStudentAvailableCourseDetail,
   refreshStudentDashboard,
   findPrimaryLesson,
   findLiveLessons,
@@ -2205,6 +2213,7 @@ function ensureCourseWizardMounted() {
 
 function activateStudentSubView(name) {
   const isCoursePage = name === "course";
+  const isAvailableDetailPage = name === "available-course";
   const scvShell = $("scvVideoShell");
   const scvVideo = $("scvVideo");
   const scvFrame = $("scvStreamFrame");
@@ -2220,7 +2229,7 @@ function activateStudentSubView(name) {
   }
   document.querySelectorAll(".student-nav-btn").forEach((b) => {
     const target = String(b.dataset.studentView || "");
-    b.classList.toggle("active", isCoursePage ? target === "enrolled" : target === name);
+    b.classList.toggle("active", isCoursePage ? target === "enrolled" : (isAvailableDetailPage ? target === "available" : target === name));
   });
   document.querySelectorAll('[id^="student-view-"]').forEach((v) => v.classList.add("hidden"));
   const pane = document.getElementById(`student-view-${name}`);
@@ -8279,6 +8288,38 @@ function renderProviderAssessmentsList() {
        <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>
        <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
 }
+
+async function openStudentAvailableCourseDetail(courseId) {
+  const cid = Number(courseId || 0);
+  if (!cid) return;
+  const detail = await api("GET", `/student/courses/${cid}/detail`);
+  state.studentAvailableDetailCourseId = cid;
+  if (el.studentAvailableCourseTitle) el.studentAvailableCourseTitle.textContent = String(detail.title || "Course Details");
+  if (el.studentAvailableCourseMeta) {
+    const provider = String(detail.provider_name || "Provider");
+    const category = String(detail.category || "General");
+    const rating = formatCourseRating(detail.average_rating, detail.rating_count);
+    el.studentAvailableCourseMeta.textContent = `${provider} | ${category} | ${rating}`;
+  }
+  if (el.studentAvailableCourseDescription) {
+    el.studentAvailableCourseDescription.textContent = String(detail.description || "Description not available.");
+  }
+  const lessons = Array.isArray(detail.modules)
+    ? detail.modules.flatMap((m) => (Array.isArray(m.lessons) ? m.lessons : []))
+    : [];
+  const previewLesson = lessons.find((x) => x.lesson_type === "recorded_video" && x.recorded_video_url) || null;
+  if (el.studentAvailableCoursePreviewVideo) {
+    const player = el.studentAvailableCoursePreviewVideo;
+    try { player.pause(); } catch {}
+    player.controls = false;
+    player.muted = true;
+    player.removeAttribute("autoplay");
+    player.style.pointerEvents = "none";
+    player.src = previewLesson?.recorded_video_url ? String(previewLesson.recorded_video_url) : "";
+    player.load();
+  }
+  activateStudentSubView("available-course");
+}
       </div>
     `,
     "No assessments yet.",
@@ -9286,6 +9327,19 @@ function bindEvents() {
   $("providerProfileBackBtn")?.addEventListener("click", () => activateProviderSubView("home"));
   $("studentProfileBackBtn")?.addEventListener("click", () => activateStudentSubView("home"));
   $("adminProfileBackBtn")?.addEventListener("click", () => activateAdminSubView("home"));
+  el.studentAvailableCourseBackBtn?.addEventListener("click", () => activateStudentSubView("available"));
+  el.studentAvailableCourseEnrollBtn?.addEventListener("click", async () => {
+    const courseId = Number(state.studentAvailableDetailCourseId || 0);
+    if (!courseId) return;
+    try {
+      await api("POST", "/student/enroll", { course_id: courseId });
+      toast("Enrollment successful");
+      await refreshStudentDashboard();
+      await openStudentCourseViewer(courseId);
+    } catch (err) {
+      toast(err?.message || "Failed to enroll", "error");
+    }
+  });
   $("providerProfileSaveEmailBtn")?.addEventListener("click", () => {
     saveProfileEmail("provider").catch(() => {});
   });
