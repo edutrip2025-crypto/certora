@@ -88,6 +88,9 @@ const state = {
     durationSeconds: 0,
     heartbeatId: null,
   },
+  providerUsingStudentViewer: false,
+  studentViewerOriginalParent: null,
+  studentViewerOriginalNextSibling: null,
   videoDurationByUrl: {},
   assessmentDraftQuestions: [],
   assessmentEditingExamId: null,
@@ -2198,6 +2201,9 @@ async function refreshStudentAssessments() {
 }
 
 function activateProviderSubView(name) {
+  if (state.providerUsingStudentViewer && name !== "courses") {
+    closeProviderUnifiedViewer();
+  }
   if (name !== "assessments") {
     el.assessmentBuilderScreen?.classList.add("hidden");
     closeAssessmentPreview();
@@ -7902,82 +7908,122 @@ function openCourseViewer(courseId) {
   if (!course) return toast("Course not found", "error");
   const lesson = findPrimaryLesson(course);
   const liveLessons = findLiveLessons(course);
-
-  const video = $("pcvVideo");
-  if (video && lesson?.recorded_video_url) {
-    video.src = lesson.recorded_video_url;
-    video.load();
-  } else if (video) {
-    video.removeAttribute("src");
-    video.load();
+  const host = el.providerCourseViewer;
+  const studentViewer = el.studentCourseViewer;
+  if (!host || !studentViewer) return toast("Viewer is unavailable", "error");
+  if (!state.studentViewerOriginalParent) {
+    state.studentViewerOriginalParent = studentViewer.parentElement;
+    state.studentViewerOriginalNextSibling = studentViewer.nextSibling;
   }
-  if (el.pcvTitle) el.pcvTitle.textContent = `${course.title} - Class Viewer`;
+  Array.from(host.children || []).forEach((child) => {
+    if (child !== studentViewer) child.classList.add("hidden");
+  });
+  if (studentViewer.parentElement !== host) {
+    host.appendChild(studentViewer);
+  }
+  state.providerUsingStudentViewer = true;
   $("providerCoursesHeader")?.classList.add("hidden");
   $("providerCoursesList")?.classList.add("hidden");
   $("providerDraftsPage")?.classList.add("hidden");
   $("courseWizard")?.classList.add("hidden");
+  host.classList.remove("hidden");
+  studentViewer.classList.remove("hidden");
+  if (el.scvTitle) el.scvTitle.textContent = `${course.title} - Class Viewer`;
+  if (el.scvMeta) el.scvMeta.textContent = `${course.category || "General"} | Provider Preview`;
+  if (el.scvAssessmentStatus) el.scvAssessmentStatus.textContent = "Provider preview mode";
+  if (el.scvAssessmentPanel) {
+    el.scvAssessmentPanel.innerHTML = `<span id="scvAssessmentStatus" class="meta">Provider preview mode</span>`;
+  }
+  const scvVideo = $("scvVideo");
+  const scvFrame = $("scvStreamFrame");
+  setStudentViewerMode("legacy");
+  stopStudentStreamHeartbeat();
+  if (scvFrame) scvFrame.src = "";
+  if (scvVideo && lesson?.recorded_video_url) {
+    scvVideo.src = lesson.recorded_video_url;
+    scvVideo.load();
+  } else if (scvVideo) {
+    scvVideo.removeAttribute("src");
+    scvVideo.load();
+  }
+  state.studentViewerTopics = [...(lesson?.topics || [])];
   renderList(
-    el.pcvTopicList,
-    [...(lesson?.topics || [])].sort((a, b) => a.time_seconds - b.time_seconds),
+    el.scvTopicList,
+    [...(lesson?.topics || [])].sort((a, b) => Number(a.time_seconds || 0) - Number(b.time_seconds || 0)),
     (t) => `
-      <div class="topic-item" data-topic-item="${t.time_seconds}">
+      <div class="topic-item">
         ${t.thumbnail_data_url ? `<img src="${t.thumbnail_data_url}" alt="" style="width:100%;border-radius:8px;border:1px solid #e5e7eb; margin-bottom:6px;" />` : ""}
         <div><strong>${t.title}</strong></div>
-        <div class="meta">${formatSecondsToClock(t.time_seconds)}</div>
-        <div class="actions"><button class="btn small" data-pcv-seek="${t.time_seconds}">Go</button></div>
+        <div class="meta">${formatSecondsToClock(Number(t.time_seconds || 0))}</div>
+        <div class="actions"><button class="btn small" data-provider-scv-seek="${Number(t.time_seconds || 0)}">Go</button></div>
       </div>
     `,
     lesson ? "No topics available for this lesson." : "No recorded-video topics available.",
   );
+  const resources = Array.isArray(lesson?.resources) ? lesson.resources : [];
   renderList(
-    el.pcvLiveClassList,
-    liveLessons,
-    (l) => `
+    el.scvResourceList,
+    resources,
+    (r) => `
       <div>
-        <div><strong>${l.title}</strong></div>
-        <div class="meta">${l.module_title || "Live class"}</div>
-        <div class="actions"><button class="btn small" data-pcv-join-live="${l.id}">Open Live Class</button></div>
+        <div><strong>${escapeHtmlAttr(r.title || "Resource")}</strong></div>
+        <div class="actions"><a class="btn small" href="${escapeHtmlAttr(r.url || "#")}" target="_blank" rel="noopener noreferrer">Open</a></div>
       </div>
     `,
-    "No live classes added.",
+    "No resources added.",
   );
-  state.viewerTopics = [...(lesson?.topics || [])];
-  document.querySelectorAll("[data-pcv-seek]").forEach((btn) => {
+  document.querySelectorAll("[data-provider-scv-seek]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (!video) return;
-      video.currentTime = Number(btn.dataset.pcvSeek || 0);
-      video.play().catch(() => {});
+      if (!scvVideo) return;
+      scvVideo.currentTime = Number(btn.dataset.providerScvSeek || 0);
+      scvVideo.play().catch(() => {});
     });
   });
-  document.querySelectorAll("[data-pcv-join-live]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const liveLesson = liveLessons.find((l) => Number(l.id) === Number(btn.dataset.pcvJoinLive));
-      if (!liveLesson?.live_class_url) return toast("No live class link available", "error");
-      window.open(liveLesson.live_class_url, "_blank", "noopener,noreferrer");
-    });
-  });
-  el.providerCourseViewer?.classList.remove("hidden");
-  const timeline = $("pcvTimelineMarkers");
-  const tooltip = $("pcvMarkerTooltip");
+  const timeline = $("scvTimelineMarkers");
+  const tooltip = $("scvMarkerTooltip");
   const applyMarkers = () => {
     renderTimelineMarkers(
       timeline,
       tooltip,
-      lesson.topics || [],
-      Number(video?.duration || 0),
+      lesson?.topics || [],
+      Number(scvVideo?.duration || 0),
       (seconds) => {
-        if (!video) return;
-        video.currentTime = seconds;
-        video.play().catch(() => {});
+        if (!scvVideo) return;
+        scvVideo.currentTime = seconds;
+        scvVideo.play().catch(() => {});
       },
     );
   };
   if (lesson?.recorded_video_url) {
-    video?.addEventListener("loadedmetadata", applyMarkers, { once: true });
+    scvVideo?.addEventListener("loadedmetadata", applyMarkers, { once: true });
     applyMarkers();
   } else if (timeline) {
     renderTimelineMarkers(timeline, tooltip, [], 0, () => {});
   }
+}
+
+function closeProviderUnifiedViewer() {
+  const host = el.providerCourseViewer;
+  const studentViewer = el.studentCourseViewer;
+  if (host) {
+    host.classList.add("hidden");
+    Array.from(host.children || []).forEach((child) => {
+      if (child !== studentViewer) child.classList.remove("hidden");
+    });
+  }
+  if (studentViewer) {
+    studentViewer.classList.add("hidden");
+    if (state.studentViewerOriginalParent) {
+      if (state.studentViewerOriginalNextSibling && state.studentViewerOriginalNextSibling.parentNode === state.studentViewerOriginalParent) {
+        state.studentViewerOriginalParent.insertBefore(studentViewer, state.studentViewerOriginalNextSibling);
+      } else {
+        state.studentViewerOriginalParent.appendChild(studentViewer);
+      }
+    }
+  }
+  state.providerUsingStudentViewer = false;
+  $("providerCoursesHeader")?.classList.remove("hidden");
+  $("providerCoursesList")?.classList.remove("hidden");
 }
 
 async function openStudentCourseViewer(courseId) {
@@ -9619,9 +9665,7 @@ function bindEvents() {
     renderDraftTopics();
   });
   $("pcvCloseBtn")?.addEventListener("click", () => {
-    el.providerCourseViewer?.classList.add("hidden");
-    $("providerCoursesHeader")?.classList.remove("hidden");
-    $("providerCoursesList")?.classList.remove("hidden");
+    closeProviderUnifiedViewer();
     $("providerDraftsPage")?.classList.add("hidden");
   });
   $("pcvVideo")?.addEventListener("timeupdate", () => updateViewerTimeMeta());
@@ -9637,6 +9681,10 @@ function bindEvents() {
     refreshStudentSeekUi();
   });
   $("scvCloseBtn")?.addEventListener("click", () => {
+    if (state.context?.role === "provider" && state.providerUsingStudentViewer) {
+      closeProviderUnifiedViewer();
+      return;
+    }
     stopStudentStreamHeartbeat();
     setStudentViewerMode("legacy");
     $("scvVideoShell")?.classList.remove("minimized");

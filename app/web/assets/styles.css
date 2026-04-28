@@ -2776,6 +2776,8 @@ input:focus, select:focus, textarea:focus {
   min-width: 0;
   width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 #providerView .content {
   margin-top: 56px;
