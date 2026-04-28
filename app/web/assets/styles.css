@@ -3352,6 +3352,19 @@ body.app-workspace-active #studentView .content {
   overflow-x: hidden !important;
   padding-right: 6px !important;
 }
+/* Keep admin spacing aligned with provider/student workspace rhythm */
+#adminView .content {
+  padding-left: 2px !important;
+  padding-right: 6px !important;
+}
+#adminView .content > h2,
+#adminView .content .row > h2 {
+  margin-bottom: 12px !important;
+}
+#adminView .moderation-toolbar,
+#adminView .item {
+  margin-top: 12px !important;
+}
 body.app-workspace-active #adminView .sidebar-tools,
 body.app-workspace-active #providerView .sidebar-tools,
 body.app-workspace-active #studentView .sidebar-tools {

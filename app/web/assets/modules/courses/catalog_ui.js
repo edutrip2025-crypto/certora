@@ -126,6 +126,14 @@
       target.innerHTML = `<div class="item"><div class="meta">No items</div><div style="margin-top:4px;">No courses found for current search/filter.</div></div>`;
       return;
     }
+    const studentDifficultyMeta = (course) => {
+      const tag = String(course?.difficulty_tag || "").trim();
+      const attempts = Number(course?.difficulty_attempt_count || 0);
+      if (!tag || attempts < 15) return "";
+      const passRate = Number(course?.difficulty_pass_rate_pct);
+      const passText = Number.isFinite(passRate) ? ` | Pass rate ${passRate.toFixed(0)}%` : "";
+      return `Difficulty: ${tag[0].toUpperCase()}${tag.slice(1)}${passText}`;
+    };
     const cards = items.map((c) => {
       const thumbSrc = courseThumbSrc(c);
       const thumbClass = thumbSrc === fallbackCourseThumb ? "course-tile-thumb is-logo" : "course-tile-thumb";
@@ -135,6 +143,7 @@
         : c.exam_eligible
           ? "Assessment not yet published"
           : "Assessment locked";
+      const difficultyLine = studentDifficultyMeta(c);
       return `
         <article class="course-tile">
           <img src="${escapeHtmlAttr(thumbSrc)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
@@ -142,6 +151,7 @@
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
             <div class="course-tile-meta">${escapeHtmlAttr(c.category || "-")} | ${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+            ${difficultyLine ? `<div class="course-tile-meta">${escapeHtmlAttr(difficultyLine)}</div>` : ""}
             ${
               enrolled
                 ? `

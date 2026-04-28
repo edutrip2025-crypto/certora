@@ -174,6 +174,39 @@ def _student_feedback_map(db: Session, student_id: int, course_ids: set[int]) ->
     return out
 
 
+def _course_difficulty_summary(db: Session, course_ids: set[int], rating_summary: dict[int, dict]) -> dict[int, dict]:
+    if not course_ids:
+        return {}
+    rows = db.execute(
+        select(Exam.course_id, Result.passed)
+        .join(ExamAttempt, ExamAttempt.id == Result.attempt_id)
+        .join(Exam, Exam.id == ExamAttempt.exam_id)
+        .where(Exam.course_id.in_(course_ids)),
+    ).all()
+    attempts: dict[int, int] = {}
+    passed: dict[int, int] = {}
+    for course_id, is_passed in rows:
+        cid = int(course_id)
+        attempts[cid] = attempts.get(cid, 0) + 1
+        if bool(is_passed):
+            passed[cid] = passed.get(cid, 0) + 1
+    out: dict[int, dict] = {}
+    for cid, cnt in attempts.items():
+        rating_count = int((rating_summary.get(cid) or {}).get("rating_count", 0))
+        if cnt < 15 or rating_count <= 0:
+            out[cid] = {"difficulty_tag": None, "attempt_count": int(cnt), "pass_rate_pct": None}
+            continue
+        pass_rate = round((passed.get(cid, 0) / max(1, cnt)) * 100.0, 2)
+        if pass_rate >= 70:
+            tag = "easy"
+        elif pass_rate >= 40:
+            tag = "medium"
+        else:
+            tag = "hard"
+        out[cid] = {"difficulty_tag": tag, "attempt_count": int(cnt), "pass_rate_pct": pass_rate}
+    return out
+
+
 def _student_has_completed_assessment(db: Session, student_id: int, course_id: int) -> bool:
     completed_count = int(
         db.scalar(
@@ -219,6 +252,7 @@ def dashboard(
     }
     rating_summary = _course_rating_summary(db, dashboard_course_ids)
     my_feedback = _student_feedback_map(db, current_user.id, dashboard_course_ids)
+    difficulty_summary = _course_difficulty_summary(db, dashboard_course_ids, rating_summary)
 
     total_enrolled = len(enrolled_rows)
     completed_count = sum(1 for enr, _ in enrolled_rows if (enr.progress_pct or 0) >= 100)
@@ -262,6 +296,9 @@ def dashboard(
                 "average_rating": float((rating_summary.get(int(course.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(course.id)) or {}).get("rating_count", 0)),
                 "my_rating": float((my_feedback.get(int(course.id)) or {}).get("overall_rating", 0.0)),
+                "difficulty_tag": (difficulty_summary.get(int(course.id)) or {}).get("difficulty_tag"),
+                "difficulty_attempt_count": int((difficulty_summary.get(int(course.id)) or {}).get("attempt_count", 0)),
+                "difficulty_pass_rate_pct": (difficulty_summary.get(int(course.id)) or {}).get("pass_rate_pct"),
                 "status": enr.status,
                 "enrolled_at": enr.enrolled_at,
                 "created_at": course.created_at,
@@ -278,6 +315,9 @@ def dashboard(
                 "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
+                "difficulty_tag": (difficulty_summary.get(int(c.id)) or {}).get("difficulty_tag"),
+                "difficulty_attempt_count": int((difficulty_summary.get(int(c.id)) or {}).get("attempt_count", 0)),
+                "difficulty_pass_rate_pct": (difficulty_summary.get(int(c.id)) or {}).get("pass_rate_pct"),
                 "created_at": c.created_at,
             }
             for c in available_courses
@@ -292,6 +332,9 @@ def dashboard(
                 "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
+                "difficulty_tag": (difficulty_summary.get(int(c.id)) or {}).get("difficulty_tag"),
+                "difficulty_attempt_count": int((difficulty_summary.get(int(c.id)) or {}).get("attempt_count", 0)),
+                "difficulty_pass_rate_pct": (difficulty_summary.get(int(c.id)) or {}).get("pass_rate_pct"),
                 "created_at": c.created_at,
             }
             for c in suggested_courses
@@ -350,7 +393,9 @@ def course_detail(
         )
         or 0
     )
-    rating_summary = _course_rating_summary(db, {int(course.id)}).get(int(course.id), {"average_rating": 0.0, "rating_count": 0})
+    course_rating_summary = _course_rating_summary(db, {int(course.id)})
+    rating_summary = course_rating_summary.get(int(course.id), {"average_rating": 0.0, "rating_count": 0})
+    difficulty_summary = _course_difficulty_summary(db, {int(course.id)}, course_rating_summary).get(int(course.id), {})
     my_feedback = _student_feedback_map(db, current_user.id, {int(course.id)}).get(int(course.id))
     assessment_completed = _student_has_completed_assessment(db, current_user.id, int(course.id))
     return {
@@ -366,6 +411,9 @@ def course_detail(
         "assessment_completed": bool(assessment_completed),
         "average_rating": float(rating_summary.get("average_rating", 0.0)),
         "rating_count": int(rating_summary.get("rating_count", 0)),
+        "difficulty_tag": difficulty_summary.get("difficulty_tag"),
+        "difficulty_attempt_count": int(difficulty_summary.get("attempt_count", 0)),
+        "difficulty_pass_rate_pct": difficulty_summary.get("pass_rate_pct"),
         "my_feedback": my_feedback,
         "modules": module_items,
     }
@@ -573,6 +621,7 @@ def attempt_paper(
     return {
         "attempt_id": attempt.id,
         "exam_id": exam.id,
+        "course_id": exam.course_id,
         "title": exam.title,
         "timing_mode": exam.timing_mode,
         "duration_minutes": exam.duration_minutes,

@@ -1223,11 +1223,6 @@ const el = {
   nonAdminUpdateRoleBtn: $("nonAdminUpdateRoleBtn"),
   adminView: $("adminView"),
   analyticsGrid: $("analyticsGrid"),
-  adminProctorOverview: $("adminProctorOverview"),
-  adminProctorSessionsList: $("adminProctorSessionsList"),
-  adminTrainingOverview: $("adminTrainingOverview"),
-  adminTrainingReviewsList: $("adminTrainingReviewsList"),
-  refreshTrainingReviewsBtn: $("refreshTrainingReviewsBtn"),
   moderationSummary: $("moderationSummary"),
   moderationTypeCounts: $("moderationTypeCounts"),
   moderationList: $("moderationList"),
@@ -1242,7 +1237,6 @@ const el = {
   adminUsersSearch: $("adminUsersSearch"),
   refreshAdminUsersBtn: $("refreshAdminUsersBtn"),
   billingPanel: $("billingPanel"),
-  refreshProctorSessionsBtn: $("refreshProctorSessionsBtn"),
   loginBtn: $("loginBtn"),
   googleBtn: $("googleBtn"),
   forgotPasswordBtn: $("forgotPasswordBtn"),
@@ -2025,6 +2019,14 @@ function renderStudentHomeSnapshots() {
     return;
   }
   const fallbackThumb = "/assets/classagon_logo.png?v=20260422c";
+  const difficultyMeta = (course) => {
+    const tag = String(course?.difficulty_tag || "").trim();
+    const attempts = Number(course?.difficulty_attempt_count || 0);
+    if (!tag || attempts < 15) return "";
+    const passRate = Number(course?.difficulty_pass_rate_pct);
+    const passText = Number.isFinite(passRate) ? ` | Pass rate ${passRate.toFixed(0)}%` : "";
+    return `Difficulty: ${tag[0].toUpperCase()}${tag.slice(1)}${passText}`;
+  };
   const cards = suggested.map((c) => `
     <article class="course-tile">
       <img src="${escapeHtmlAttr(c.thumbnail_url || fallbackThumb)}" alt="" class="${c.thumbnail_url ? "course-tile-thumb" : "course-tile-thumb is-logo"}" onerror="this.onerror=null;this.src='${fallbackThumb}';this.className='course-tile-thumb is-logo';" />
@@ -2032,6 +2034,7 @@ function renderStudentHomeSnapshots() {
         <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
         <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
         <div class="course-tile-meta">${escapeHtmlAttr(c.category || "General")} | ${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+        ${difficultyMeta(c) ? `<div class="course-tile-meta">${escapeHtmlAttr(difficultyMeta(c))}</div>` : ""}
         <div class="actions">
           <button class="btn small" data-student-home-enroll="${Number(c.course_id || 0)}">Enroll</button>
         </div>
@@ -2107,8 +2110,19 @@ function renderStudentAssessmentsList() {
     }
     return Date.parse(String(b.created_at || "")) - Date.parse(String(a.created_at || ""));
   });
+  const allRows = Array.isArray(state.studentAssessments) ? state.studentAssessments : [];
+  const hasEligible = allRows.some((r) => r.status === "available");
+  const eligibleNote = !hasEligible
+    ? `
+      <div class="item" style="margin-bottom:10px;">
+        <div><strong>No eligible assessments right now</strong></div>
+        <div style="margin-top:4px;">Complete course watch requirements and wait for provider-published assessments.</div>
+      </div>
+    `
+    : "";
   if (!rows.length) {
     el.studentAssessmentsList.innerHTML = `
+      ${eligibleNote}
       <div class="item">
         <div><strong>No assessments yet</strong></div>
         <div style="margin-top:4px;">Assessments appear here after you enroll in a course and the provider publishes them.</div>
@@ -2133,7 +2147,7 @@ function renderStudentAssessmentsList() {
       </div>
     </article>
   `).join("");
-  el.studentAssessmentsList.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+  el.studentAssessmentsList.innerHTML = `${eligibleNote}<div class="course-tile-grid">${cards}</div>`;
   document.querySelectorAll("[data-student-assess-open-course]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
@@ -3616,125 +3630,12 @@ function renderGlimpseOverview(target, kpis, bars) {
   `;
 }
 
-async function refreshAdminProctorSessions() {
-  const out = await api("GET", "/proctoring/admin/sessions?flagged_only=true&page=1&page_size=24");
-  const items = out.items || [];
-  const decisionCounts = { pass: 0, fail: 0, manual_review: 0, unknown: 0 };
-  const reviewCounts = { pending: 0, reviewed: 0 };
-  let totalWarnings = 0;
-  let totalRisk = 0;
-  items.forEach((row) => {
-    const decision = normalizeDecision(row.ai_decision);
-    decisionCounts[decision] = (decisionCounts[decision] || 0) + 1;
-    if (String(row.admin_review_status || "").toLowerCase() === "pending") reviewCounts.pending += 1;
-    else reviewCounts.reviewed += 1;
-    totalWarnings += Number(row.warning_count || 0);
-    const riskProb = Number(row.ai_probability);
-    totalRisk += Number.isFinite(riskProb) ? (riskProb * 100) : 0;
-  });
-  renderGlimpseOverview(
-    el.adminProctorOverview,
-    [
-      { label: "Flagged Sessions", value: items.length },
-      { label: "Pending Review", value: reviewCounts.pending },
-      { label: "Avg Warnings", value: items.length ? (totalWarnings / items.length).toFixed(1) : "0.0" },
-      { label: "Avg Model Risk", value: items.length ? `${(totalRisk / items.length).toFixed(1)}%` : "0.0%" },
-      { label: "Manual Review", value: decisionCounts.manual_review || 0 },
-      { label: "Fail Decisions", value: decisionCounts.fail || 0 },
-    ],
-    [
-      { label: "Pass", value: decisionCounts.pass || 0 },
-      { label: "Fail", value: decisionCounts.fail || 0 },
-      { label: "Manual Review", value: decisionCounts.manual_review || 0 },
-      { label: "Unknown", value: decisionCounts.unknown || 0 },
-    ],
-  );
-  renderList(
-    el.adminProctorSessionsList,
-    items.slice(0, 6),
-    (session) => {
-      const decision = normalizeDecision(session.ai_decision);
-      const actor = escapeHtmlAttr(session.actor_name || session.actor_email || session.actor_user_id || "Unknown");
-      const reviewStatus = escapeHtmlAttr(session.admin_review_status || "pending");
-      const prob = Number(session.ai_probability);
-      const riskPct = Number.isFinite(prob)
-        ? Math.max(0, Math.min(100, Math.round(prob * 100)))
-        : Math.max(4, Math.min(100, Math.round((Number(session.warning_count || 0) * 14) + (Number(session.events_count || 0) * 3))));
-      return `
-        <div class="glimpse-item-head">
-          <strong>Session #${session.session_id}</strong>
-          <span class="status-pill ${decisionTone(decision)}">${escapeHtmlAttr(decision)}</span>
-        </div>
-        <div class="meta">${actor} | ${formatTime(session.started_at)}</div>
-        <div class="glimpse-progress"><span style="width:${riskPct}%;"></span></div>
-        <div class="meta">Risk ${riskPct}% | Warnings ${Number(session.warning_count || 0)} | Events ${Number(session.events_count || 0)} | Review ${reviewStatus}</div>
-      `;
-    },
-    "No flagged sessions.",
-  );
-}
-
 function escapeHtmlAttr(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-async function refreshAdminTrainingReviews() {
-  const out = await api("GET", "/proctoring/admin/training-reviews?page=1&page_size=100");
-  const items = out.items || [];
-  const correct = items.filter((row) => String(row.feedback_label || "").toLowerCase() === "correct").length;
-  const incorrect = items.filter((row) => String(row.feedback_label || "").toLowerCase() === "incorrect").length;
-  const preview = items.filter((row) => String(row.context || "").toLowerCase() === "preview").length;
-  const attempt = items.length - preview;
-  const modelRiskValues = items
-    .map((row) => Number(row.model_probability))
-    .filter((v) => Number.isFinite(v))
-    .map((v) => v * 100);
-  const avgModelRisk = modelRiskValues.length
-    ? `${(modelRiskValues.reduce((a, b) => a + b, 0) / modelRiskValues.length).toFixed(1)}%`
-    : "0.0%";
-  renderGlimpseOverview(
-    el.adminTrainingOverview,
-    [
-      { label: "Total Labels", value: items.length },
-      { label: "Model Correct", value: correct },
-      { label: "Model Wrong", value: incorrect },
-      { label: "Preview Labels", value: preview },
-      { label: "Attempt Labels", value: attempt },
-      { label: "Avg Model Risk", value: avgModelRisk },
-    ],
-    [
-      { label: "Correct", value: correct },
-      { label: "Incorrect", value: incorrect },
-      { label: "Preview", value: preview },
-      { label: "Attempts", value: attempt },
-    ],
-  );
-  renderList(
-    el.adminTrainingReviewsList,
-    items.slice(0, 6),
-    (row) => {
-      const verdict = row.feedback_label === "correct" ? "Model Correct" : "Model Wrong";
-      const pillCls = row.feedback_label === "correct" ? "status-resolved" : "status-open";
-      const ctx = row.context === "preview" ? "Preview" : "Student Attempt";
-      const prob =
-        typeof row.model_probability === "number" && Number.isFinite(row.model_probability)
-          ? `${(Number(row.model_probability) * 100).toFixed(1)}%`
-          : "-";
-      return `
-        <div class="glimpse-item-head">
-          <strong>#${row.id}</strong>
-          <span class="status-pill ${pillCls}">${verdict}</span>
-        </div>
-        <div class="meta">${formatTime(row.created_at)} | ${ctx}</div>
-        <div class="meta">Reviewer: ${escapeHtmlAttr(row.actor_name || "-")} | Risk: ${prob} | Model: ${escapeHtmlAttr(row.model_decision || "-")}</div>
-      `;
-    },
-    "No training reviews saved yet.",
-  );
 }
 
 function applyModerationFilters(items) {
@@ -8812,8 +8713,6 @@ async function loadSessionContext() {
     activateAdminSubView("home");
     await Promise.all([
       refreshAnalytics(),
-      refreshAdminProctorSessions(),
-      refreshAdminTrainingReviews(),
       refreshModerationData(),
       refreshAdminUsers(),
       refreshBilling(),
@@ -8825,8 +8724,6 @@ async function loadSessionContext() {
           refreshModerationData(),
           refreshAdminUsers(),
           refreshAdminBadges(),
-          refreshAdminProctorSessions(),
-          refreshAdminTrainingReviews(),
         ]);
       } catch (err) {
         log("admin_poll_error", String(err));
@@ -9001,6 +8898,12 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     if (state.liveRoom.participantsOpen) positionLiveParticipantsMenu();
   });
+  const isStudentPlayerOpen = () => {
+    const courseView = document.getElementById("student-view-course");
+    const viewer = document.getElementById("studentCourseViewer");
+    if (!courseView || !viewer) return false;
+    return !courseView.classList.contains("hidden") && !viewer.classList.contains("hidden");
+  };
   const pauseProtectedPlayback = (showHint = false) => {
     const now = Date.now();
     const cw = $("cwVideoPreview");
@@ -9017,7 +8920,7 @@ function bindEvents() {
         forceStopStudentStreamPlayback();
       }
     }
-    if (showHint) {
+    if (showHint && isStudentPlayerOpen()) {
       const last = Number(state.studentSeekHintAt || 0);
       if (now - last > 2500) {
         state.studentSeekHintAt = now;
@@ -9922,10 +9825,6 @@ function bindEvents() {
     await Promise.all([refreshProviderContent(), loadProviderDraftsRaw()]);
     openAssessmentBuilder();
   });
-  $("refreshProctorSessionsBtn")?.addEventListener("click", () => refreshAdminProctorSessions().catch(() => toast("Failed to refresh proctor sessions", "error")));
-  $("refreshTrainingReviewsBtn")?.addEventListener("click", () =>
-    refreshAdminTrainingReviews().catch(() => toast("Failed to refresh training reviews", "error")),
-  );
   $("assessmentBuilderCloseBtn")?.addEventListener("click", () => closeAssessmentBuilder());
   $("abStep1NextBtn")?.addEventListener("click", () => {
     if (!validateAssessmentStep(1)) return;
