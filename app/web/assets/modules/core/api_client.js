@@ -21,17 +21,27 @@ export function createApiClient({ state }) {
     pendingRequests += 1;
     emitNetworkBusy();
     try {
-      const request = async (forceRefreshToken = false) => fetch(path, {
-        method,
-        cache: "no-store",
-        headers: authRequired
-          ? {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${await state.auth.currentUser.getIdToken(forceRefreshToken)}`,
-          }
-          : await getHeaders(false),
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      const request = async (forceRefreshToken = false) => {
+        if (authRequired) {
+          const user = state.auth?.currentUser;
+          if (!user) throw new Error(JSON.stringify({ status: 401, data: { detail: "Please login first." } }, null, 2));
+          return fetch(path, {
+            method,
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${await user.getIdToken(forceRefreshToken)}`,
+            },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+        }
+        return fetch(path, {
+          method,
+          cache: "no-store",
+          headers: await getHeaders(false),
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      };
       let res = await request(false);
       if (authRequired && res.status === 401 && state.auth?.currentUser) {
         // Retry once with forced token refresh to handle transient auth races.

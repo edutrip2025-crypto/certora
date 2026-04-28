@@ -1629,6 +1629,17 @@ function log(label, payload) {
   console.log(`[${label}]`, payload);
 }
 
+function apiErrorStatus(err) {
+  try {
+    const msg = typeof err?.message === "string" ? err.message : String(err || "");
+    const parsed = JSON.parse(msg);
+    const status = Number(parsed?.status || 0);
+    return Number.isFinite(status) ? status : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function showView(mode) {
   if (mode === "auth" && state.liveRoom.active) {
     clearLiveRoomState();
@@ -8767,6 +8778,13 @@ async function loadSessionContext() {
           refreshAdminBadges(),
         ]);
       } catch (err) {
+        const status = apiErrorStatus(err);
+        if (status === 401 || status === 403) {
+          stopAdminPolling();
+          if (status === 403) {
+            toast("Admin access denied for this account. Re-login with an approved admin account.", "error");
+          }
+        }
         log("admin_poll_error", String(err));
       }
     }, 10000);
