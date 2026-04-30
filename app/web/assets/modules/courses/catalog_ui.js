@@ -146,12 +146,15 @@
           : "Assessment locked";
       const difficultyLine = studentDifficultyMeta(c);
       return `
-        <article class="course-tile">
+        <article class="course-tile course-tile-elevated">
           <img src="${escapeHtmlAttr(thumbSrc)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
-            <div class="course-tile-meta">${escapeHtmlAttr(c.category || "-")} | ${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
+            <div class="course-tile-meta course-chip-row">
+              <span class="course-chip">${escapeHtmlAttr(c.category || "-")}</span>
+              <span class="course-chip">${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</span>
+            </div>
             ${difficultyLine ? `<div class="course-tile-meta">${escapeHtmlAttr(difficultyLine)}</div>` : ""}
             ${
               enrolled
@@ -159,11 +162,14 @@
                   <div class="course-tile-progress">
                     <div class="course-tile-progress-bar" style="width:${progress}%;"></div>
                   </div>
-                  <div class="course-tile-meta">${progress.toFixed(0)}% completed | ${escapeHtmlAttr(assessmentLine)}</div>
+                  <div class="course-tile-meta course-progress-meta">
+                    <span>${progress.toFixed(0)}% completed</span>
+                    <span>${escapeHtmlAttr(assessmentLine)}</span>
+                  </div>
                 `
                 : ""
             }
-            <div class="actions">
+            <div class="actions course-actions-row">
               ${
                 enrolled
                   ? `<button class="btn small" data-student-view-course="${Number(c.course_id || 0)}">View Course</button>`
@@ -250,15 +256,15 @@
       const postedDate = safeCourseTime(c.created_at) ? new Date(c.created_at).toLocaleDateString() : "-";
       const difficultyPct = providerCourseDifficultyPct(c);
       return `
-        <article class="course-tile">
+        <article class="course-tile course-tile-elevated provider-course-tile">
           ${canDeleteCourseFromUi() ? `<button class="btn small danger icon-action-btn course-tile-delete-corner" data-delete-course="${c.id}" title="Delete Course" aria-label="Delete Course"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>` : ""}
           <img src="${escapeHtmlAttr(thumb)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
             <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
             <div class="course-tile-provider">Provider: You</div>
             <div class="course-tile-meta course-meta-inline">
-              <span>Status: ${statusLabel}</span>
-              <span>Duration: <span data-course-duration="${c.id}">${durationLabel}</span></span>
+              <span class="course-chip">${statusLabel}</span>
+              <span class="course-chip">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></span>
             </div>
             <div class="course-tile-meta">Posted: ${escapeHtmlAttr(postedDate)}</div>
             <div class="course-tile-meta">Difficulty</div>
