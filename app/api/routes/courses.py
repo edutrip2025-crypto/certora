@@ -32,6 +32,7 @@ def _can_delete_course(db: Session, course: Course, current_user: User) -> bool:
 def _course_out_payload(course: Course) -> dict:
     out = CourseOut.model_validate(course).model_dump()
     out["thumbnail_url"] = resolve_media_url(course.thumbnail_url) or course.thumbnail_url
+    out["intro_video_url"] = resolve_media_url(course.intro_video_url) or course.intro_video_url
     return out
 
 
@@ -74,6 +75,9 @@ def create_course(
     profile = _provider_profile_or_404(db, current_user.id)
     if float(payload.base_price_amount or 0.0) <= 0:
         raise HTTPException(status_code=400, detail="Course price is required and must be greater than 0.")
+    intro_video_url = str(payload.intro_video_url or "").strip()
+    if not intro_video_url:
+        raise HTTPException(status_code=400, detail="Intro video URL is required.")
     try:
         thumbnail_ref = normalize_image_storage_reference(
             payload.thumbnail_url,
@@ -88,6 +92,7 @@ def create_course(
         category=payload.category,
         suitable_age_ranges=list(payload.suitable_age_ranges or []),
         thumbnail_url=thumbnail_ref,
+        intro_video_url=intro_video_url,
         includes_certification_exam=payload.includes_certification_exam,
         **_pricing_breakdown_from_base(float(payload.base_price_amount or 0.0)),
         is_published=False,
@@ -121,6 +126,8 @@ def update_course(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid course thumbnail: {exc}") from exc
+    if "intro_video_url" in updates:
+        updates["intro_video_url"] = str(updates.get("intro_video_url") or "").strip() or None
 
     for key, value in updates.items():
         if key in {
@@ -265,6 +272,8 @@ def publish_course(
     )
     if not has_playable:
         raise HTTPException(status_code=400, detail="Add at least one lesson with video/live URL before publishing.")
+    if not str(course.intro_video_url or "").strip():
+        raise HTTPException(status_code=400, detail="Add an intro video URL before publishing.")
     course.is_published = True
     db.commit()
     db.refresh(course)

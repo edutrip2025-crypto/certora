@@ -8425,8 +8425,7 @@ async function openStudentAvailableCourseDetail(courseId) {
   const detail = await api("GET", `/student/courses/${cid}/detail`);
   state.studentAvailableDetailCourseId = cid;
   renderStudentAvailableCourseScreen(detail, el);
-  const introMatch = String(detail?.description || "").match(/IntroVideo:\s*(https?:\/\/\S+)/i);
-  const introUrl = introMatch?.[1] ? String(introMatch[1]).trim() : "";
+  const introUrl = String(detail?.intro_video_url || "").trim();
   if (el.studentAvailableCoursePreviewVideo) {
     const player = el.studentAvailableCoursePreviewVideo;
     try { player.pause(); } catch {}
@@ -8765,10 +8764,11 @@ async function createCourseFromWizard() {
 
   const course = await api("POST", "/courses", {
     title,
-    description: `${description}\n\nLevel: ${level}\nIntroVideo: ${introVideoUrl}`.trim(),
+    description: `${description}\n\nLevel: ${level}`.trim(),
     category,
     suitable_age_ranges: suitableAgeRanges,
     thumbnail_url: thumbnail,
+    intro_video_url: introVideoUrl,
     includes_certification_exam: includesExam,
     base_price_amount: priceBreakdown.base,
   });

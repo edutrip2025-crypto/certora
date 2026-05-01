@@ -662,6 +662,7 @@ def provider_content_courses(
                 "id": course.id,
                 "title": course.title,
                 "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
+                "intro_video_url": resolve_media_url(course.intro_video_url) or course.intro_video_url,
                 "is_published": course.is_published,
                 "created_at": course.created_at,
                 "status": "active" if course.is_published else "inactive",
@@ -895,6 +896,7 @@ def save_course_draft(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid draft thumbnail: {exc}") from exc
     draft.includes_exam = bool(payload.get("includes_exam", True))
+    draft.intro_video_url = str(payload.get("intro_video_url") or "").strip() or None
     draft.video_url = payload.get("video_url")
     base_price_amount = float(payload.get("base_price_amount") or 0.0)
     breakdown = _draft_pricing_breakdown(base_price_amount)
@@ -918,6 +920,8 @@ def save_course_draft(
         "description": draft.description,
         "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
+        "intro_video_url": draft.intro_video_url,
+        "intro_video_play_url": resolve_media_url(draft.intro_video_url),
         "video_url": draft.video_url,
         "price_currency": draft.price_currency,
         "base_price_amount": float(draft.base_price_amount or 0.0),
@@ -948,6 +952,7 @@ def list_course_drafts(
             "level": d.level,
             "category": d.category,
             "suitable_age_ranges": list(d.suitable_age_ranges or []),
+            "intro_video_url": d.intro_video_url,
             "video_url": d.video_url,
             "price_currency": d.price_currency,
             "base_price_amount": float(d.base_price_amount or 0.0),
@@ -978,6 +983,8 @@ def get_course_draft(
         "description": draft.description,
         "thumbnail_url": resolve_media_url(draft.thumbnail_url) or draft.thumbnail_url,
         "includes_exam": draft.includes_exam,
+        "intro_video_url": draft.intro_video_url,
+        "intro_video_play_url": resolve_media_url(draft.intro_video_url),
         "video_url": draft.video_url,
         "video_play_url": resolve_media_url(draft.video_url),
         "price_currency": draft.price_currency,
