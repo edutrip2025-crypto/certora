@@ -108,6 +108,8 @@ class CourseCreate(BaseModel):
     suitable_age_ranges: list[str] = Field(default_factory=list)
     thumbnail_url: str | None = None
     intro_video_url: str | None = None
+    preview_video_url: str | None = None
+    main_video_url: str | None = None
     includes_certification_exam: bool = False
     price_currency: str = Field(default="INR", min_length=3, max_length=8)
     base_price_amount: float = Field(default=0, ge=0)
@@ -126,6 +128,8 @@ class CourseUpdate(BaseModel):
     suitable_age_ranges: list[str] | None = None
     thumbnail_url: str | None = None
     intro_video_url: str | None = None
+    preview_video_url: str | None = None
+    main_video_url: str | None = None
     includes_certification_exam: bool | None = None
     price_currency: str | None = Field(default=None, min_length=3, max_length=8)
     base_price_amount: float | None = Field(default=None, ge=0)
@@ -146,6 +150,8 @@ class CourseOut(BaseModel):
     suitable_age_ranges: list[str] = Field(default_factory=list)
     thumbnail_url: str | None
     intro_video_url: str | None = None
+    preview_video_url: str | None = None
+    main_video_url: str | None = None
     includes_certification_exam: bool
     price_currency: str = "INR"
     base_price_amount: float = 0

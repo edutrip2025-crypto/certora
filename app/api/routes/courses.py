@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import delete, select
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.entities import Course, CourseModule, Lesson, ProviderProfile, Resource, User, UserRole
+from app.models.entities import Course, CourseModule, Lesson, LiveClassSession, ProviderProfile, Resource, User, UserRole
 from app.schemas import CourseCreate, CourseOut, CourseUpdate, LessonCreate, ModuleCreate, ResourceCreate
 from app.services.media_storage import delete_storage_reference, normalize_image_storage_reference, resolve_media_url
 
@@ -33,6 +35,8 @@ def _course_out_payload(course: Course) -> dict:
     out = CourseOut.model_validate(course).model_dump()
     out["thumbnail_url"] = resolve_media_url(course.thumbnail_url) or course.thumbnail_url
     out["intro_video_url"] = resolve_media_url(course.intro_video_url) or course.intro_video_url
+    out["preview_video_url"] = resolve_media_url(course.preview_video_url) or course.preview_video_url
+    out["main_video_url"] = resolve_media_url(course.main_video_url) or course.main_video_url
     return out
 
 
@@ -78,6 +82,8 @@ def create_course(
     intro_video_url = str(payload.intro_video_url or "").strip()
     if not intro_video_url:
         raise HTTPException(status_code=400, detail="Intro video URL is required.")
+    preview_video_url = str(payload.preview_video_url or "").strip() or intro_video_url
+    main_video_url = str(payload.main_video_url or "").strip() or None
     try:
         thumbnail_ref = normalize_image_storage_reference(
             payload.thumbnail_url,
@@ -93,6 +99,8 @@ def create_course(
         suitable_age_ranges=list(payload.suitable_age_ranges or []),
         thumbnail_url=thumbnail_ref,
         intro_video_url=intro_video_url,
+        preview_video_url=preview_video_url,
+        main_video_url=main_video_url,
         includes_certification_exam=payload.includes_certification_exam,
         **_pricing_breakdown_from_base(float(payload.base_price_amount or 0.0)),
         is_published=False,
@@ -128,6 +136,10 @@ def update_course(
             raise HTTPException(status_code=400, detail=f"Invalid course thumbnail: {exc}") from exc
     if "intro_video_url" in updates:
         updates["intro_video_url"] = str(updates.get("intro_video_url") or "").strip() or None
+    if "preview_video_url" in updates:
+        updates["preview_video_url"] = str(updates.get("preview_video_url") or "").strip() or None
+    if "main_video_url" in updates:
+        updates["main_video_url"] = str(updates.get("main_video_url") or "").strip() or None
 
     for key, value in updates.items():
         if key in {
@@ -168,6 +180,42 @@ def list_courses(db: Session = Depends(get_db), user: User = Depends(get_current
 def public_courses(db: Session = Depends(get_db)):
     courses = db.scalars(select(Course).where(Course.is_published.is_(True))).all()
     return [_course_out_payload(c) for c in courses]
+
+
+@router.get("/live/upcoming")
+def public_upcoming_live_courses(
+    db: Session = Depends(get_db),
+    limit: int = 30,
+):
+    safe_limit = max(1, min(100, int(limit or 30)))
+    now = datetime.now(timezone.utc)
+    rows = db.execute(
+        select(LiveClassSession, Course)
+        .join(Course, Course.id == LiveClassSession.course_id)
+        .where(Course.is_published.is_(True))
+        .where(LiveClassSession.status.in_(["scheduled", "live"]))
+        .where((LiveClassSession.scheduled_start_at.is_(None)) | (LiveClassSession.scheduled_start_at >= now))
+        .order_by(LiveClassSession.scheduled_start_at.asc(), LiveClassSession.id.desc())
+        .limit(safe_limit),
+    ).all()
+    items = []
+    for sess, course in rows:
+        items.append(
+            {
+                "session_id": int(sess.id),
+                "course_id": int(course.id),
+                "course_title": course.title,
+                "course_thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
+                "intro_video_url": resolve_media_url(course.intro_video_url) or course.intro_video_url,
+                "preview_video_url": resolve_media_url(course.preview_video_url) or course.preview_video_url,
+                "title": sess.title,
+                "status": sess.status,
+                "scheduled_start_at": sess.scheduled_start_at,
+                "scheduled_end_at": sess.scheduled_end_at,
+                "timezone": sess.timezone,
+            },
+        )
+    return {"count": len(items), "items": items}
 
 
 @router.post("/{course_id}/modules")
@@ -274,6 +322,11 @@ def publish_course(
         raise HTTPException(status_code=400, detail="Add at least one lesson with video/live URL before publishing.")
     if not str(course.intro_video_url or "").strip():
         raise HTTPException(status_code=400, detail="Add an intro video URL before publishing.")
+    if not str(course.preview_video_url or "").strip():
+        course.preview_video_url = str(course.intro_video_url or "").strip() or None
+    if not str(course.main_video_url or "").strip():
+        first_recorded = next((str(x.recorded_video_url or "").strip() for x in lesson_rows if str(x.recorded_video_url or "").strip()), "")
+        course.main_video_url = first_recorded or None
     course.is_published = True
     db.commit()
     db.refresh(course)

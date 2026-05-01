@@ -161,6 +161,8 @@ def _migrate_stream_market_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "courses", "admin_fair_usage_override_enabled", "BOOLEAN DEFAULT 0")
     _sqlite_add_column_if_missing(conn, "courses", "suitable_age_ranges", "TEXT DEFAULT '[]'")
     _sqlite_add_column_if_missing(conn, "courses", "intro_video_url", "TEXT")
+    _sqlite_add_column_if_missing(conn, "courses", "preview_video_url", "TEXT")
+    _sqlite_add_column_if_missing(conn, "courses", "main_video_url", "TEXT")
     _sqlite_add_column_if_missing(conn, "courses", "price_currency", "TEXT DEFAULT 'INR'")
     _sqlite_add_column_if_missing(conn, "courses", "base_price_amount", "FLOAT DEFAULT 0")
     _sqlite_add_column_if_missing(conn, "courses", "gst_rate", "FLOAT DEFAULT 0.18")
@@ -192,6 +194,8 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS admin_fair_usage_override_enabled BOOLEAN DEFAULT FALSE",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS suitable_age_ranges JSON DEFAULT '[]'::json",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS intro_video_url VARCHAR(1000)",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS preview_video_url VARCHAR(1000)",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS main_video_url VARCHAR(1000)",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS price_currency VARCHAR(8) DEFAULT 'INR'",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS base_price_amount FLOAT DEFAULT 0",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS gst_rate FLOAT DEFAULT 0.18",

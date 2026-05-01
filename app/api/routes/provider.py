@@ -663,6 +663,8 @@ def provider_content_courses(
                 "title": course.title,
                 "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
                 "intro_video_url": resolve_media_url(course.intro_video_url) or course.intro_video_url,
+                "preview_video_url": resolve_media_url(course.preview_video_url) or course.preview_video_url,
+                "main_video_url": resolve_media_url(course.main_video_url) or course.main_video_url,
                 "is_published": course.is_published,
                 "created_at": course.created_at,
                 "status": "active" if course.is_published else "inactive",
@@ -865,6 +867,40 @@ def complete_video_upload(
         "storage_ref": upload.file_url,
         "status": upload.status,
     }
+
+
+@router.post("/workspace/uploads/intro")
+def upload_intro_video(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    provider = _provider_or_404(db, current_user.id)
+    filename = _safe_filename(file.filename or f"intro_{uuid4().hex}.mp4")
+    suffix = Path(filename).suffix or ".mp4"
+    temp_name = f"intro_{int(provider.id)}_{uuid4().hex}{suffix}"
+    videos_dir, _ = _media_paths()
+    temp_path = videos_dir / temp_name
+    try:
+        with temp_path.open("wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        storage_ref = upload_file_to_cloud_storage(
+            temp_path,
+            object_path=f"intro-videos/provider-{int(provider.id)}/{temp_name}",
+            content_type=file.content_type or "video/mp4",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to upload intro video: {exc}") from exc
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+    return {"uploaded": True, "file_url": resolve_media_url(storage_ref) or storage_ref, "storage_ref": storage_ref}
 
 
 @router.post("/workspace/courses/drafts")

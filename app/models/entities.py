@@ -179,6 +179,8 @@ class Course(Base):
     suitable_age_ranges: Mapped[list] = mapped_column(JSON, default=list)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     intro_video_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    preview_video_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    main_video_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     includes_certification_exam: Mapped[bool] = mapped_column(Boolean, default=False)
     fair_usage_multiplier: Mapped[float] = mapped_column(Float, default=2.5)
     fair_usage_override_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -8769,6 +8769,7 @@ async function createCourseFromWizard() {
     suitable_age_ranges: suitableAgeRanges,
     thumbnail_url: thumbnail,
     intro_video_url: introVideoUrl,
+    preview_video_url: introVideoUrl,
     includes_certification_exam: includesExam,
     base_price_amount: priceBreakdown.base,
   });
