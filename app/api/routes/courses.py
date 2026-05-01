@@ -72,6 +72,8 @@ def create_course(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
+    if float(payload.base_price_amount or 0.0) <= 0:
+        raise HTTPException(status_code=400, detail="Course price is required and must be greater than 0.")
     try:
         thumbnail_ref = normalize_image_storage_reference(
             payload.thumbnail_url,

@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -37,11 +38,13 @@ from app.services.proctor_hard_negative import (
     ingest_hard_negative_sessions_from_feedback,
     summarize_curated_hard_negatives,
 )
+from app.services.proctor_retention import run_proctor_retention_cleanup
 from app.services.proctor_training import TrainConfig, train_proctor_model_from_feedback
 from app.services.proctoring_ai import evaluate_proctor_session, get_proctor_model_status, reset_proctor_model_cache
 from app.services.media_storage import resolve_media_url, upload_file_to_cloud_storage
 
 router = APIRouter(prefix="/proctoring", tags=["proctoring"])
+_session_start_lock = Lock()
 
 
 def _is_admin(user: User) -> bool:
@@ -108,6 +111,26 @@ def _media_root() -> Path:
     root = Path(get_settings().resolved_media_dir) / "proctoring"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _write_audit(
+    db: Session,
+    *,
+    actor_user_id: int | None,
+    action: str,
+    target_type: str,
+    target_id: int | None,
+    details: dict | None = None,
+) -> None:
+    db.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details_json=details or {},
+        ),
+    )
 
 
 @router.get("/model/status")
@@ -494,6 +517,8 @@ def start_session(
         raise HTTPException(status_code=400, detail="mode must be attempt or preview")
     if mode == "attempt" and not payload.attempt_id:
         raise HTTPException(status_code=400, detail="attempt_id is required for attempt mode")
+    if mode == "attempt" and not (payload.consent_camera and payload.consent_microphone and payload.consent_recording):
+        raise HTTPException(status_code=400, detail="Proctoring consent for camera, microphone, and recording is required.")
 
     if payload.attempt_id:
         attempt = db.get(ExamAttempt, payload.attempt_id)
@@ -507,42 +532,65 @@ def start_session(
     else:
         exam_id = payload.exam_id
 
-    existing_active = _active_session_for_user(db, current_user.id)
-    if existing_active:
-        same_target = (
-            str(existing_active.mode or "").lower() == mode
-            and existing_active.exam_id == exam_id
-            and existing_active.attempt_id == payload.attempt_id
-        )
-        if same_target:
-            return {
-                "session_id": existing_active.id,
-                "session_code": existing_active.session_code,
-                "mode": existing_active.mode,
-                "status": existing_active.status,
-                "exam_id": existing_active.exam_id,
-                "attempt_id": existing_active.attempt_id,
-            }
-        raise HTTPException(
-            status_code=409,
-            detail="Another test session is already active for this user. Close or submit that session before starting a new one.",
-        )
+    with _session_start_lock:
+        existing_active = _active_session_for_user(db, current_user.id)
+        if existing_active:
+            same_target = (
+                str(existing_active.mode or "").lower() == mode
+                and existing_active.exam_id == exam_id
+                and existing_active.attempt_id == payload.attempt_id
+            )
+            if same_target:
+                return {
+                    "session_id": existing_active.id,
+                    "session_code": existing_active.session_code,
+                    "mode": existing_active.mode,
+                    "status": existing_active.status,
+                    "exam_id": existing_active.exam_id,
+                    "attempt_id": existing_active.attempt_id,
+                }
+            raise HTTPException(
+                status_code=409,
+                detail="Another test session is already active for this user. Close or submit that session before starting a new one.",
+            )
 
-    item = ProctorSession(
-        session_code=uuid4().hex,
-        mode=mode,
-        status="active",
-        actor_user_id=current_user.id,
-        exam_id=exam_id,
-        attempt_id=payload.attempt_id,
-        warning_count=0,
-        risk_score=0,
-        is_flagged=False,
-        admin_review_status="pending",
-    )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
+        item = ProctorSession(
+            session_code=uuid4().hex,
+            mode=mode,
+            status="active",
+            actor_user_id=current_user.id,
+            exam_id=exam_id,
+            attempt_id=payload.attempt_id,
+            warning_count=0,
+            risk_score=0,
+            is_flagged=False,
+            admin_review_status="pending",
+        )
+        db.add(item)
+        db.flush()
+        db.add(
+            ProctorEvent(
+                session_id=item.id,
+                event_type="consent_attested",
+                severity="info",
+                confidence=None,
+                details_json={
+                    "camera": bool(payload.consent_camera),
+                    "microphone": bool(payload.consent_microphone),
+                    "recording": bool(payload.consent_recording),
+                },
+            ),
+        )
+        _write_audit(
+            db,
+            actor_user_id=current_user.id,
+            action="proctor_session_start",
+            target_type="proctor_session",
+            target_id=item.id,
+            details={"mode": mode, "exam_id": exam_id, "attempt_id": payload.attempt_id},
+        )
+        db.commit()
+        db.refresh(item)
     return {
         "session_id": item.id,
         "session_code": item.session_code,
@@ -550,6 +598,38 @@ def start_session(
         "status": item.status,
         "exam_id": item.exam_id,
         "attempt_id": item.attempt_id,
+    }
+
+
+@router.post("/admin/retention/cleanup")
+def admin_run_retention_cleanup(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    result = run_proctor_retention_cleanup(db, days=days)
+    _write_audit(
+        db,
+        actor_user_id=current_user.id,
+        action="proctor_retention_cleanup",
+        target_type="proctor_session",
+        target_id=None,
+        details={
+            "days": result.days,
+            "cutoff": result.cutoff_iso,
+            "sessions_deleted": result.sessions_deleted,
+            "evidence_rows_deleted": result.evidence_rows_deleted,
+            "local_files_deleted": result.local_files_deleted,
+        },
+    )
+    db.commit()
+    return {
+        "status": "ok",
+        "cutoff": result.cutoff_iso,
+        "days": result.days,
+        "sessions_deleted": result.sessions_deleted,
+        "evidence_rows_deleted": result.evidence_rows_deleted,
+        "local_files_deleted": result.local_files_deleted,
     }
 
 
@@ -662,6 +742,14 @@ def finalize_session(
     item.risk_score = max(float(item.risk_score or 0), float(ai_eval.get("final_probability", 0)) * 100.0)
     item.is_flagged = bool(ai_eval.get("is_flagged", False) or item.is_flagged)
     _recompute_flag(item)
+    _write_audit(
+        db,
+        actor_user_id=current_user.id,
+        action="proctor_session_finalize",
+        target_type="proctor_session",
+        target_id=item.id,
+        details={"ended_reason": item.ended_reason, "risk_score": item.risk_score, "is_flagged": item.is_flagged},
+    )
     db.commit()
     return {
         "session_id": item.id,

@@ -58,7 +58,7 @@
           </div>
         </label>
         <div class="row wrap">
-          <button id="loginBtn" class="btn primary">Login</button>
+          <button id="loginBtn" class="btn primary"><span class="material-symbols-rounded" aria-hidden="true">login</span> Login</button>
           <button id="googleBtn" class="btn">Google</button>
           <button id="forgotPasswordBtn" class="btn small" type="button">Forgot Password</button>
         </div>
@@ -104,7 +104,7 @@
         </label>
         <label>Verification ID Number<input id="signupVerificationNumber" type="text" /></label>
         <label>Verification Country Code<input id="signupVerificationCountry" type="text" value="IN" /></label>
-        <button id="signupBtn" class="btn primary">Create Account</button>
+        <button id="signupBtn" class="btn primary"><span class="material-symbols-rounded" aria-hidden="true">person_add</span> Create Account</button>
         <div class="auth-switch">Already have an account? <button id="showLoginBtn" type="button" class="auth-switch-btn">Back to login</button></div>
       </article>
     </section>
@@ -280,6 +280,7 @@
 
           <section id="cwStepVideo" class="hidden">
             <h3>Step 2: Choose Video</h3>
+            <input id="cwIntroVideoUrl" class="search" type="url" placeholder="Intro video URL (mandatory, shown before enrollment)" />
             <input id="cwVideoUrl" class="search" type="url" placeholder="Recorded video URL" />
             <input id="cwCourseThumbnail" type="hidden" />
             <div class="row wrap gap-sm" style="margin-top:8px;">
@@ -373,7 +374,7 @@
               <div class="row wrap gap-sm">
                 <label style="flex:1 1 260px;">
                   Base Course Price (INR)
-                  <input id="cwBasePriceAmount" class="search" type="number" min="0" step="0.01" placeholder="Enter base amount" />
+                  <input id="cwBasePriceAmount" class="search" type="number" min="1" step="0.01" required placeholder="Enter base amount" value="999" />
                 </label>
               </div>
               <div class="meta" style="margin-top:8px;">Final applicable learner price updates instantly as you enter the amount.</div>
@@ -839,28 +840,37 @@
           <h2 id="studentAvailableCourseTitle">Course Details</h2>
           <button id="studentAvailableCourseBackBtn" class="btn small">Back to Available Courses</button>
         </div>
-        <div class="item" style="max-width:1080px;">
+        <div class="item student-course-screen" style="max-width:1080px;">
+          <div id="studentAvailableCourseTopMeta" class="student-course-top-meta"></div>
           <div id="studentAvailableCourseMeta" class="meta">Provider: - | Category: -</div>
-          <p id="studentAvailableCourseDescription" style="margin-top:10px;">Description not available.</p>
-          <div style="margin-top:14px;">
+          <p id="studentAvailableCourseDescription" class="student-course-desc">Description not available.</p>
+          <div class="student-course-preview-wrap">
             <div id="studentAvailableCoursePreviewWrap" style="position:relative;border-radius:12px;overflow:hidden;background:#000;">
               <video id="studentAvailableCoursePreviewVideo" style="width:100%;display:block;max-height:420px;background:#000;" preload="metadata"></video>
-              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:#fff;font-weight:600;text-align:center;padding:16px;">
+              <div class="student-course-preview-lock">
                 Enroll to unlock playback
               </div>
             </div>
           </div>
           <div style="margin-top:14px;">
-            <h3 style="margin:0 0 8px 0;">What You Get</h3>
-            <div class="row wrap gap-sm">
-              <span class="chip">&#10003; Assessment access</span>
-              <span class="chip">&#10003; Complete-course tracking</span>
-              <span class="chip">&#10003; Certificate eligibility</span>
-              <span class="chip">&#10003; Up to 3x rewatch access</span>
-            </div>
+            <h3 style="margin:0 0 8px 0;">Intro video</h3>
+            <video id="studentAvailableIntroVideo" style="width:100%;display:block;max-height:280px;border-radius:10px;background:#000;" controls preload="metadata"></video>
+            <div id="studentAvailableIntroMeta" class="meta" style="margin-top:6px;">Intro video is available before enrollment.</div>
           </div>
-          <div class="row" style="margin-top:14px;">
-            <button id="studentAvailableCourseEnrollBtn" class="btn primary">Enroll Now</button>
+          <div style="margin-top:14px;">
+            <h3 style="margin:0 0 8px 0;">About this course</h3>
+            <div id="studentAvailableCourseAbout" class="meta"></div>
+          </div>
+          <div style="margin-top:14px;">
+            <h3 style="margin:0 0 8px 0;">Course Content</h3>
+            <div id="studentAvailableCourseContent" class="meta">No lessons added yet.</div>
+          </div>
+          <div id="studentAvailableCoursePrice" class="student-course-price">₹999</div>
+          <div id="studentAvailableCourseVerifyNote" class="meta">You need to be a verified student to enroll. Verify now.</div>
+          <div class="student-course-extra-grid">
+            <div><strong>Level</strong><div id="studentAvailableCourseLevel" class="meta">Beginner</div></div>
+            <div><strong>Language</strong><div id="studentAvailableCourseLanguage" class="meta">English</div></div>
+            <div><strong>Views per lesson</strong><div id="studentAvailableCourseViews" class="meta">3x</div></div>
           </div>
         </div>
       </section>
@@ -1512,7 +1522,7 @@
   </div>
   <div id="toastStack" class="toast-stack"></div>
 
-  <script type="module" src="/assets/app.js?v=20260428a"></script>
+  <script type="module" src="/assets/app.js?v=20260501f"></script>
 </body>
 </html>
 

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import random
+from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import and_, func, select
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_role
 from app.db.session import get_db
 from app.models.entities import (
+    AuditLog,
     AttemptEvent,
     AttemptStatus,
     Certificate,
@@ -58,6 +60,8 @@ from app.services.certificates import certificate_payload, ensure_certificate_pd
 from app.services.media_storage import resolve_media_url
 
 router = APIRouter(prefix="/student", tags=["student"])
+_attempt_start_lock = Lock()
+_attempt_submit_lock = Lock()
 
 AGE_RANGE_BOUNDS: dict[str, tuple[int | None, int | None]] = {
     "under_13": (0, 12),
@@ -67,6 +71,26 @@ AGE_RANGE_BOUNDS: dict[str, tuple[int | None, int | None]] = {
     "35_44": (35, 44),
     "45_plus": (45, None),
 }
+
+
+def _write_audit(
+    db: Session,
+    *,
+    actor_user_id: int | None,
+    action: str,
+    target_type: str,
+    target_id: int | None,
+    details: dict | None = None,
+) -> None:
+    db.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details_json=details or {},
+        ),
+    )
 
 
 def _public_request_base_url(request: Request) -> str:
@@ -268,6 +292,36 @@ def dashboard(
             .group_by(Exam.course_id),
         ).all()
     }
+    lesson_counts = {
+        int(course_id): int(count)
+        for course_id, count in db.execute(
+            select(CourseModule.course_id, func.count(Lesson.id))
+            .join(Lesson, Lesson.module_id == CourseModule.id)
+            .group_by(CourseModule.course_id),
+        ).all()
+    }
+    enrolled_counts = {
+        int(course_id): int(count)
+        for course_id, count in db.execute(
+            select(Enrollment.course_id, func.count(Enrollment.id))
+            .group_by(Enrollment.course_id),
+        ).all()
+    }
+    lesson_course_rows = db.execute(
+        select(Lesson.id, CourseModule.course_id).join(CourseModule, CourseModule.id == Lesson.module_id),
+    ).all()
+    lesson_to_course = {int(lesson_id): int(course_id) for lesson_id, course_id in lesson_course_rows}
+    lesson_topic_max = {
+        int(lesson_id): float(max_sec or 0)
+        for lesson_id, max_sec in db.execute(
+            select(LessonTopic.lesson_id, func.max(LessonTopic.time_seconds)).group_by(LessonTopic.lesson_id),
+        ).all()
+    }
+    duration_minutes_by_course: dict[int, int] = {}
+    for lesson_id, course_id in lesson_to_course.items():
+        duration_minutes_by_course[course_id] = duration_minutes_by_course.get(course_id, 0) + int(
+            round(float(lesson_topic_max.get(lesson_id, 0)) / 60),
+        )
     student_age = int(current_user.student_age) if current_user.student_age else None
     suggested_courses = [c for c in available_courses if _student_matches_course_age(student_age, c.suitable_age_ranges)]
     if not suggested_courses:
@@ -289,6 +343,13 @@ def dashboard(
                 "suitable_age_ranges": _normalized_age_ranges(course.suitable_age_ranges),
                 "provider_name": provider_map.get(int(course.provider_id), "Provider"),
                 "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
+                "description": course.description,
+                "price_currency": str(course.price_currency or "INR").upper(),
+                "base_price_amount": float(course.base_price_amount or 0),
+                "final_price_amount": float(course.final_price_amount or 0),
+                "lesson_count": int(lesson_counts.get(int(course.id), 0)),
+                "enrolled_count": int(enrolled_counts.get(int(course.id), 0)),
+                "duration_minutes": int(duration_minutes_by_course.get(int(course.id), 0)),
                 "progress_pct": enr.progress_pct,
                 "exam_eligible": enr.exam_eligible,
                 "published_assessments": int(published_exam_counts.get(int(course.id), 0)),
@@ -313,6 +374,13 @@ def dashboard(
                 "suitable_age_ranges": _normalized_age_ranges(c.suitable_age_ranges),
                 "provider_name": provider_map.get(int(c.provider_id), "Provider"),
                 "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
+                "description": c.description,
+                "price_currency": str(c.price_currency or "INR").upper(),
+                "base_price_amount": float(c.base_price_amount or 0),
+                "final_price_amount": float(c.final_price_amount or 0),
+                "lesson_count": int(lesson_counts.get(int(c.id), 0)),
+                "enrolled_count": int(enrolled_counts.get(int(c.id), 0)),
+                "duration_minutes": int(duration_minutes_by_course.get(int(c.id), 0)),
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
                 "difficulty_tag": (difficulty_summary.get(int(c.id)) or {}).get("difficulty_tag"),
@@ -330,6 +398,13 @@ def dashboard(
                 "suitable_age_ranges": _normalized_age_ranges(c.suitable_age_ranges),
                 "provider_name": provider_map.get(int(c.provider_id), "Provider"),
                 "thumbnail_url": resolve_media_url(c.thumbnail_url) or c.thumbnail_url,
+                "description": c.description,
+                "price_currency": str(c.price_currency or "INR").upper(),
+                "base_price_amount": float(c.base_price_amount or 0),
+                "final_price_amount": float(c.final_price_amount or 0),
+                "lesson_count": int(lesson_counts.get(int(c.id), 0)),
+                "enrolled_count": int(enrolled_counts.get(int(c.id), 0)),
+                "duration_minutes": int(duration_minutes_by_course.get(int(c.id), 0)),
                 "average_rating": float((rating_summary.get(int(c.id)) or {}).get("average_rating", 0.0)),
                 "rating_count": int((rating_summary.get(int(c.id)) or {}).get("rating_count", 0)),
                 "difficulty_tag": (difficulty_summary.get(int(c.id)) or {}).get("difficulty_tag"),
@@ -351,8 +426,6 @@ def course_detail(
     enrollment = db.scalar(
         select(Enrollment).where(and_(Enrollment.course_id == course_id, Enrollment.student_id == current_user.id)),
     )
-    if not enrollment:
-        raise HTTPException(status_code=403, detail="Student not enrolled")
     course = db.get(Course, course_id)
     if not course or not course.is_published:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -398,17 +471,33 @@ def course_detail(
     difficulty_summary = _course_difficulty_summary(db, {int(course.id)}, course_rating_summary).get(int(course.id), {})
     my_feedback = _student_feedback_map(db, current_user.id, {int(course.id)}).get(int(course.id))
     assessment_completed = _student_has_completed_assessment(db, current_user.id, int(course.id))
+    provider_name = db.scalar(select(ProviderProfile.display_name).where(ProviderProfile.id == course.provider_id)) or "Provider"
+    enrolled_count = int(db.scalar(select(func.count(Enrollment.id)).where(Enrollment.course_id == course.id)) or 0)
+    lesson_count = sum(len(m.get("lessons", [])) for m in module_items)
+    duration_minutes = 0
+    for mod in module_items:
+        for lesson in mod.get("lessons", []):
+            max_sec = max((float(t.get("time_seconds", 0) or 0) for t in lesson.get("topics", [])), default=0.0)
+            duration_minutes += int(round(max_sec / 60))
     return {
         "id": course.id,
         "title": course.title,
         "description": course.description,
         "category": course.category,
+        "provider_name": str(provider_name),
         "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
-        "progress_pct": enrollment.progress_pct,
-        "exam_eligible": enrollment.exam_eligible,
+        "price_currency": str(course.price_currency or "INR").upper(),
+        "base_price_amount": float(course.base_price_amount or 0),
+        "final_price_amount": float(course.final_price_amount or 0),
+        "enrolled_count": enrolled_count,
+        "lesson_count": lesson_count,
+        "duration_minutes": int(duration_minutes),
+        "progress_pct": float((enrollment.progress_pct if enrollment else 0) or 0),
+        "exam_eligible": bool(enrollment.exam_eligible) if enrollment else False,
         "published_assessments": published_exam_count,
-        "assessment_available": bool(enrollment.exam_eligible and published_exam_count > 0),
+        "assessment_available": bool((enrollment.exam_eligible if enrollment else False) and published_exam_count > 0),
         "assessment_completed": bool(assessment_completed),
+        "is_enrolled": bool(enrollment),
         "average_rating": float(rating_summary.get("average_rating", 0.0)),
         "rating_count": int(rating_summary.get("rating_count", 0)),
         "difficulty_tag": difficulty_summary.get("difficulty_tag"),
@@ -507,6 +596,7 @@ def enroll(
 @router.post("/exams/{exam_id}/attempts/start", status_code=status.HTTP_201_CREATED)
 def start_attempt(
     exam_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
@@ -524,54 +614,68 @@ def start_attempt(
     if not enrollment.exam_eligible:
         raise HTTPException(status_code=403, detail="Not exam eligible")
 
-    existing_in_progress = db.scalar(
-        select(ExamAttempt)
-        .where(and_(ExamAttempt.student_id == current_user.id, ExamAttempt.status == AttemptStatus.IN_PROGRESS))
-        .order_by(ExamAttempt.started_at.desc(), ExamAttempt.id.desc()),
-    )
-    if existing_in_progress:
-        if existing_in_progress.exam_id == exam.id:
-            assigned_ids = existing_in_progress.assigned_question_ids or []
-            return {
-                "attempt_id": existing_in_progress.id,
-                "exam_id": existing_in_progress.exam_id,
-                "student_id": current_user.id,
-                "started_at": existing_in_progress.started_at,
-                "attempt_number": existing_in_progress.attempt_number,
-                "assigned_question_ids": assigned_ids,
-                "total_questions": len(assigned_ids),
-            }
-        raise HTTPException(
-            status_code=409,
-            detail="Another test is already active for this user. Finish or submit that test before starting a new one.",
+    with _attempt_start_lock:
+        existing_in_progress = db.scalar(
+            select(ExamAttempt)
+            .where(and_(ExamAttempt.student_id == current_user.id, ExamAttempt.status == AttemptStatus.IN_PROGRESS))
+            .order_by(ExamAttempt.started_at.desc(), ExamAttempt.id.desc()),
         )
+        if existing_in_progress:
+            if existing_in_progress.exam_id == exam.id:
+                assigned_ids = existing_in_progress.assigned_question_ids or []
+                return {
+                    "attempt_id": existing_in_progress.id,
+                    "exam_id": existing_in_progress.exam_id,
+                    "student_id": current_user.id,
+                    "started_at": existing_in_progress.started_at,
+                    "attempt_number": existing_in_progress.attempt_number,
+                    "assigned_question_ids": assigned_ids,
+                    "total_questions": len(assigned_ids),
+                }
+            raise HTTPException(
+                status_code=409,
+                detail="Another test is already active for this user. Finish or submit that test before starting a new one.",
+            )
 
-    attempts_done = db.scalar(
-        select(func.count(ExamAttempt.id)).where(
-            and_(ExamAttempt.exam_id == exam.id, ExamAttempt.student_id == current_user.id),
-        ),
-    )
-    if attempts_done >= exam.max_attempts:
-        raise HTTPException(status_code=400, detail="Max attempts reached")
+        attempts_done = db.scalar(
+            select(func.count(ExamAttempt.id)).where(
+                and_(ExamAttempt.exam_id == exam.id, ExamAttempt.student_id == current_user.id),
+            ),
+        )
+        if attempts_done >= exam.max_attempts:
+            raise HTTPException(status_code=400, detail="Max attempts reached")
 
-    question_ids = list(db.scalars(select(Question.id).where(Question.exam_id == exam.id)).all())
-    if not question_ids:
-        raise HTTPException(status_code=400, detail="Exam has no questions")
-    if exam.questions_per_attempt and exam.questions_per_attempt > 0:
-        take = min(exam.questions_per_attempt, len(question_ids))
-        assigned_ids = random.sample(question_ids, take)
-    else:
-        assigned_ids = question_ids
+        question_ids = list(db.scalars(select(Question.id).where(Question.exam_id == exam.id)).all())
+        if not question_ids:
+            raise HTTPException(status_code=400, detail="Exam has no questions")
+        if exam.questions_per_attempt and exam.questions_per_attempt > 0:
+            take = min(exam.questions_per_attempt, len(question_ids))
+            assigned_ids = random.sample(question_ids, take)
+        else:
+            assigned_ids = question_ids
 
-    attempt = ExamAttempt(
-        exam_id=exam.id,
-        student_id=current_user.id,
-        attempt_number=attempts_done + 1,
-        assigned_question_ids=assigned_ids,
-    )
-    db.add(attempt)
-    db.commit()
-    db.refresh(attempt)
+        attempt = ExamAttempt(
+            exam_id=exam.id,
+            student_id=current_user.id,
+            attempt_number=attempts_done + 1,
+            assigned_question_ids=assigned_ids,
+        )
+        db.add(attempt)
+        _write_audit(
+            db,
+            actor_user_id=current_user.id,
+            action="attempt_start",
+            target_type="exam_attempt",
+            target_id=None,
+            details={
+                "exam_id": exam.id,
+                "student_id": current_user.id,
+                "attempt_number": attempts_done + 1,
+                "ip": request.client.host if request.client else None,
+            },
+        )
+        db.commit()
+        db.refresh(attempt)
     return {
         "attempt_id": attempt.id,
         "exam_id": exam.id,
@@ -696,55 +800,77 @@ def submit_attempt(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.STUDENT)),
 ):
-    attempt = db.get(ExamAttempt, attempt_id)
-    if not attempt or attempt.student_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Attempt not found")
-    if attempt.status != AttemptStatus.IN_PROGRESS:
-        raise HTTPException(status_code=400, detail="Attempt already submitted")
+    with _attempt_submit_lock:
+        attempt = db.get(ExamAttempt, attempt_id)
+        if not attempt or attempt.student_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Attempt not found")
+        if attempt.status != AttemptStatus.IN_PROGRESS:
+            existing_result = db.scalar(select(Result).where(Result.attempt_id == attempt.id))
+            if existing_result:
+                return get_result(attempt_id, request, db, current_user)
+            raise HTTPException(status_code=400, detail="Attempt already submitted")
 
-    exam = db.get(Exam, attempt.exam_id)
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
+        exam = db.get(Exam, attempt.exam_id)
+        if not exam:
+            raise HTTPException(status_code=404, detail="Exam not found")
 
-    score, percentage, correct_count, wrong_count, total_questions = score_attempt(
-        db,
-        attempt.id,
-        attempt.exam_id,
-        exam.negative_marking,
-        assigned_question_ids=attempt.assigned_question_ids,
-    )
-    proctor_session = db.scalar(
-        select(ProctorSession)
-        .where(ProctorSession.attempt_id == attempt.id)
-        .order_by(ProctorSession.started_at.desc()),
-    )
-    proctor_eval = evaluate_proctor_session(db, proctor_session) if proctor_session else None
-    latest_feedback, feedback_count = _latest_training_feedback(db, attempt.id)
-    deduction_pct = float((proctor_eval or {}).get("deduction_pct", 0.0))
-    final_percentage = max(0.0, float(percentage) - deduction_pct)
-    hard_fail = bool((proctor_eval or {}).get("hard_fail", False))
-    hard_fail_reason = (proctor_eval or {}).get("hard_fail_reason")
-    if hard_fail:
-        final_percentage = 0.0
-    passed = (final_percentage >= exam.pass_score) and not hard_fail
+        score, percentage, correct_count, wrong_count, total_questions = score_attempt(
+            db,
+            attempt.id,
+            attempt.exam_id,
+            exam.negative_marking,
+            assigned_question_ids=attempt.assigned_question_ids,
+        )
+        proctor_session = db.scalar(
+            select(ProctorSession)
+            .where(ProctorSession.attempt_id == attempt.id)
+            .order_by(ProctorSession.started_at.desc()),
+        )
+        proctor_eval = evaluate_proctor_session(db, proctor_session) if proctor_session else None
+        latest_feedback, feedback_count = _latest_training_feedback(db, attempt.id)
+        deduction_pct = float((proctor_eval or {}).get("deduction_pct", 0.0))
+        final_percentage = max(0.0, float(percentage) - deduction_pct)
+        hard_fail = bool((proctor_eval or {}).get("hard_fail", False))
+        hard_fail_reason = (proctor_eval or {}).get("hard_fail_reason")
+        if hard_fail:
+            final_percentage = 0.0
+        passed = (final_percentage >= exam.pass_score) and not hard_fail
 
-    attempt.status = AttemptStatus.SUBMITTED
-    attempt.submitted_at = datetime.now(timezone.utc)
-    attempt.score = score
-    attempt.percentage = final_percentage
-    attempt.passed = passed
+        attempt.status = AttemptStatus.SUBMITTED
+        attempt.submitted_at = datetime.now(timezone.utc)
+        attempt.score = score
+        attempt.percentage = final_percentage
+        attempt.passed = passed
 
-    result = Result(
-        attempt_id=attempt.id,
-        student_id=current_user.id,
-        exam_id=exam.id,
-        score=score,
-        percentage=final_percentage,
-        passed=passed,
-    )
-    db.add(result)
-    db.commit()
-    db.refresh(result)
+        existing_result = db.scalar(select(Result).where(Result.attempt_id == attempt.id))
+        if existing_result:
+            result = existing_result
+        else:
+            result = Result(
+                attempt_id=attempt.id,
+                student_id=current_user.id,
+                exam_id=exam.id,
+                score=score,
+                percentage=final_percentage,
+                passed=passed,
+            )
+            db.add(result)
+        _write_audit(
+            db,
+            actor_user_id=current_user.id,
+            action="attempt_submit",
+            target_type="exam_attempt",
+            target_id=attempt.id,
+            details={
+                "exam_id": exam.id,
+                "passed": bool(passed),
+                "percentage": float(final_percentage),
+                "proctor_hard_fail": bool(hard_fail),
+                "ip": request.client.host if request.client else None,
+            },
+        )
+        db.commit()
+        db.refresh(result)
     certificate = None
     if passed and exam.certificate_enabled:
         try:

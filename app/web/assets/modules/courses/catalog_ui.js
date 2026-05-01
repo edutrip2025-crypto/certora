@@ -1,4 +1,6 @@
-﻿export function createCourseCatalogUi({
+import { formatInrDisplay, starsHtml } from "./course_screen_ui.js";
+
+export function createCourseCatalogUi({
   state,
   el,
   api,
@@ -139,21 +141,49 @@
       const thumbSrc = courseThumbSrc(c);
       const thumbClass = thumbSrc === fallbackCourseThumb ? "course-tile-thumb is-logo" : "course-tile-thumb";
       const progress = Math.max(0, Math.min(100, Number(c.progress_pct || 0)));
+      const moduleLessonCount = Array.isArray(c.modules)
+        ? c.modules.reduce((acc, m) => acc + (Array.isArray(m?.lessons) ? m.lessons.length : 0), 0)
+        : 0;
+      const liveLessonCount = Array.isArray(c.modules)
+        ? c.modules.reduce(
+          (acc, m) => acc + (Array.isArray(m?.lessons) ? m.lessons.filter((l) => String(l?.lesson_type || "") === "live_class_link").length : 0),
+          0,
+        )
+        : 0;
+      const totalLessons = Math.max(0, Number(c.total_lessons || c.lesson_count || moduleLessonCount || 0) || 0);
+      const viewedLessons = Math.max(
+        0,
+        Number(c.viewed_lessons || c.lessons_started || 0) ||
+          (c.lesson_views && typeof c.lesson_views === "object" ? Object.keys(c.lesson_views).length : 0),
+      );
+      const enrollmentStatus = String(c.status || "active").replaceAll("_", " ");
       const assessmentLine = c.assessment_available
         ? "Assessment available"
         : c.exam_eligible
           ? "Assessment not yet published"
           : "Assessment locked";
       const difficultyLine = studentDifficultyMeta(c);
+      const publishedAssessments = Math.max(0, Number(c.published_assessments || 0));
+      const ratingText = starsHtml(c.average_rating, c.rating_count);
+      const displayPrice = formatInrDisplay(c.base_price_amount || c.final_price_amount || 0);
+      const durationMinutes = Math.max(0, Number(c.duration_minutes || 0));
+      const levelText = String((c.description || "").match(/Level:\s*([^\n]+)/i)?.[1] || "All levels");
       return `
-        <article class="course-tile course-tile-elevated">
+        <article class="course-tile course-tile-elevated ${enrolled ? "course-tile-enrolled" : "course-tile-available"}" data-course-card="${Number(c.course_id || 0)}" data-course-card-mode="${enrolled ? "enrolled" : "available"}">
           <img src="${escapeHtmlAttr(thumbSrc)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
-            <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
-            <div class="course-tile-provider">${escapeHtmlAttr(c.provider_name || "Provider")}</div>
+            <p class="course-kicker">${escapeHtmlAttr(c.category || "course")}</p>
+            <div class="course-tile-header-row">
+              <div>
+                <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
+                <div class="course-tile-meta course-tile-description">${escapeHtmlAttr(String(c.description || "").trim() || "No description provided.")}</div>
+              </div>
+              ${enrolled ? `<span class="course-status-badge">${escapeHtmlAttr(enrollmentStatus)}</span>` : ""}
+            </div>
             <div class="course-tile-meta course-chip-row">
-              <span class="course-chip">${escapeHtmlAttr(c.category || "-")}</span>
-              <span class="course-chip">${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</span>
+              <span class="course-chip">${escapeHtmlAttr(levelText)}</span>
+              <span class="course-chip">Lessons: ${totalLessons}</span>
+              ${liveLessonCount > 0 ? `<span class="course-chip">Live: ${liveLessonCount}</span>` : ""}
             </div>
             ${difficultyLine ? `<div class="course-tile-meta">${escapeHtmlAttr(difficultyLine)}</div>` : ""}
             ${
@@ -167,23 +197,38 @@
                     <span>${escapeHtmlAttr(assessmentLine)}</span>
                   </div>
                 `
-                : ""
+                : `<div class="course-tile-meta course-available-note">Enroll to unlock course player, assessments, and certificate eligibility.</div>`
             }
-            <div class="actions course-actions-row">
-              ${
-                enrolled
-                  ? `<button class="btn small" data-student-view-course="${Number(c.course_id || 0)}">View Course</button>`
-                  : `
-                    <button class="btn small" data-student-course-detail="${Number(c.course_id || 0)}">View Details</button>
-                    <button class="btn small" data-student-enroll="${Number(c.course_id || 0)}">Enroll</button>
-                  `
-              }
+            <div class="course-card-footer">
+              <div class="course-card-footer-left">
+                ${ratingText ? `<div class="course-rating-line">${ratingText}</div>` : ""}
+                <div class="course-tile-provider byline">By ${escapeHtmlAttr(c.provider_name || "Provider")}</div>
+              </div>
+              <div class="course-tile-price course-tile-price-emphasis">${displayPrice}</div>
             </div>
           </div>
         </article>
       `;
     }).join("");
-    target.innerHTML = `<div class="course-tile-grid">${cards}</div>`;
+    target.innerHTML = `<div class="course-tile-grid ${enrolled ? "course-tile-grid-enrolled" : ""}">${cards}</div>`;
+
+    target.querySelectorAll("[data-course-card]").forEach((card) => {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      const cid = Number(card.getAttribute("data-course-card") || 0);
+      const mode = String(card.getAttribute("data-course-card-mode") || "available");
+      const open = async () => {
+        if (!cid) return;
+        if (mode === "enrolled") await openStudentCourseViewer(cid);
+        else await openStudentAvailableCourseDetail(cid);
+      };
+      card.addEventListener("click", () => open().catch((err) => toast(err?.message || "Failed to open course", "error")));
+      card.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        ev.preventDefault();
+        open().catch((err) => toast(err?.message || "Failed to open course", "error"));
+      });
+    });
   }
 
   function renderStudentCourseCatalogs() {
@@ -199,36 +244,6 @@
     );
     renderStudentCourseGrid(el.studentAvailableCourses, available, { enrolled: false });
     renderStudentCourseGrid(el.studentEnrolledCourses, enrolled, { enrolled: true });
-
-    document.querySelectorAll("[data-student-enroll]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await api("POST", "/student/enroll", { course_id: Number(btn.dataset.studentEnroll) });
-          toast("Enrollment successful");
-          await refreshStudentDashboard();
-        } catch {
-          toast("Failed to enroll", "error");
-        }
-      });
-    });
-    document.querySelectorAll("[data-student-course-detail]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await openStudentAvailableCourseDetail(Number(btn.dataset.studentCourseDetail || 0));
-        } catch (err) {
-          toast(err?.message || "Failed to open course details", "error");
-        }
-      });
-    });
-    document.querySelectorAll("[data-student-view-course]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await openStudentCourseViewer(Number(btn.dataset.studentViewCourse));
-        } catch (err) {
-          toast(err?.message || "Failed to open course", "error");
-        }
-      });
-    });
   }
 
   function renderProviderCourseCatalog() {
@@ -255,26 +270,40 @@
       const statusLabel = providerCourseStatusLabel(c);
       const postedDate = safeCourseTime(c.created_at) ? new Date(c.created_at).toLocaleDateString() : "-";
       const difficultyPct = providerCourseDifficultyPct(c);
+      const ratingText = starsHtml(c.average_rating, c.rating_count);
+      const displayPrice = formatInrDisplay(c.base_price_amount || c.final_price_amount || 0);
+      const levelText = String((c.description || "").match(/Level:\s*([^\n]+)/i)?.[1] || "All levels");
       return `
-        <article class="course-tile course-tile-elevated provider-course-tile">
+        <article class="course-tile course-tile-elevated provider-course-tile course-tile-provider-owned" data-provider-course-open="${c.id}">
           ${canDeleteCourseFromUi() ? `<button class="btn small danger icon-action-btn course-tile-delete-corner" data-delete-course="${c.id}" title="Delete Course" aria-label="Delete Course"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>` : ""}
           <img src="${escapeHtmlAttr(thumb)}" alt="" class="${thumbClass}" onerror="this.onerror=null;this.src='${fallbackCourseThumb}';this.className='course-tile-thumb is-logo';" />
           <div class="course-tile-body">
-            <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
-            <div class="course-tile-provider">Provider: You</div>
-            <div class="course-tile-meta course-meta-inline">
-              <span class="course-chip">${statusLabel}</span>
-              <span class="course-chip">Duration: <span data-course-duration="${c.id}">${durationLabel}</span></span>
+            <p class="course-kicker">${escapeHtmlAttr(c.category || "course")}</p>
+            <div class="course-tile-header-row">
+              <div>
+                <h4 class="course-tile-title">${escapeHtmlAttr(c.title || "Untitled Course")}</h4>
+                <div class="course-tile-meta course-tile-description">${escapeHtmlAttr(String(c.description || "").trim() || "No description provided.")}</div>
+              </div>
+              <span class="course-status-badge">${escapeHtmlAttr(statusLabel)}</span>
             </div>
-            <div class="course-tile-meta">Posted: ${escapeHtmlAttr(postedDate)}</div>
+            <div class="course-tile-meta course-chip-row">
+              <span class="course-chip">${escapeHtmlAttr(levelText)}</span>
+              <span class="course-chip">Lessons: ${Math.max(0, Number(c.lesson_count || (Array.isArray(c.modules) ? c.modules.reduce((acc, m) => acc + (Array.isArray(m?.lessons) ? m.lessons.length : 0), 0) : 0) || 0))}</span>
+              <span class="course-chip">Duration <span data-course-duration="${c.id}">${durationLabel}</span></span>
+            </div>
             <div class="course-tile-meta">Difficulty</div>
             <div class="course-difficulty-meter">
               <div class="course-difficulty-fill" style="width:${difficultyPct}%;"></div>
             </div>
-            <div class="course-tile-meta">${difficultyPct.toFixed(0)}%</div>
-            <div class="course-tile-meta">${escapeHtmlAttr(formatCourseRating(c.average_rating, c.rating_count))}</div>
-            <div class="actions">
-              <button class="btn small" data-view-course="${c.id}">View</button>
+            <div class="course-tile-meta">${difficultyPct.toFixed(0)}% relative difficulty</div>
+            <div class="course-card-footer">
+              <div class="course-card-footer-left">
+                ${ratingText ? `<div class="course-rating-line">${ratingText}</div>` : ""}
+                <div class="course-tile-provider byline">By You</div>
+              </div>
+              <div class="course-tile-price course-tile-price-emphasis">${displayPrice}</div>
+            </div>
+            <div class="actions course-actions-row">
               ${firstLiveLesson?.live_class_url ? `<button class="btn small" data-open-live-course="${c.id}">Open Live Class</button>` : ""}
               ${c.is_published ? `<button class="btn small" data-deactivate-course="${c.id}">Deactivate</button>` : ""}
               ${!c.is_published ? `<button class="btn small" data-activate-course="${c.id}">Activate Course</button>` : ""}
@@ -294,8 +323,21 @@
     });
     Promise.all(durationTasks).catch(() => {});
 
-    document.querySelectorAll("[data-view-course]").forEach((btn) => {
-      btn.addEventListener("click", () => openCourseViewer(Number(btn.dataset.viewCourse)));
+    document.querySelectorAll("[data-provider-course-open]").forEach((card) => {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      const cid = Number(card.getAttribute("data-provider-course-open") || 0);
+      const open = () => openCourseViewer(cid);
+      card.addEventListener("click", (ev) => {
+        if (ev.target?.closest?.(".actions") || ev.target?.closest?.(".course-tile-delete-corner")) return;
+        open();
+      });
+      card.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        if (ev.target?.closest?.(".actions") || ev.target?.closest?.(".course-tile-delete-corner")) return;
+        ev.preventDefault();
+        open();
+      });
     });
     document.querySelectorAll("[data-open-live-course]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -354,3 +396,9 @@
     renderProviderCourseCatalog,
   };
 }
+
+
+
+
+
+

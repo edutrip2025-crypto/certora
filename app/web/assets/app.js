@@ -24,6 +24,7 @@ import { createAssessmentPreviewProctorUi } from "./modules/assessment/preview_p
 import { createUiFeedback } from "./modules/core/ui_feedback.js";
 import { createApiClient } from "./modules/core/api_client.js";
 import { createCourseCatalogUi } from "./modules/courses/catalog_ui.js";
+import { renderStudentAvailableCourseScreen } from "./modules/courses/course_screen_ui.js";
 import { createAdminUsersUi } from "./modules/admin/users_ui.js";
 import { createLiveClassroomUi } from "./modules/live/classroom_ui.js";
 
@@ -1258,10 +1259,19 @@ const el = {
   studentCertificationsFilterMenu: $("studentCertificationsFilterMenu"),
   studentAvailableCourses: $("studentAvailableCourses"),
   studentAvailableCourseTitle: $("studentAvailableCourseTitle"),
+  studentAvailableCourseTopMeta: $("studentAvailableCourseTopMeta"),
   studentAvailableCourseMeta: $("studentAvailableCourseMeta"),
   studentAvailableCourseDescription: $("studentAvailableCourseDescription"),
+  studentAvailableCourseAbout: $("studentAvailableCourseAbout"),
+  studentAvailableCourseContent: $("studentAvailableCourseContent"),
+  studentAvailableCoursePrice: $("studentAvailableCoursePrice"),
+  studentAvailableCourseVerifyNote: $("studentAvailableCourseVerifyNote"),
+  studentAvailableCourseLevel: $("studentAvailableCourseLevel"),
+  studentAvailableCourseLanguage: $("studentAvailableCourseLanguage"),
+  studentAvailableCourseViews: $("studentAvailableCourseViews"),
   studentAvailableCoursePreviewVideo: $("studentAvailableCoursePreviewVideo"),
-  studentAvailableCourseEnrollBtn: $("studentAvailableCourseEnrollBtn"),
+  studentAvailableIntroVideo: $("studentAvailableIntroVideo"),
+  studentAvailableIntroMeta: $("studentAvailableIntroMeta"),
   studentAvailableCourseBackBtn: $("studentAvailableCourseBackBtn"),
   studentEnrolledCourses: $("studentEnrolledCourses"),
   studentAvailableSearch: $("studentAvailableSearch"),
@@ -3227,7 +3237,7 @@ function resetCourseWizard() {
   state.wizardVideoUploadPromise = null;
   state.wizardUploadAbortController = null;
   releaseWizardLocalVideoObjectUrl();
-  ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwVideoUrl", "cwTopicTitle", "cwTopicTime", "cwBasePriceAmount"].forEach((id) => {
+  ["cwCourseTitle", "cwCourseCategory", "cwCourseThumbnail", "cwCourseDescription", "cwIntroVideoUrl", "cwVideoUrl", "cwTopicTitle", "cwTopicTime", "cwBasePriceAmount"].forEach((id) => {
     const node = $(id);
     if (node) node.value = "";
   });
@@ -3326,6 +3336,7 @@ function wizardPayload() {
     thumbnail_url: $("cwCourseThumbnail")?.value?.trim() || null,
     includes_exam: Boolean($("cwIncludesExam")?.checked),
     video_url: safeVideoUrl || null,
+    intro_video_url: $("cwIntroVideoUrl")?.value?.trim() || null,
     base_price_amount: priceBreakdown.base,
     topics: state.draftTopics,
   };
@@ -3380,6 +3391,7 @@ async function refreshProviderDrafts() {
         $("cwCourseThumbnail").value = draft.thumbnail_url || "";
         refreshThumbnailPreview();
         $("cwIncludesExam").checked = Boolean(draft.includes_exam);
+        $("cwIntroVideoUrl").value = draft.intro_video_url || "";
         $("cwVideoUrl").value = draft.video_url || "";
         $("cwBasePriceAmount").value = String(Number(draft.base_price_amount || 0));
         refreshWizardPricing();
@@ -6634,10 +6646,15 @@ async function startServerProctorSession() {
   const examId = state.assessmentPreview.exam?.exam_id || null;
   const attemptId = state.assessmentPreview.attemptId || null;
   const mode = state.assessmentPreview.mode === "student_attempt" ? "attempt" : "preview";
+  const precheckReady = Boolean(state.assessmentPreview.proctor?.precheckReady);
+  const environmentAttested = Boolean(state.assessmentPreview.proctor?.environmentAttested);
   const out = await api("POST", "/proctoring/sessions/start", {
     mode,
     exam_id: examId,
     attempt_id: attemptId,
+    consent_camera: precheckReady,
+    consent_microphone: precheckReady,
+    consent_recording: environmentAttested,
   });
   state.assessmentPreview.proctor.sessionId = out.session_id;
   return out;
@@ -8407,20 +8424,9 @@ async function openStudentAvailableCourseDetail(courseId) {
   if (!cid) return;
   const detail = await api("GET", `/student/courses/${cid}/detail`);
   state.studentAvailableDetailCourseId = cid;
-  if (el.studentAvailableCourseTitle) el.studentAvailableCourseTitle.textContent = String(detail.title || "Course Details");
-  if (el.studentAvailableCourseMeta) {
-    const provider = String(detail.provider_name || "Provider");
-    const category = String(detail.category || "General");
-    const rating = formatCourseRating(detail.average_rating, detail.rating_count);
-    el.studentAvailableCourseMeta.textContent = `${provider} | ${category} | ${rating}`;
-  }
-  if (el.studentAvailableCourseDescription) {
-    el.studentAvailableCourseDescription.textContent = String(detail.description || "Description not available.");
-  }
-  const lessons = Array.isArray(detail.modules)
-    ? detail.modules.flatMap((m) => (Array.isArray(m.lessons) ? m.lessons : []))
-    : [];
-  const previewLesson = lessons.find((x) => x.lesson_type === "recorded_video" && x.recorded_video_url) || null;
+  renderStudentAvailableCourseScreen(detail, el);
+  const introMatch = String(detail?.description || "").match(/IntroVideo:\s*(https?:\/\/\S+)/i);
+  const introUrl = introMatch?.[1] ? String(introMatch[1]).trim() : "";
   if (el.studentAvailableCoursePreviewVideo) {
     const player = el.studentAvailableCoursePreviewVideo;
     try { player.pause(); } catch {}
@@ -8428,8 +8434,21 @@ async function openStudentAvailableCourseDetail(courseId) {
     player.muted = true;
     player.removeAttribute("autoplay");
     player.style.pointerEvents = "none";
-    player.src = previewLesson?.recorded_video_url ? String(previewLesson.recorded_video_url) : "";
+    player.src = "";
     player.load();
+  }
+  if (el.studentAvailableIntroVideo) {
+    const intro = el.studentAvailableIntroVideo;
+    try { intro.pause(); } catch {}
+    intro.removeAttribute("autoplay");
+    intro.muted = false;
+    intro.src = introUrl || "";
+    intro.load();
+  }
+  if (el.studentAvailableIntroMeta) {
+    el.studentAvailableIntroMeta.textContent = introUrl
+      ? "Intro video is available before enrollment."
+      : "No intro video available for this course.";
   }
   activateStudentSubView("available-course");
 }
@@ -8725,6 +8744,7 @@ async function createCourseFromWizard() {
   const category = $("cwCourseCategory")?.value?.trim() || "General";
   const suitableAgeRanges = getWizardSuitableAgeRanges();
   const description = $("cwCourseDescription")?.value?.trim() || "";
+  const introVideoUrl = $("cwIntroVideoUrl")?.value?.trim() || "";
   let thumbnail = $("cwCourseThumbnail")?.value?.trim() || null;
   const videoUrl = $("cwVideoUrl")?.value?.trim();
   const localVideoFile = $("cwVideoFile")?.files?.[0] || null;
@@ -8732,6 +8752,8 @@ async function createCourseFromWizard() {
   const priceBreakdown = coursePricingBreakdownFromBase($("cwBasePriceAmount")?.value || 0);
 
   if (!title) throw new Error("Course name is required");
+  if (!Number.isFinite(priceBreakdown.base) || priceBreakdown.base <= 0) throw new Error("Price is required and must be greater than 0.");
+  if (!introVideoUrl) throw new Error("Intro video URL is mandatory.");
   if (!videoUrl && !localVideoFile) throw new Error("Video URL or local video file is required");
   if (!thumbnail) throw new Error("Thumbnail is required for recorded classes.");
   if (state.wizardVideoUploadPromise) {
@@ -8743,7 +8765,7 @@ async function createCourseFromWizard() {
 
   const course = await api("POST", "/courses", {
     title,
-    description: `${description}\n\nLevel: ${level}`.trim(),
+    description: `${description}\n\nLevel: ${level}\nIntroVideo: ${introVideoUrl}`.trim(),
     category,
     suitable_age_ranges: suitableAgeRanges,
     thumbnail_url: thumbnail,
@@ -9406,18 +9428,6 @@ function bindEvents() {
   $("studentProfileBackBtn")?.addEventListener("click", () => activateStudentSubView("home"));
   $("adminProfileBackBtn")?.addEventListener("click", () => activateAdminSubView("home"));
   el.studentAvailableCourseBackBtn?.addEventListener("click", () => activateStudentSubView("available"));
-  el.studentAvailableCourseEnrollBtn?.addEventListener("click", async () => {
-    const courseId = Number(state.studentAvailableDetailCourseId || 0);
-    if (!courseId) return;
-    try {
-      await api("POST", "/student/enroll", { course_id: courseId });
-      toast("Enrollment successful");
-      await refreshStudentDashboard();
-      await openStudentCourseViewer(courseId);
-    } catch (err) {
-      toast(err?.message || "Failed to enroll", "error");
-    }
-  });
   $("providerProfileSaveEmailBtn")?.addEventListener("click", () => {
     saveProfileEmail("provider").catch(() => {});
   });

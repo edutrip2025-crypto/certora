@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    app_env: str = "development"
     app_name: str = "Classagon API"
     app_base_url: str = "http://localhost:8000"
     database_url: str = "sqlite:///./certora.db"
@@ -94,12 +95,25 @@ class Settings(BaseSettings):
     trusted_hosts: str = ""
     enable_gzip: bool = True
     gzip_minimum_size: int = 1024
+    security_enable_csp: bool = True
+    security_csp_frame_ancestors: str = "'none'"
+    security_csp_extra: str = ""
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = 180
+    rate_limit_auth_requests_per_minute: int = 35
+    ops_enable_request_logs: bool = True
+    ops_slow_request_ms: int = 1200
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
     @property
     def is_vercel(self) -> bool:
         return bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+
+    @property
+    def is_production(self) -> bool:
+        v = (self.app_env or "").strip().lower()
+        return v in {"prod", "production"}
 
     @property
     def resolved_database_url(self) -> str:

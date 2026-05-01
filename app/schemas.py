@@ -396,6 +396,9 @@ class ProctorSessionStartRequest(BaseModel):
     mode: str = "attempt"  # attempt | preview
     exam_id: int | None = None
     attempt_id: int | None = None
+    consent_camera: bool = False
+    consent_microphone: bool = False
+    consent_recording: bool = False
 
 
 class ProctorEventCreate(BaseModel):

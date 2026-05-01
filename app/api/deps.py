@@ -74,9 +74,10 @@ def get_current_user(
     x_dummy_role: str | None = Header(default=None),
     x_dummy_email: str | None = Header(default=None),
     x_dummy_name: str | None = Header(default=None),
-    x_dev_role: str | None = Header(default=None),
 ) -> User:
     settings = get_settings()
+    if settings.is_production and settings.auth_mode.lower() == "dummy":
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Dummy auth mode is disabled in production.")
     if settings.auth_mode.lower() == "dummy":
         return _dummy_user(db, x_dummy_user_id, x_dummy_role, x_dummy_email, x_dummy_name)
 
