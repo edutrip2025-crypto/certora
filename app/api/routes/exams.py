@@ -58,6 +58,10 @@ def create_exam(
         raise HTTPException(status_code=404, detail="Course not found")
     if payload.timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
+    if float(payload.pass_score) < 70:
+        raise HTTPException(status_code=400, detail="pass_score must be at least 70")
+    if int(payload.max_attempts) < 1 or int(payload.max_attempts) > 3:
+        raise HTTPException(status_code=400, detail="max_attempts must be between 1 and 3")
     if payload.timing_mode == "question":
         if payload.time_per_question_seconds is None:
             raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
@@ -99,6 +103,12 @@ def update_exam(
 
     if timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
+    pass_score = data.get("pass_score", exam.pass_score)
+    max_attempts = data.get("max_attempts", exam.max_attempts)
+    if pass_score is not None and float(pass_score) < 70:
+        raise HTTPException(status_code=400, detail="pass_score must be at least 70")
+    if max_attempts is not None and (int(max_attempts) < 1 or int(max_attempts) > 3):
+        raise HTTPException(status_code=400, detail="max_attempts must be between 1 and 3")
     if timing_mode == "assessment" and (duration_minutes is None or duration_minutes <= 0):
         raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
     if timing_mode == "question":

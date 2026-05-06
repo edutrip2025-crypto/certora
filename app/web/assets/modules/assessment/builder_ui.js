@@ -14,7 +14,6 @@
 }) {
   const STEP2_REQUIRED_TEXT_FIELDS = [
     "abTitle",
-    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",
@@ -25,9 +24,6 @@
   ];
   const STEP2_REQUIRED_CHECKBOX_ROWS = [
     "abNegativeMarking",
-    "abShuffleQuestions",
-    "abShuffleOptions",
-    "abCertificateEnabled",
   ];
 
   function markFieldInvalid(fieldId, invalid = true) {
@@ -101,17 +97,11 @@
         showStep2Error("Assessment title is required.");
         return false;
       }
-      const passScore = Number($("abPassScore")?.value);
       const maxAttempts = Number($("abMaxAttempts")?.value);
       const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
-      if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) {
-        markFieldInvalid("abPassScore", true);
-        showStep2Error("Pass % is required (1 to 100).");
-        return false;
-      }
-      if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) {
+      if (!Number.isFinite(maxAttempts) || maxAttempts <= 0 || maxAttempts > 3) {
         markFieldInvalid("abMaxAttempts", true);
-        showStep2Error("Max attempts is required and must be greater than 0.");
+        showStep2Error("Max attempts must be between 1 and 3.");
         return false;
       }
       if (![25, 30, 35, 40].includes(questionsPerAttempt)) {

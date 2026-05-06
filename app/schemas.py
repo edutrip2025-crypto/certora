@@ -193,13 +193,13 @@ class ExamCreate(BaseModel):
     timing_mode: str = "question"
     time_per_question_seconds: int | None = 25
     questions_per_attempt: int = 25
-    pass_score: float = 60
+    pass_score: float = 70
     negative_marking: bool = False
     shuffle_questions: bool = False
     shuffle_options: bool = False
     exam_window_start: datetime | None = None
     exam_window_end: datetime | None = None
-    max_attempts: int = 1
+    max_attempts: int = 3
     certificate_enabled: bool = True
 
 
@@ -221,7 +221,7 @@ class ExamUpdate(BaseModel):
 
 class ExamRuleUpdate(BaseModel):
     min_questions: int = 25
-    min_pass_score: float = 60
+    min_pass_score: float = 70
     max_easy_ratio: float = 0.70
     min_syllabus_areas: int = 3
     max_duplicate_ratio: float = 0.10

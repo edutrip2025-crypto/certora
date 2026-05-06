@@ -5941,7 +5941,6 @@ function persistAssessmentBuilderCache() {
       courseFilter: $("abCourseFilter")?.value || "all",
       courseSelect: $("abCourseSelect")?.value || "",
       title: $("abTitle")?.value || "",
-      passScore: $("abPassScore")?.value || "",
       maxAttempts: $("abMaxAttempts")?.value || "",
       questionsPerAttempt: $("abQuestionsPerAttempt")?.value || "",
       negativeMarking: Boolean($("abNegativeMarking")?.checked),
@@ -5991,7 +5990,6 @@ function tryRestoreAssessmentBuilderCache() {
     const hasPool = Array.isArray(payload.questions) && payload.questions.length > 0;
     const hasFormState = Boolean(
       String(payload.title || "").trim()
-      || String(payload.passScore || "").trim()
       || String(payload.maxAttempts || "").trim()
       || String(payload.questionsPerAttempt || "").trim()
       || String(payload.durationMinutes || "").trim()
@@ -6010,7 +6008,6 @@ function tryRestoreAssessmentBuilderCache() {
     renderAssessmentCourseOptions();
     $("abCourseSelect").value = String(payload.courseSelect || "");
     $("abTitle").value = String(payload.title || "");
-    $("abPassScore").value = String(payload.passScore || "");
     $("abMaxAttempts").value = String(payload.maxAttempts || "");
     $("abQuestionsPerAttempt").value = String(payload.questionsPerAttempt || "");
     $("abNegativeMarking").checked = Boolean(payload.negativeMarking);
@@ -6067,8 +6064,7 @@ function resetAssessmentBuilder() {
   $("abCourseSelect").value = "";
   $("abCourseMeta").textContent = "No course selected.";
   $("abTitle").value = "";
-  $("abPassScore").value = "";
-  $("abMaxAttempts").value = "";
+  $("abMaxAttempts").value = "3";
   $("abQuestionsPerAttempt").value = "25";
   $("abNegativeMarking").checked = false;
   $("abDefaultNegativeMarks").value = "";
@@ -6144,8 +6140,7 @@ async function openAssessmentBuilderForEdit(assessment) {
   if (publishBtn) publishBtn.textContent = "Save & Publish";
 
   $("abTitle").value = assessment.title || "";
-  $("abPassScore").value = String(assessment.pass_score ?? 60);
-  $("abMaxAttempts").value = String(assessment.max_attempts ?? 1);
+  $("abMaxAttempts").value = String(Math.min(3, Math.max(1, Number(assessment.max_attempts ?? 3))));
   $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : 25);
   $("abNegativeMarking").checked = Boolean(assessment.negative_marking);
   $("abDefaultNegativeMarks").value = "";
@@ -6262,7 +6257,6 @@ async function createAssessmentFromBuilder(publishNow) {
   const courseId = getSelectedAssessmentCourseId();
   if (!courseId) throw new Error("Choose an active/inactive course");
   const title = $("abTitle")?.value?.trim() || "";
-  const passScore = Number($("abPassScore")?.value);
   const maxAttempts = Number($("abMaxAttempts")?.value);
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
   const timingMode = $("abTimingMode")?.value || "question";
@@ -6273,8 +6267,7 @@ async function createAssessmentFromBuilder(publishNow) {
 
   if (!title) throw new Error("Assessment title is required");
   if (!questionPool.length) throw new Error("Add at least one question");
-  if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) throw new Error("Pass % is required (1 to 100)");
-  if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) throw new Error("Max attempts is required and must be greater than 0");
+  if (!Number.isFinite(maxAttempts) || maxAttempts <= 0 || maxAttempts > 3) throw new Error("Max attempts must be between 1 and 3");
   if (![25, 30, 35, 40].includes(questionsPerAttempt)) throw new Error("Questions shown must be 25, 30, 35, or 40");
   if (questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
@@ -6297,11 +6290,11 @@ async function createAssessmentFromBuilder(publishNow) {
     timing_mode: timingMode,
     time_per_question_seconds: timingMode === "question" ? timePerQuestionSeconds : null,
     questions_per_attempt: questionsPerAttempt,
-    pass_score: passScore,
+    pass_score: 70,
     negative_marking: Boolean($("abNegativeMarking")?.checked),
     shuffle_questions: Boolean($("abShuffleQuestions")?.checked),
     shuffle_options: Boolean($("abShuffleOptions")?.checked),
-    max_attempts: maxAttempts,
+    max_attempts: Math.min(3, Math.max(1, maxAttempts)),
     certificate_enabled: Boolean($("abCertificateEnabled")?.checked),
   };
 
@@ -6330,7 +6323,7 @@ async function createAssessmentFromBuilder(publishNow) {
   try {
     await api("POST", `/exams/${examId}/rule`, {
       min_questions: questionPool.length,
-      min_pass_score: 60,
+      min_pass_score: 70,
       max_easy_ratio: 0.7,
       min_syllabus_areas: 1,
       max_duplicate_ratio: 0.1,
@@ -8359,7 +8352,7 @@ function renderProviderAssessmentsList() {
       <div><strong>${a.title}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${a.status}</span></div>
       <div class='meta'>Assessment ID: ${a.exam_id}</div>
       <div class='meta'>Questions: ${a.question_count} | Student gets: ${a.questions_per_attempt > 0 ? a.questions_per_attempt : a.question_count}</div>
-      <div class='meta'>Pass: ${a.pass_score}% | Attempts: ${a.max_attempts}</div>
+      <div class='meta'>Attempts: ${a.max_attempts}</div>
       <div class='meta'>Timing: ${a.timing_mode === "question" ? `${a.time_per_question_seconds || 0}s/question` : `${a.duration_minutes} mins/assessment`}</div>
       <div class='actions'>
         <button class="icon-play-btn" data-assessment-preview="${a.exam_id}" title="Preview assessment" aria-label="Preview assessment">&#9654;</button>
@@ -10076,7 +10069,6 @@ function bindEvents() {
   [
     "abCourseFilter",
     "abTitle",
-    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abDefaultNegativeMarks",
@@ -10099,7 +10091,6 @@ function bindEvents() {
   });
   [
     "abTitle",
-    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",

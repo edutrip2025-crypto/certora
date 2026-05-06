@@ -468,39 +468,52 @@
               <section class="item ab-step-page">
                 <h3>Assessment Settings</h3>
                 <p class="muted">Define exam behavior, scoring, and timing for student attempts.</p>
-                <div id="abStep2Error" class="meta hidden" style="margin-top:8px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:8px 10px;border-radius:8px;"></div>
+                <div id="abStep2Error" class="meta hidden ab-step2-error"></div>
                 <div class="row wrap gap-sm">
-                  <input id="abTitle" class="search" type="text" placeholder="Assessment title *" />
-                  <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass % *" />
-                  <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts *" />
-                  <select id="abQuestionsPerAttempt" class="filter" title="Questions shown to student *">
-                    <option value="25">25 questions</option>
-                    <option value="30">30 questions</option>
-                    <option value="35">35 questions</option>
-                    <option value="40">40 questions</option>
-                  </select>
+                  <label class="ab-field-wrap">Assessment title <span class="required-asterisk">*</span>
+                    <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
+                  </label>
+                  <label class="ab-field-wrap">Max attempts <span class="required-asterisk">*</span>
+                    <input id="abMaxAttempts" class="filter" type="number" min="1" max="3" value="3" placeholder="Max attempts" />
+                  </label>
+                  <label class="ab-field-wrap">Questions shown to student <span class="required-asterisk">*</span>
+                    <select id="abQuestionsPerAttempt" class="filter" title="Questions shown to student">
+                      <option value="25">25 questions</option>
+                      <option value="30">30 questions</option>
+                      <option value="35">35 questions</option>
+                      <option value="40">40 questions</option>
+                    </select>
+                  </label>
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:10px;">
-                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking *</span></label>
+                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
                   <input id="abDefaultNegativeMarks" class="filter hidden" type="number" min="0" step="0.25" placeholder="Default negative marks/question" />
-                  <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions *</span></label>
-                  <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options *</span></label>
-                  <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled *</span></label>
+                  <input id="abShuffleQuestions" type="checkbox" checked class="hidden" />
+                  <input id="abShuffleOptions" type="checkbox" checked class="hidden" />
+                  <input id="abCertificateEnabled" type="checkbox" checked class="hidden" />
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:10px;">
-                  <select id="abTimingMode" class="filter" title="Time per assessment *">
-                    <option value="question" selected>Time per question</option>
-                    <option value="assessment">Time per assessment</option>
-                  </select>
-                  <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes *" />
-                  <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds *" />
-                  <select id="abTimePerQuestionSeconds" class="filter" title="Time per question *">
-                    <option value="25" selected>25 sec/question</option>
-                    <option value="30">30 sec/question</option>
-                    <option value="35">35 sec/question</option>
-                    <option value="40">40 sec/question</option>
-                    <option value="45">45 sec/question</option>
-                  </select>
+                  <label class="ab-field-wrap">Timing mode <span class="required-asterisk">*</span>
+                    <select id="abTimingMode" class="filter" title="Time per assessment">
+                      <option value="question" selected>Time per question</option>
+                      <option value="assessment">Time per assessment</option>
+                    </select>
+                  </label>
+                  <label class="ab-field-wrap">Duration minutes <span class="required-asterisk">*</span>
+                    <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes" />
+                  </label>
+                  <label class="ab-field-wrap">Duration seconds <span class="required-asterisk">*</span>
+                    <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds" />
+                  </label>
+                  <label class="ab-field-wrap">Time per question <span class="required-asterisk">*</span>
+                    <select id="abTimePerQuestionSeconds" class="filter" title="Time per question">
+                      <option value="25" selected>25 sec/question</option>
+                      <option value="30">30 sec/question</option>
+                      <option value="35">35 sec/question</option>
+                      <option value="40">40 sec/question</option>
+                      <option value="45">45 sec/question</option>
+                    </select>
+                  </label>
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:16px;">
                   <button id="abStep2BackBtn" class="btn small">Back</button>
