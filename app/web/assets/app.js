@@ -312,7 +312,9 @@ function defaultProctorState() {
   return {
     sessionId: null,
     warnings: 0,
-    maxWarnings: 5,
+    maxWarnings: 999,
+    maxPhoneWarnings: 3,
+    phoneWarnings: 0,
     penaltyPerWarningPct: 5,
     stream: null,
     audioContext: null,
@@ -5947,7 +5949,7 @@ function persistAssessmentBuilderCache() {
       shuffleQuestions: Boolean($("abShuffleQuestions")?.checked),
       shuffleOptions: Boolean($("abShuffleOptions")?.checked),
       certificateEnabled: Boolean($("abCertificateEnabled")?.checked),
-      timingMode: $("abTimingMode")?.value || "assessment",
+      timingMode: $("abTimingMode")?.value || "question",
       durationMinutes: $("abDurationMinutes")?.value || "",
       durationSeconds: $("abDurationSeconds")?.value || "",
       timePerQuestionSeconds: $("abTimePerQuestionSeconds")?.value || "",
@@ -6016,7 +6018,7 @@ function tryRestoreAssessmentBuilderCache() {
     $("abShuffleQuestions").checked = Boolean(payload.shuffleQuestions);
     $("abShuffleOptions").checked = Boolean(payload.shuffleOptions);
     $("abCertificateEnabled").checked = Boolean(payload.certificateEnabled);
-    $("abTimingMode").value = String(payload.timingMode || "assessment");
+    $("abTimingMode").value = String(payload.timingMode || "question");
     $("abDurationMinutes").value = String(payload.durationMinutes || "");
     $("abDurationSeconds").value = String(payload.durationSeconds || "");
     $("abTimePerQuestionSeconds").value = String(payload.timePerQuestionSeconds || "");
@@ -6067,16 +6069,16 @@ function resetAssessmentBuilder() {
   $("abTitle").value = "";
   $("abPassScore").value = "";
   $("abMaxAttempts").value = "";
-  $("abQuestionsPerAttempt").value = "";
+  $("abQuestionsPerAttempt").value = "25";
   $("abNegativeMarking").checked = false;
   $("abDefaultNegativeMarks").value = "";
   $("abShuffleQuestions").checked = true;
   $("abShuffleOptions").checked = true;
   $("abCertificateEnabled").checked = true;
-  $("abTimingMode").value = "assessment";
+  $("abTimingMode").value = "question";
   $("abDurationMinutes").value = "";
   $("abDurationSeconds").value = "";
-  $("abTimePerQuestionSeconds").value = "";
+  $("abTimePerQuestionSeconds").value = "25";
   $("abQuestionType").value = "mcq_single_correct";
   $("abQuestionText").value = "";
   $("abQuestionMarks").value = "";
@@ -6120,7 +6122,7 @@ function updateAssessmentSourceMeta() {
 }
 
 function applyAssessmentTimingMode() {
-  const mode = $("abTimingMode")?.value || "assessment";
+  const mode = $("abTimingMode")?.value || "question";
   $("abDurationMinutes")?.classList.toggle("hidden", mode !== "assessment");
   $("abDurationSeconds")?.classList.toggle("hidden", mode !== "assessment");
   $("abTimePerQuestionSeconds")?.classList.toggle("hidden", mode !== "question");
@@ -6144,17 +6146,17 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abTitle").value = assessment.title || "";
   $("abPassScore").value = String(assessment.pass_score ?? 60);
   $("abMaxAttempts").value = String(assessment.max_attempts ?? 1);
-  $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : Math.max(assessment.question_count || 1, 1));
+  $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : 25);
   $("abNegativeMarking").checked = Boolean(assessment.negative_marking);
   $("abDefaultNegativeMarks").value = "";
   $("abShuffleQuestions").checked = Boolean(assessment.shuffle_questions);
   $("abShuffleOptions").checked = Boolean(assessment.shuffle_options);
   $("abCertificateEnabled").checked = Boolean(assessment.certificate_enabled);
-  $("abTimingMode").value = assessment.timing_mode || "assessment";
+  $("abTimingMode").value = assessment.timing_mode || "question";
   const totalDurationSeconds = Math.max(0, Number(assessment.duration_minutes || 0) * 60);
   $("abDurationMinutes").value = String(Math.floor(totalDurationSeconds / 60));
   $("abDurationSeconds").value = String(totalDurationSeconds % 60);
-  $("abTimePerQuestionSeconds").value = String(assessment.time_per_question_seconds || 90);
+  $("abTimePerQuestionSeconds").value = String(assessment.time_per_question_seconds || 25);
   applyAssessmentTimingMode();
   applyAssessmentNegativeMarkingUi();
 
@@ -6263,7 +6265,7 @@ async function createAssessmentFromBuilder(publishNow) {
   const passScore = Number($("abPassScore")?.value);
   const maxAttempts = Number($("abMaxAttempts")?.value);
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
-  const timingMode = $("abTimingMode")?.value || "assessment";
+  const timingMode = $("abTimingMode")?.value || "question";
   const durationMinutesRaw = Number($("abDurationMinutes")?.value || 0);
   const durationSecondsRaw = Number($("abDurationSeconds")?.value || 0);
   const timePerQuestionSeconds = Number($("abTimePerQuestionSeconds")?.value);
@@ -6273,7 +6275,7 @@ async function createAssessmentFromBuilder(publishNow) {
   if (!questionPool.length) throw new Error("Add at least one question");
   if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) throw new Error("Pass % is required (1 to 100)");
   if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) throw new Error("Max attempts is required and must be greater than 0");
-  if (questionsPerAttempt <= 0) throw new Error("Questions shown to student must be greater than 0");
+  if (![25, 30, 35, 40].includes(questionsPerAttempt)) throw new Error("Questions shown must be 25, 30, 35, or 40");
   if (questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
   }
@@ -6282,7 +6284,9 @@ async function createAssessmentFromBuilder(publishNow) {
   const durationTotalSeconds = (durationMinutesRaw * 60) + durationSecondsRaw;
   const durationMinutes = Math.max(1, Math.ceil(durationTotalSeconds / 60));
   if (timingMode === "assessment" && durationTotalSeconds <= 0) throw new Error("Assessment duration must be greater than 0");
-  if (timingMode === "question" && timePerQuestionSeconds <= 0) throw new Error("Time per question must be greater than 0");
+  if (timingMode === "question" && ![25, 30, 35, 40, 45].includes(timePerQuestionSeconds)) {
+    throw new Error("Time per question must be 25, 30, 35, 40, or 45 seconds");
+  }
   if (questionPool.length < questionsPerAttempt * 2) {
     toast("Recommendation: keep at least 2x pool size for better randomization.");
   }
@@ -6631,12 +6635,7 @@ function pushProctorWarning(reason, eventType = "proctor_warning", severity = "w
   if (el.apProctorHints) {
     el.apProctorHints.textContent = `Warning ${p.warnings}: ${reason}`;
   }
-  if (p.warnings >= p.maxWarnings) {
-    toast("Maximum warnings reached. Test ended.");
-    showAssessmentPreviewResult("max_warnings");
-  } else {
-    openProctorWarningModal(reason);
-  }
+  openProctorWarningModal(reason);
 }
 
 async function startServerProctorSession() {
@@ -6876,13 +6875,17 @@ async function detectMobilePhoneInFrame() {
     if (hasPhone) p.phoneFrames += 1;
     else p.phoneFrames = Math.max(0, p.phoneFrames - 1);
     if (p.phoneFrames >= 2) {
+      p.phoneWarnings = Number(p.phoneWarnings || 0) + 1;
       pushProctorWarning(
-        "Mobile phone detected. Assessment will be terminated.",
+        `Mobile phone detected (${p.phoneWarnings}/${p.maxPhoneWarnings}). Keep phone away from camera.`,
         "mobile_phone_detected",
         "critical",
+        { bypassCooldown: true },
       );
       p.phoneFrames = 0;
-      showAssessmentPreviewResult("mobile_phone_detected");
+      if (p.phoneWarnings >= Number(p.maxPhoneWarnings || 3)) {
+        showAssessmentPreviewResult("mobile_phone_detected");
+      }
     }
   } catch {}
 }
@@ -7306,6 +7309,7 @@ async function runProctoringPrecheck() {
   p.baselineEvidenceReady = false;
   p.monitorTick = 0;
   p.phoneFrames = 0;
+  p.phoneWarnings = 0;
   p.phoneModelReady = false;
   p.handModel = null;
   p.handModelReady = false;
@@ -10068,7 +10072,7 @@ function bindEvents() {
     applyAssessmentNegativeMarkingUi();
     persistAssessmentBuilderCache();
   });
-  $("abQuestionsPerAttempt")?.addEventListener("input", () => renderAssessmentPool());
+  $("abQuestionsPerAttempt")?.addEventListener("change", () => renderAssessmentPool());
   [
     "abCourseFilter",
     "abTitle",
@@ -10090,8 +10094,50 @@ function bindEvents() {
   ].forEach((id) => {
     $(id)?.addEventListener("input", () => persistAssessmentBuilderCache());
   });
+  ["abQuestionsPerAttempt", "abTimePerQuestionSeconds"].forEach((id) => {
+    $(id)?.addEventListener("change", () => persistAssessmentBuilderCache());
+  });
+  [
+    "abTitle",
+    "abPassScore",
+    "abMaxAttempts",
+    "abQuestionsPerAttempt",
+    "abTimingMode",
+    "abDurationMinutes",
+    "abDurationSeconds",
+    "abTimePerQuestionSeconds",
+    "abDefaultNegativeMarks",
+  ].forEach((id) => {
+    $(id)?.addEventListener("input", () => {
+      $(id)?.classList.remove("ab-field-invalid");
+      const err = $("abStep2Error");
+      if (err) {
+        err.textContent = "";
+        err.classList.add("hidden");
+      }
+    });
+    $(id)?.addEventListener("change", () => {
+      $(id)?.classList.remove("ab-field-invalid");
+      const err = $("abStep2Error");
+      if (err) {
+        err.textContent = "";
+        err.classList.add("hidden");
+      }
+    });
+  });
   ["abShuffleQuestions", "abShuffleOptions", "abCertificateEnabled"].forEach((id) => {
     $(id)?.addEventListener("change", () => persistAssessmentBuilderCache());
+  });
+  ["abNegativeMarking", "abShuffleQuestions", "abShuffleOptions", "abCertificateEnabled"].forEach((id) => {
+    $(id)?.addEventListener("change", () => {
+      const row = $(id)?.closest?.(".checkbox-row");
+      row?.classList?.remove("ab-field-invalid");
+      const err = $("abStep2Error");
+      if (err) {
+        err.textContent = "";
+        err.classList.add("hidden");
+      }
+    });
   });
   document.querySelectorAll("[data-ab-correct]").forEach((node) => {
     node.addEventListener("change", () => {

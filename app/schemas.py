@@ -190,9 +190,9 @@ class ExamCreate(BaseModel):
     course_id: int
     title: str
     duration_minutes: int = 60
-    timing_mode: str = "assessment"
-    time_per_question_seconds: int | None = None
-    questions_per_attempt: int = 0
+    timing_mode: str = "question"
+    time_per_question_seconds: int | None = 25
+    questions_per_attempt: int = 25
     pass_score: float = 60
     negative_marking: bool = False
     shuffle_questions: bool = False

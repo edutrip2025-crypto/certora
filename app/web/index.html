@@ -468,27 +468,39 @@
               <section class="item ab-step-page">
                 <h3>Assessment Settings</h3>
                 <p class="muted">Define exam behavior, scoring, and timing for student attempts.</p>
+                <div id="abStep2Error" class="meta hidden" style="margin-top:8px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:8px 10px;border-radius:8px;"></div>
                 <div class="row wrap gap-sm">
-                  <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
-                  <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass %" />
-                  <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts" />
-                  <input id="abQuestionsPerAttempt" class="filter" type="number" min="1" placeholder="Questions shown to student" />
-                </div>
-                <div class="row wrap gap-sm" style="margin-top:10px;">
-                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
-                  <input id="abDefaultNegativeMarks" class="filter hidden" type="number" min="0" step="0.25" placeholder="Default negative marks/question" />
-                  <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions</span></label>
-                  <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options</span></label>
-                  <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled</span></label>
-                </div>
-                <div class="row wrap gap-sm" style="margin-top:10px;">
-                  <select id="abTimingMode" class="filter">
-                    <option value="assessment">Time per assessment</option>
-                    <option value="question">Time per question</option>
+                  <input id="abTitle" class="search" type="text" placeholder="Assessment title *" />
+                  <input id="abPassScore" class="filter" type="number" min="1" max="100" placeholder="Pass % *" />
+                  <input id="abMaxAttempts" class="filter" type="number" min="1" placeholder="Max attempts *" />
+                  <select id="abQuestionsPerAttempt" class="filter" title="Questions shown to student *">
+                    <option value="25">25 questions</option>
+                    <option value="30">30 questions</option>
+                    <option value="35">35 questions</option>
+                    <option value="40">40 questions</option>
                   </select>
-                  <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes" />
-                  <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds" />
-                  <input id="abTimePerQuestionSeconds" class="filter hidden" type="number" min="5" placeholder="Time/question (sec)" />
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking *</span></label>
+                  <input id="abDefaultNegativeMarks" class="filter hidden" type="number" min="0" step="0.25" placeholder="Default negative marks/question" />
+                  <label class="checkbox-row"><input id="abShuffleQuestions" type="checkbox" checked /><span>Shuffle questions *</span></label>
+                  <label class="checkbox-row"><input id="abShuffleOptions" type="checkbox" checked /><span>Shuffle options *</span></label>
+                  <label class="checkbox-row"><input id="abCertificateEnabled" type="checkbox" checked /><span>Certificate enabled *</span></label>
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <select id="abTimingMode" class="filter" title="Time per assessment *">
+                    <option value="question" selected>Time per question</option>
+                    <option value="assessment">Time per assessment</option>
+                  </select>
+                  <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes *" />
+                  <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds *" />
+                  <select id="abTimePerQuestionSeconds" class="filter" title="Time per question *">
+                    <option value="25" selected>25 sec/question</option>
+                    <option value="30">30 sec/question</option>
+                    <option value="35">35 sec/question</option>
+                    <option value="40">40 sec/question</option>
+                    <option value="45">45 sec/question</option>
+                  </select>
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:16px;">
                   <button id="abStep2BackBtn" class="btn small">Back</button>
@@ -498,7 +510,7 @@
 
               <section class="item ab-step-page">
                 <h3>Questions</h3>
-                <p class="muted">Add MCQ questions and publish when ready.</p>
+                <p class="muted">Add MCQ questions and publish when ready. Use scenario or situation-based questions for stronger proctoring outcomes.</p>
                 <div class="row wrap gap-sm">
                   <select id="abQuestionType" class="filter">
                     <option value="mcq_single_correct">MCQ - Single Correct</option>

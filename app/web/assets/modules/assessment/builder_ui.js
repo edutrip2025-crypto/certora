@@ -12,6 +12,54 @@
   resetAssessmentBuilder,
   tryRestoreAssessmentBuilderCache,
 }) {
+  const STEP2_REQUIRED_TEXT_FIELDS = [
+    "abTitle",
+    "abPassScore",
+    "abMaxAttempts",
+    "abQuestionsPerAttempt",
+    "abTimingMode",
+    "abDurationMinutes",
+    "abDurationSeconds",
+    "abTimePerQuestionSeconds",
+    "abDefaultNegativeMarks",
+  ];
+  const STEP2_REQUIRED_CHECKBOX_ROWS = [
+    "abNegativeMarking",
+    "abShuffleQuestions",
+    "abShuffleOptions",
+    "abCertificateEnabled",
+  ];
+
+  function markFieldInvalid(fieldId, invalid = true) {
+    const node = $(fieldId);
+    if (!node) return;
+    node.classList.toggle("ab-field-invalid", Boolean(invalid));
+  }
+
+  function markCheckboxRowInvalid(checkboxId, invalid = true) {
+    const node = $(checkboxId);
+    const row = node?.closest?.(".checkbox-row");
+    if (!row) return;
+    row.classList.toggle("ab-field-invalid", Boolean(invalid));
+  }
+
+  function clearStep2InvalidStyles() {
+    STEP2_REQUIRED_TEXT_FIELDS.forEach((id) => markFieldInvalid(id, false));
+    STEP2_REQUIRED_CHECKBOX_ROWS.forEach((id) => markCheckboxRowInvalid(id, false));
+  }
+
+  function showStep2Error(message) {
+    const node = $("abStep2Error");
+    if (!node) return;
+    if (!message) {
+      node.textContent = "";
+      node.classList.add("hidden");
+      return;
+    }
+    node.textContent = message;
+    node.classList.remove("hidden");
+  }
+
   function setAssessmentBuilderStep(step, options = {}) {
     const normalized = Math.max(1, Math.min(3, Number(step || 1)));
     state.assessmentBuilderStep = normalized;
@@ -45,48 +93,59 @@
       return true;
     }
     if (s === 2) {
+      showStep2Error("");
+      clearStep2InvalidStyles();
       const title = $("abTitle")?.value?.trim() || "";
       if (!title) {
-        toast("Assessment title is required.", "error");
+        markFieldInvalid("abTitle", true);
+        showStep2Error("Assessment title is required.");
         return false;
       }
       const passScore = Number($("abPassScore")?.value);
       const maxAttempts = Number($("abMaxAttempts")?.value);
       const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
       if (!Number.isFinite(passScore) || passScore <= 0 || passScore > 100) {
-        toast("Pass % is required (1 to 100).", "error");
+        markFieldInvalid("abPassScore", true);
+        showStep2Error("Pass % is required (1 to 100).");
         return false;
       }
       if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) {
-        toast("Max attempts is required and must be greater than 0.", "error");
+        markFieldInvalid("abMaxAttempts", true);
+        showStep2Error("Max attempts is required and must be greater than 0.");
         return false;
       }
-      if (!Number.isFinite(questionsPerAttempt) || questionsPerAttempt <= 0) {
-        toast("Questions shown to student must be greater than 0.", "error");
+      if (![25, 30, 35, 40].includes(questionsPerAttempt)) {
+        markFieldInvalid("abQuestionsPerAttempt", true);
+        showStep2Error("Questions shown to student must be one of 25, 30, 35, or 40.");
         return false;
       }
-      const timingMode = $("abTimingMode")?.value || "assessment";
+      const timingMode = $("abTimingMode")?.value || "question";
       if (timingMode === "assessment") {
         const mins = Number($("abDurationMinutes")?.value || 0);
         const secs = Number($("abDurationSeconds")?.value || 0);
         if (!Number.isFinite(mins) || mins < 0 || !Number.isFinite(secs) || secs < 0 || secs >= 60 || (mins === 0 && secs === 0)) {
-          toast("Duration is required. Enter valid minutes and/or seconds.", "error");
+          markFieldInvalid("abDurationMinutes", true);
+          markFieldInvalid("abDurationSeconds", true);
+          showStep2Error("Duration is required. Enter valid minutes and/or seconds.");
           return false;
         }
       } else {
         const perQ = Number($("abTimePerQuestionSeconds")?.value);
-        if (!Number.isFinite(perQ) || perQ <= 0) {
-          toast("Time per question is required and must be greater than 0.", "error");
+        if (![25, 30, 35, 40, 45].includes(perQ)) {
+          markFieldInvalid("abTimePerQuestionSeconds", true);
+          showStep2Error("Time per question is required and must be 25, 30, 35, 40, or 45 seconds.");
           return false;
         }
       }
       if (Boolean($("abNegativeMarking")?.checked)) {
         const raw = String($("abDefaultNegativeMarks")?.value || "").trim();
         if (raw && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
-          toast("Default negative marks must be 0 or a positive number.", "error");
+          markFieldInvalid("abDefaultNegativeMarks", true);
+          showStep2Error("Default negative marks must be 0 or a positive number.");
           return false;
         }
       }
+      showStep2Error("");
       return true;
     }
     return true;
@@ -94,6 +153,8 @@
 
   function openAssessmentBuilder(allowRestore = true) {
     resetAssessmentBuilder();
+    showStep2Error("");
+    clearStep2InvalidStyles();
     el.assessmentBuilderScreen?.classList.remove("hidden");
     if (allowRestore) tryRestoreAssessmentBuilderCache();
     setAssessmentBuilderStep(1, { noAnimate: true });

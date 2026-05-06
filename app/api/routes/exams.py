@@ -24,6 +24,8 @@ from app.services.ai_review import upsert_ai_review
 from app.services.rule_engine import evaluate_exam_rules
 
 router = APIRouter(prefix="/exams", tags=["exams"])
+ALLOWED_QUESTIONS_PER_ATTEMPT = {25, 30, 35, 40}
+ALLOWED_TIME_PER_QUESTION_SECONDS = {25, 30, 35, 40, 45}
 
 
 def _provider_profile_or_404(db: Session, user_id: int) -> ProviderProfile:
@@ -56,12 +58,15 @@ def create_exam(
         raise HTTPException(status_code=404, detail="Course not found")
     if payload.timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
-    if payload.timing_mode == "question" and (payload.time_per_question_seconds is None or payload.time_per_question_seconds <= 0):
-        raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
+    if payload.timing_mode == "question":
+        if payload.time_per_question_seconds is None:
+            raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
+        if payload.time_per_question_seconds not in ALLOWED_TIME_PER_QUESTION_SECONDS:
+            raise HTTPException(status_code=400, detail="time_per_question_seconds must be one of: 25, 30, 35, 40, 45")
     if payload.timing_mode == "assessment" and payload.duration_minutes <= 0:
         raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
-    if payload.questions_per_attempt < 0:
-        raise HTTPException(status_code=400, detail="questions_per_attempt cannot be negative")
+    if payload.questions_per_attempt not in ALLOWED_QUESTIONS_PER_ATTEMPT:
+        raise HTTPException(status_code=400, detail="questions_per_attempt must be one of: 25, 30, 35, 40")
     try:
         exam = Exam(**payload.model_dump())
         db.add(exam)
@@ -96,10 +101,13 @@ def update_exam(
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
     if timing_mode == "assessment" and (duration_minutes is None or duration_minutes <= 0):
         raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
-    if timing_mode == "question" and (time_per_question_seconds is None or time_per_question_seconds <= 0):
-        raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
-    if questions_per_attempt is not None and questions_per_attempt < 0:
-        raise HTTPException(status_code=400, detail="questions_per_attempt cannot be negative")
+    if timing_mode == "question":
+        if time_per_question_seconds is None:
+            raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
+        if int(time_per_question_seconds) not in ALLOWED_TIME_PER_QUESTION_SECONDS:
+            raise HTTPException(status_code=400, detail="time_per_question_seconds must be one of: 25, 30, 35, 40, 45")
+    if questions_per_attempt is not None and int(questions_per_attempt) not in ALLOWED_QUESTIONS_PER_ATTEMPT:
+        raise HTTPException(status_code=400, detail="questions_per_attempt must be one of: 25, 30, 35, 40")
 
     try:
         for key, value in data.items():

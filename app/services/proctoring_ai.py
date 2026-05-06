@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -384,6 +384,21 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
     reading_aloud_events = _count_event_type(db, sess, "reading_aloud_detected")
     background_voice_events = _count_event_type(db, sess, "background_voice_detected")
     lookaway_events = _count_event_type(db, sess, "look_away_over_2s")
+    gaze_related_events = int(
+        db.scalar(
+            select(func.count(ProctorEvent.id)).where(
+                and_(
+                    ProctorEvent.session_id == sess.id,
+                    or_(
+                        ProctorEvent.event_type.like("gaze_%"),
+                        ProctorEvent.event_type == "look_away_over_2s",
+                        ProctorEvent.event_type == "pupil_drift_non_text_zone",
+                    ),
+                ),
+            ),
+        )
+        or 0
+    )
     event_signal_score, event_signal_counts, triggered_signals = _weighted_event_signals(db, sess)
     base_event_score = min(1.0, max(event_signal_score, (warnings * 0.15) + (high_risk_events * 0.04)))
 
@@ -403,7 +418,7 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
         final_prob = float(max(0.0, min(1.0, (0.65 * ml_prob) + (0.35 * base_event_score))))
 
     # Explicitly promote sessions with strong, rule-specific evidence even if the model is uncertain.
-    if mobile_events >= 1:
+    if mobile_events >= 3:
         final_prob = max(final_prob, 0.97)
     if event_signal_counts.get("attention_challenge_failed", 0) >= 1:
         final_prob = max(final_prob, 0.83)
@@ -427,11 +442,11 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
     else:
         decision = "clear"
 
-    is_flagged = bool(decision in {"critical", "manual_review"} or warnings >= 5)
-    hard_fail = bool(mobile_events >= 1 or voice_events >= 3)
+    is_flagged = bool(decision in {"critical", "manual_review"} or gaze_related_events > 5 or warnings >= 5)
+    hard_fail = bool(mobile_events >= 3 or voice_events >= 3)
     hard_fail_reason = None
-    if mobile_events >= 1:
-        hard_fail_reason = "Mobile phone usage detected during assessment."
+    if mobile_events >= 3:
+        hard_fail_reason = "Mobile phone usage threshold reached during assessment."
     elif voice_events >= 3:
         hard_fail_reason = "Repeated external voice activity detected."
     deduction_pct = 0.0
@@ -488,6 +503,7 @@ def evaluate_proctor_session(db: Session, sess: ProctorSession) -> dict[str, Any
             "critical_threshold": critical_threshold,
         },
         "warnings": warnings,
+        "gaze_related_events": gaze_related_events,
         "high_risk_events": high_risk_events,
         "mobile_events": mobile_events,
         "voice_events": voice_events,
