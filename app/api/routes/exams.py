@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_role
@@ -222,24 +222,44 @@ def add_question(
 
     if payload.question_type != QuestionType.SHORT_ANSWER and not payload.options:
         raise HTTPException(status_code=400, detail="MCQ question requires options")
+    cleaned_options = []
+    for idx, opt in enumerate(payload.options or [], start=1):
+        text_val = str(opt.option_text or "").strip()
+        if not text_val:
+            continue
+        cleaned_options.append(
+            {
+                "option_text": text_val,
+                "is_correct": bool(opt.is_correct),
+                "position": int(opt.position or idx),
+            },
+        )
+    if payload.question_type != QuestionType.SHORT_ANSWER and len(cleaned_options) < 2:
+        raise HTTPException(status_code=400, detail="MCQ question requires at least 2 non-empty options")
+    if payload.question_type == QuestionType.MCQ_SINGLE and sum(1 for o in cleaned_options if o["is_correct"]) != 1:
+        raise HTTPException(status_code=400, detail="Single correct MCQ needs exactly 1 correct option")
+    if payload.question_type == QuestionType.MCQ_MULTI and sum(1 for o in cleaned_options if o["is_correct"]) < 1:
+        raise HTTPException(status_code=400, detail="Multiple correct MCQ needs at least 1 correct option")
 
     try:
+        # Store enum member name in DB for compatibility with legacy enum column sizing/values.
+        qtype_db_value = payload.question_type.name if hasattr(payload.question_type, "name") else str(payload.question_type)
         question = Question(
             exam_id=exam.id,
             question_text=payload.question_text,
-            question_type=payload.question_type,
+            question_type=qtype_db_value,
             marks=payload.marks,
             negative_marks=payload.negative_marks,
         )
         db.add(question)
         db.flush()
         created_options: list[dict] = []
-        for opt in payload.options:
+        for opt in cleaned_options:
             option = Option(
                 question_id=question.id,
-                option_text=opt.option_text,
-                is_correct=opt.is_correct,
-                position=opt.position,
+                option_text=opt["option_text"],
+                is_correct=opt["is_correct"],
+                position=opt["position"],
             )
             db.add(option)
             db.flush()
@@ -250,6 +270,10 @@ def add_question(
         exam.total_marks = db.scalar(select(func.coalesce(func.sum(Question.marks), 0)).where(Question.exam_id == exam.id))
         db.commit()
         return {"question_id": question.id, "options": created_options}
+    except IntegrityError as exc:
+        db.rollback()
+        detail = str(getattr(exc, "orig", exc))
+        raise HTTPException(status_code=400, detail=f"Failed to add question: {detail}") from exc
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add question: {exc.__class__.__name__}") from exc
