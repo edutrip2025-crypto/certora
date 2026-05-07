@@ -94,7 +94,7 @@ export function createAssessmentPrecheckUi({
       el.apPrecheckNextBtn.disabled = !precheckUnlocked;
     }
     if (el.apStartTestBtn) {
-      el.apStartTestBtn.disabled = !(precheckReady && attested);
+      el.apStartTestBtn.disabled = !(precheckUnlocked && attested);
     }
     if (el.apEnvironmentStatus) {
       if (p.precheckInProgress) {

@@ -7517,12 +7517,15 @@ async function initializeProctoringForAssessmentStart() {
 async function startAssessmentAfterPrecheck() {
   const p = state.assessmentPreview.proctor;
   if (p.startingUp) return;
+  const precheckUnlocked = Boolean(p.precheckReady) && !p.precheckInProgress && Date.now() >= Number(p.precheckUnlockAtMs || 0);
   if (!p.environmentAttested) {
     toast("Assessment cannot start while screen sharing or remote desktop tools may be active. Confirm the local-only environment first.", "error");
     return;
   }
-  if (!p.precheckReady) {
-    toast("Run pre-check before starting the assessment.", "error");
+  if (!precheckUnlocked) {
+    toast("Pre-check not qualified yet. Re-run checks and wait until all checks pass.", "error");
+    showPrecheckChecksPage();
+    updateAssessmentStartEligibility();
     return;
   }
   p.startingUp = true;
