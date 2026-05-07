@@ -6454,7 +6454,7 @@ function closeProctorWarningModal() {
 function updateProctorBadge() {
   const p = state.assessmentPreview.proctor;
   if (el.apProctorBadge) {
-    el.apProctorBadge.textContent = `Warnings: ${p.warnings}/${p.maxWarnings}`;
+    el.apProctorBadge.textContent = "Proctoring active";
     el.apProctorBadge.classList.toggle("proctor-warn", p.warnings > 0);
     el.apProctorBadge.classList.toggle("proctor-danger", p.warnings >= p.maxWarnings - 1);
   }
@@ -6838,7 +6838,7 @@ async function detectMobilePhoneInFrame() {
     if (p.phoneFrames >= 2) {
       p.phoneWarnings = Number(p.phoneWarnings || 0) + 1;
       pushProctorWarning(
-        `Mobile phone detected (${p.phoneWarnings}/${p.maxPhoneWarnings}). Keep phone away from camera.`,
+        "Mobile phone detected. Keep phone away from camera.",
         "mobile_phone_detected",
         "critical",
         { bypassCooldown: true },
