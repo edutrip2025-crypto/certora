@@ -62,6 +62,7 @@ from app.services.media_storage import resolve_media_url
 router = APIRouter(prefix="/student", tags=["student"])
 _attempt_start_lock = Lock()
 _attempt_submit_lock = Lock()
+STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
 
 AGE_RANGE_BOUNDS: dict[str, tuple[int | None, int | None]] = {
     "under_13": (0, 12),
@@ -262,7 +263,16 @@ def dashboard(
         .order_by(Enrollment.enrolled_at.desc()),
     ).all()
     enrolled_course_ids = {course.id for _, course in enrolled_rows}
-    published_courses = list(db.scalars(select(Course).where(Course.is_published.is_(True)).order_by(Course.id.desc())).all())
+    published_courses = list(
+        db.scalars(
+            select(Course)
+            .where(
+                Course.is_published.is_(True),
+                Course.category != STANDALONE_ASSESSMENT_CATEGORY,
+            )
+            .order_by(Course.id.desc()),
+        ).all(),
+    )
     available_courses = [c for c in published_courses if c.id not in enrolled_course_ids]
     dashboard_course_ids = {int(c.id) for c in published_courses}
     provider_ids = {int(c.provider_id) for c in published_courses if c.provider_id is not None}
@@ -621,10 +631,28 @@ def start_attempt(
             and_(Enrollment.course_id == exam.course_id, Enrollment.student_id == current_user.id),
         ),
     )
+    course = db.get(Course, exam.course_id)
+    is_standalone = bool(course and str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY)
     if not enrollment:
-        raise HTTPException(status_code=403, detail="Student not enrolled")
+        if is_standalone:
+            enrollment = Enrollment(
+                student_id=current_user.id,
+                course_id=exam.course_id,
+                status=EnrollmentStatus.ACTIVE,
+                progress_pct=100,
+                exam_eligible=True,
+            )
+            db.add(enrollment)
+            db.flush()
+        else:
+            raise HTTPException(status_code=403, detail="Student not enrolled")
     if not enrollment.exam_eligible:
-        raise HTTPException(status_code=403, detail="Not exam eligible")
+        if is_standalone:
+            enrollment.exam_eligible = True
+            enrollment.progress_pct = max(float(enrollment.progress_pct or 0), 100.0)
+            db.flush()
+        else:
+            raise HTTPException(status_code=403, detail="Not exam eligible")
 
     with _attempt_start_lock:
         existing_in_progress = db.scalar(
@@ -1112,6 +1140,54 @@ def assessment_intent(
         "total_assessments": total_assessments,
         "published_assessments": len(exams_published),
     }
+
+
+@router.get("/assessments/catalog")
+def assessment_catalog(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+):
+    exams = db.execute(
+        select(Exam, Course, ProviderProfile)
+        .join(Course, Course.id == Exam.course_id)
+        .join(ProviderProfile, ProviderProfile.id == Course.provider_id)
+        .where(Exam.status == ExamStatus.PUBLISHED)
+        .order_by(Exam.id.desc()),
+    ).all()
+    enrollment_by_course = {
+        int(e.course_id): e
+        for e in db.scalars(
+            select(Enrollment).where(Enrollment.student_id == current_user.id),
+        ).all()
+    }
+    out = []
+    for exam, course, provider in exams:
+        is_standalone = bool(str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY)
+        enr = enrollment_by_course.get(int(course.id))
+        if is_standalone:
+            status = "available"
+            status_label = "Available"
+        else:
+            eligible = bool(enr and enr.exam_eligible)
+            status = "available" if eligible else ("locked" if enr else "unavailable")
+            status_label = "Available" if eligible else ("Locked" if enr else "Unavailable")
+        out.append(
+            {
+                "exam_id": int(exam.id),
+                "course_id": int(course.id),
+                "title": str(exam.title or "Assessment"),
+                "provider_name": str(provider.display_name or "Provider"),
+                "category": ("Standalone Assessment" if is_standalone else str(course.category or "General")),
+                "thumbnail_url": resolve_media_url(course.thumbnail_url) or course.thumbnail_url,
+                "status": status,
+                "statusLabel": status_label,
+                "is_standalone": is_standalone,
+                "published_assessments": 1,
+                "created_at": course.created_at or datetime.now(timezone.utc),
+                "progress_pct": float((enr.progress_pct if enr else 0) or 0),
+            },
+        )
+    return out
 
 
 def _student_live_session_or_403(db: Session, session_id: int, student_id: int) -> tuple[LiveClassSession, Enrollment]:

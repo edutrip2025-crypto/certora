@@ -2093,33 +2093,7 @@ function renderStudentHomeSnapshots() {
 }
 
 function buildStudentAssessmentRows() {
-  const enrolled = Array.isArray(state.studentDashboard.enrolled) ? state.studentDashboard.enrolled : [];
-  return enrolled.map((c) => {
-    const published = Number(c.published_assessments || 0);
-    const examEligible = Boolean(c.exam_eligible);
-    const available = Boolean(c.assessment_available);
-    let status = "unavailable";
-    let statusLabel = "Unavailable";
-    if (!examEligible) {
-      status = "locked";
-      statusLabel = "Locked";
-    } else if (available && published > 0) {
-      status = "available";
-      statusLabel = "Available";
-    }
-    return {
-      course_id: Number(c.course_id || 0),
-      title: String(c.title || "Untitled Course"),
-      provider_name: String(c.provider_name || "Provider"),
-      category: String(c.category || "General"),
-      thumbnail_url: c.thumbnail_url || "",
-      progress_pct: Number(c.progress_pct || 0),
-      published_assessments: published,
-      status,
-      statusLabel,
-      created_at: c.created_at || c.enrolled_at || "",
-    };
-  });
+  return Array.isArray(state.studentAssessments) ? state.studentAssessments : [];
 }
 
 function renderStudentAssessmentsList() {
@@ -2151,7 +2125,7 @@ function renderStudentAssessmentsList() {
     ? `
       <div class="item" style="margin-bottom:10px;">
         <div><strong>No eligible assessments right now</strong></div>
-        <div style="margin-top:4px;">Complete course watch requirements and wait for provider-published assessments.</div>
+        <div style="margin-top:4px;">No directly available assessments yet.</div>
       </div>
     `
     : "";
@@ -2160,7 +2134,7 @@ function renderStudentAssessmentsList() {
       ${eligibleNote}
       <div class="item">
         <div><strong>No assessments yet</strong></div>
-        <div style="margin-top:4px;">Assessments appear here after you enroll in a course and the provider publishes them.</div>
+        <div style="margin-top:4px;">Published assessments will appear here.</div>
       </div>
     `;
     return;
@@ -2176,8 +2150,8 @@ function renderStudentAssessmentsList() {
         <div class="course-tile-meta">Published assessments: ${r.published_assessments}</div>
         <div class="course-tile-meta">Progress: ${Number(r.progress_pct || 0).toFixed(0)}%</div>
         <div class="actions">
-          <button class="btn small" data-student-assess-open-course="${r.course_id}">Open Course</button>
-          ${r.status === "available" ? `<button class="btn small" data-student-assess-start="${r.course_id}">Start Assessment</button>` : ""}
+          ${r.is_standalone ? "" : `<button class="btn small" data-student-assess-open-course="${r.course_id}">Open Course</button>`}
+          ${r.status === "available" ? `<button class="btn small" data-student-assess-start="${r.exam_id}">Start Assessment</button>` : ""}
         </div>
       </div>
     </article>
@@ -2194,13 +2168,10 @@ function renderStudentAssessmentsList() {
   });
   document.querySelectorAll("[data-student-assess-start]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const courseId = Number(btn.dataset.studentAssessStart || 0);
-      if (!courseId) return;
+      const examId = Number(btn.dataset.studentAssessStart || 0);
+      if (!examId) return;
       try {
-        const out = await api("POST", `/student/courses/${courseId}/assessment-intent?ready=true`);
-        const exams = Array.isArray(out?.exams) ? out.exams : [];
-        if (!exams.length) throw new Error(out?.message || "Assessment is not available for this course right now.");
-        await openStudentAssessmentAttempt(Number(exams[0].exam_id));
+        await openStudentAssessmentAttempt(examId);
       } catch (err) {
         toast(err?.message || "Failed to start assessment", "error");
       }
@@ -2209,7 +2180,8 @@ function renderStudentAssessmentsList() {
 }
 
 async function refreshStudentAssessments() {
-  state.studentAssessments = buildStudentAssessmentRows();
+  const rows = await api("GET", "/student/assessments/catalog");
+  state.studentAssessments = Array.isArray(rows) ? rows : [];
   renderStudentAssessmentsList();
 }
 
@@ -3811,10 +3783,8 @@ async function refreshStudentDashboard() {
   state.studentDashboard.available = mergedAvailable;
   state.studentDashboard.enrolled = enrolled;
   state.studentDashboard.suggested = suggested.length ? suggested : mergedAvailable;
-  state.studentAssessments = buildStudentAssessmentRows();
   renderStudentHomeSnapshots();
   renderStudentCourseCatalogs();
-  renderStudentAssessmentsList();
 }
 
 async function refreshStudentCertifications() {
@@ -5922,6 +5892,7 @@ function validateAssessmentStep(step) {
 
 function getSelectedAssessmentCourseId() {
   const raw = getAssessmentSourceValue();
+  if (raw === "standalone") return 0;
   if (!raw || !raw.startsWith("course:")) return null;
   return Number(raw.split(":")[1] || 0);
 }
@@ -6148,7 +6119,7 @@ async function openAssessmentBuilderForEdit(assessment) {
   applyAssessmentNegativeMarkingUi();
 
   renderAssessmentCourseOptions();
-  $("abCourseSelect").value = `course:${assessment.course_id}`;
+  $("abCourseSelect").value = assessment.is_standalone ? "standalone" : `course:${assessment.course_id}`;
   $("abCourseSelect").disabled = true;
   $("abCourseFilter").disabled = true;
   updateAssessmentSourceMeta();

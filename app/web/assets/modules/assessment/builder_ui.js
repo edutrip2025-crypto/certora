@@ -80,6 +80,8 @@
   function validateAssessmentStep(step) {
     const s = Number(step || 1);
     if (s === 1) {
+      const source = getAssessmentSourceValue();
+      if (source === "standalone") return true;
       const courseId = getSelectedAssessmentCourseId();
       if (!courseId || isAssessmentDraftSourceSelected()) {
         toast("Select an active/inactive course (draft is not allowed for assessment).", "error");
@@ -172,6 +174,12 @@
       if (publishBtn) publishBtn.disabled = true;
       return;
     }
+    if (raw === "standalone") {
+      meta.textContent = "Standalone assessment selected. Students can enroll directly to this assessment.";
+      if (saveBtn) saveBtn.disabled = false;
+      if (publishBtn) publishBtn.disabled = false;
+      return;
+    }
     const courseId = Number(raw.split(":")[1] || 0);
     const c = (state.providerCourses || []).find((x) => Number(x.id) === courseId);
     meta.textContent = c
@@ -188,6 +196,10 @@
     const options = [];
 
     if (filter !== "draft") {
+      options.push({
+        value: "standalone",
+        label: "Standalone Assessment (Direct student enrollment)",
+      });
       (state.providerCourses || []).forEach((c) => {
         if (filter === "active" && !c.is_published) return;
         if (filter === "inactive" && c.is_published) return;

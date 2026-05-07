@@ -26,6 +26,7 @@ from app.services.rule_engine import evaluate_exam_rules
 router = APIRouter(prefix="/exams", tags=["exams"])
 ALLOWED_QUESTIONS_PER_ATTEMPT = {25, 30, 35, 40}
 ALLOWED_TIME_PER_QUESTION_SECONDS = {25, 30, 35, 40, 45}
+STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
 
 
 def _provider_profile_or_404(db: Session, user_id: int) -> ProviderProfile:
@@ -46,6 +47,28 @@ def _provider_exam_or_403(db: Session, exam_id: int, current_user: User) -> tupl
     return profile, exam, course
 
 
+def _get_or_create_standalone_course(db: Session, profile: ProviderProfile) -> Course:
+    existing = db.scalar(
+        select(Course).where(
+            Course.provider_id == profile.id,
+            Course.category == STANDALONE_ASSESSMENT_CATEGORY,
+        ),
+    )
+    if existing:
+        return existing
+    course = Course(
+        provider_id=profile.id,
+        title="Standalone Assessments",
+        description="Hidden course container for standalone assessments.",
+        category=STANDALONE_ASSESSMENT_CATEGORY,
+        suitable_age_ranges=[],
+        is_published=False,
+    )
+    db.add(course)
+    db.flush()
+    return course
+
+
 @router.post("", response_model=ExamOut, status_code=status.HTTP_201_CREATED)
 def create_exam(
     payload: ExamCreate,
@@ -53,9 +76,13 @@ def create_exam(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
-    course = db.get(Course, payload.course_id)
-    if not course or course.provider_id != profile.id:
-        raise HTTPException(status_code=404, detail="Course not found")
+    if int(payload.course_id or 0) <= 0:
+        course = _get_or_create_standalone_course(db, profile)
+        payload.course_id = int(course.id)
+    else:
+        course = db.get(Course, payload.course_id)
+        if not course or course.provider_id != profile.id:
+            raise HTTPException(status_code=404, detail="Course not found")
     if payload.timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
     if float(payload.pass_score) < 70:

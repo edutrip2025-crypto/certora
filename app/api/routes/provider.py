@@ -72,6 +72,7 @@ from app.services.media_storage import (
 router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
 _BUSINESS_REG_ALLOWED = {"cin", "pan", "gst", "national_id", "passport", "tax_id", "other"}
+STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
 
 
 def _draft_pricing_breakdown(base_price_amount: float) -> dict:
@@ -607,7 +608,14 @@ def provider_content_courses(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    courses = list(db.scalars(select(Course).where(Course.provider_id == provider.id)).all())
+    courses = list(
+        db.scalars(
+            select(Course).where(
+                Course.provider_id == provider.id,
+                Course.category != STANDALONE_ASSESSMENT_CATEGORY,
+            ),
+        ).all(),
+    )
     rating_summary = _course_rating_summary(db, {int(c.id) for c in courses})
     pass_stats_rows = db.execute(
         select(
@@ -1069,7 +1077,8 @@ def provider_assessments(
             "exam_id": exam.id,
             "title": exam.title,
             "course_id": course.id,
-            "course_title": course.title,
+            "course_title": ("Standalone Assessment" if str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY else course.title),
+            "is_standalone": bool(str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY),
             "status": exam.status,
             "pass_score": exam.pass_score,
             "max_attempts": exam.max_attempts,
