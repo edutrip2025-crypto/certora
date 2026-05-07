@@ -7055,7 +7055,8 @@ async function collectLivePrecheckQualitySamples(durationMs = 1800) {
           const metrics = computeFaceMetrics(faces[0]);
           if (metrics) {
             samples.stableFaceMetricCount += 1;
-            if (Number(metrics.eyeDist || 0) >= 0.055) samples.largeFaceCount += 1;
+            // Relax baseline face-size threshold for common laptop webcams.
+            if (Number(metrics.eyeDist || 0) >= 0.043) samples.largeFaceCount += 1;
           }
         }
       } catch {
@@ -7077,8 +7078,8 @@ function summarizeLivePrecheckQuality(samples) {
   const clearFaceRatio = samples.singleFaceCount > 0 ? samples.largeFaceCount / samples.singleFaceCount : 0;
   const checks = {
     lightingOk: brightnessAvg >= 42,
-    faceVisibleOk: singleFaceRatio >= 0.72 && samples.stableFaceMetricCount >= 5,
-    faceSizeOk: clearFaceRatio >= 0.68,
+    faceVisibleOk: singleFaceRatio >= 0.56 && samples.stableFaceMetricCount >= 3,
+    faceSizeOk: clearFaceRatio >= 0.42,
     audioSignalOk: audioPeak >= 0.006,
     audioNoiseOk: audioAvg <= 0.11,
   };
