@@ -7032,18 +7032,23 @@ async function runFaceCalibration() {
   if (!p.faceModel || !isPlayableVideoElement(el.apProctorVideo)) return false;
   const samples = [];
   const started = Date.now();
-  while (Date.now() - started < 2200) {
+  while (Date.now() - started < 4200) {
     try {
       const out = p.faceModel.detectForVideo(el.apProctorVideo, performance.now());
       const faces = out?.faceLandmarks || [];
       if (faces.length !== 1) {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 180));
         continue;
       }
       const m = computeFaceMetrics(faces[0]);
       if (m) samples.push(m);
     } catch {}
-    await new Promise((r) => setTimeout(r, 180));
+    await new Promise((r) => setTimeout(r, 130));
+  }
+  // Fallback for intermittent landmark capture on basic laptop webcams:
+  // if we captured at least one valid frame recently, use it as calibration reference.
+  if (!samples.length && p.lastFaceMetrics) {
+    samples.push(p.lastFaceMetrics);
   }
   if (!samples.length) return false;
   const avg = (key) => samples.reduce((acc, cur) => acc + (Number(cur[key]) || 0), 0) / samples.length;
