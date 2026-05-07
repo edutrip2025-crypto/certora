@@ -203,6 +203,12 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   font-weight: 700;
   color: #374151;
 }
+.ab-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.1;
+}
 .required-asterisk {
   color: #dc2626;
   font-weight: 800;
