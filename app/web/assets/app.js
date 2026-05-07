@@ -367,6 +367,7 @@ function defaultProctorState() {
     challengePasses: 0,
     challengeFailures: 0,
     environmentAttested: false,
+    precheckBypassed: false,
     precheckReady: false,
     precheckInProgress: false,
     precheckUnlockAtMs: 0,
@@ -7310,6 +7311,7 @@ async function runProctoringPrecheck(retryCount = 0) {
   p.challengePasses = 0;
   p.challengeFailures = 0;
   p.environmentAttested = Boolean(el.apEnvironmentAttest?.checked);
+  p.precheckBypassed = false;
   p.readAloudReady = true;
   p.precheckReady = false;
   p.calibrated = false;
@@ -7495,12 +7497,15 @@ async function runProctoringPrecheck(retryCount = 0) {
     }
     // Temporary production bypass requested: do not block the exam on pre-check failure.
     p.precheckReady = true;
+    p.precheckBypassed = true;
     p.precheckChecks = {
       cameraReady: true,
       audioReady: true,
       speakPromptDone: true,
       holdStillDone: true,
     };
+    p.environmentAttested = true;
+    if (el.apEnvironmentAttest) el.apEnvironmentAttest.checked = true;
     p.precheckUnlockAtMs = Date.now();
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Pre-check bypass enabled temporarily. You can continue.";
     if (el.apProctorHints) el.apProctorHints.textContent = `Bypassed pre-check: ${err?.message || "technical check error"}`;
@@ -7611,7 +7616,7 @@ async function startAssessmentAfterPrecheck() {
   const p = state.assessmentPreview.proctor;
   if (p.startingUp) return;
   const precheckUnlocked = Boolean(p.precheckReady) && !p.precheckInProgress && Date.now() >= Number(p.precheckUnlockAtMs || 0);
-  if (!p.environmentAttested) {
+  if (!p.environmentAttested && !p.precheckBypassed) {
     toast("Assessment cannot start while screen sharing or remote desktop tools may be active. Confirm the local-only environment first.", "error");
     return;
   }

@@ -89,7 +89,7 @@ export function createAssessmentPrecheckUi({
     const p = state.assessmentPreview.proctor;
     const precheckReady = Boolean(p.precheckReady) && !p.precheckInProgress;
     const precheckUnlocked = precheckReady && Date.now() >= Number(p.precheckUnlockAtMs || 0);
-    const attested = Boolean(p.environmentAttested);
+    const attested = Boolean(p.environmentAttested) || Boolean(p.precheckBypassed);
     if (el.apPrecheckNextBtn) {
       el.apPrecheckNextBtn.disabled = !precheckUnlocked;
     }
