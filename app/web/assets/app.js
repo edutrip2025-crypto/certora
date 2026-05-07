@@ -7211,7 +7211,8 @@ function startProctoringMonitoring() {
   }, 500);
 }
 
-async function runProctoringPrecheck() {
+async function runProctoringPrecheck(retryCount = 0) {
+  const startedAtMs = Date.now();
   const p = state.assessmentPreview.proctor;
   const isMobileDevice = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
   p.precheckChecks = createDefaultPrecheckChecklist();
@@ -7330,9 +7331,15 @@ async function runProctoringPrecheck() {
       "cameraReady",
       "Instruction: Keep shoulders visible, face in center, and no one else in frame.",
     );
-    const qualitySamples = await collectLivePrecheckQualitySamples(1700);
-    const quality = summarizeLivePrecheckQuality(qualitySamples);
+    let qualitySamples = await collectLivePrecheckQualitySamples(1700);
+    let quality = summarizeLivePrecheckQuality(qualitySamples);
     renderLivePrecheckQualitySummary(quality);
+    if (!quality.checks.lightingOk || !quality.checks.faceVisibleOk || !quality.checks.faceSizeOk) {
+      await new Promise((r) => setTimeout(r, 900));
+      qualitySamples = await collectLivePrecheckQualitySamples(1700);
+      quality = summarizeLivePrecheckQuality(qualitySamples);
+      renderLivePrecheckQualitySummary(quality);
+    }
     if (!quality.checks.lightingOk || !quality.checks.faceVisibleOk || !quality.checks.faceSizeOk) {
       throw new Error(getLivePrecheckFailureMessage(quality) || "Camera clarity check failed.");
     }
@@ -7408,6 +7415,16 @@ async function runProctoringPrecheck() {
       "",
     );
   } catch (err) {
+    const elapsedMs = Date.now() - startedAtMs;
+    if (retryCount < 1 && elapsedMs < 3500) {
+      if (el.apProctorHints) el.apProctorHints.textContent = "Camera/microphone initializing. Retrying checks once...";
+      setPrecheckInstruction(
+        "Initializing devices. Retrying checks...",
+        "",
+        "",
+      );
+      return runProctoringPrecheck(retryCount + 1);
+    }
     p.precheckReady = false;
     p.precheckUnlockAtMs = 0;
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "";
