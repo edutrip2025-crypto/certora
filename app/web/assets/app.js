@@ -6762,7 +6762,7 @@ async function finalizeServerProctorSession(reason) {
 async function ensureAssessmentFullscreen() {
   if (!el.assessmentPreviewScreen?.requestFullscreen) return;
   if (document.fullscreenElement === el.assessmentPreviewScreen) return;
-  await el.assessmentPreviewScreen.requestFullscreen();
+  await el.assessmentPreviewScreen.requestFullscreen().catch(() => {});
 }
 
 async function captureProctorBrightness() {
@@ -7591,11 +7591,10 @@ async function initializeProctoringForAssessmentStart() {
   const lightOk = brightness >= 40;
   const calibrationOk = !p.faceModel || calibrated;
   const qualityFailure = getLivePrecheckFailureMessage(precheckSummary);
-  if (!(lightOk && faceOk && calibrationOk && p.phoneModelReady) || qualityFailure) {
+  if (!(lightOk && faceOk && calibrationOk) || qualityFailure) {
     if (qualityFailure) throw new Error(qualityFailure);
     if (!lightOk) throw new Error("Lighting is too low. Improve lighting and try again.");
     if (!faceOk) throw new Error("Face check failed. Keep only one face visible and centered.");
-    if (!p.phoneModelReady) throw new Error("Mobile-device detector unavailable. Try again.");
     throw new Error("Calibration failed. Keep still and look at screen.");
   }
   const baselineVideoOk = await captureAndUploadBaselineClip().catch(() => false);
