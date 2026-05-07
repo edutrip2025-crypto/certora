@@ -18,7 +18,6 @@
     "abQuestionsPerAttempt",
     "abTimingMode",
     "abDurationMinutes",
-    "abDurationSeconds",
     "abTimePerQuestionSeconds",
     "abDefaultNegativeMarks",
   ];
@@ -112,11 +111,9 @@
       const timingMode = $("abTimingMode")?.value || "question";
       if (timingMode === "assessment") {
         const mins = Number($("abDurationMinutes")?.value || 0);
-        const secs = Number($("abDurationSeconds")?.value || 0);
-        if (!Number.isFinite(mins) || mins < 0 || !Number.isFinite(secs) || secs < 0 || secs >= 60 || (mins === 0 && secs === 0)) {
+        if (![25, 30, 35, 40, 45].includes(mins)) {
           markFieldInvalid("abDurationMinutes", true);
-          markFieldInvalid("abDurationSeconds", true);
-          showStep2Error("Duration is required. Enter valid minutes and/or seconds.");
+          showStep2Error("Assessment duration must be 25, 30, 35, 40, or 45 minutes.");
           return false;
         }
       } else {

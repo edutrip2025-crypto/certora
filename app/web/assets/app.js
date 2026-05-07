@@ -1360,7 +1360,6 @@ const el = {
   abCourseMeta: $("abCourseMeta"),
   abTimingMode: $("abTimingMode"),
   abDurationMinutes: $("abDurationMinutes"),
-  abDurationSeconds: $("abDurationSeconds"),
   abTimePerQuestionSeconds: $("abTimePerQuestionSeconds"),
   abQuestionPoolList: $("abQuestionPoolList"),
   abPoolMeta: $("abPoolMeta"),
@@ -5950,7 +5949,6 @@ function persistAssessmentBuilderCache() {
       certificateEnabled: Boolean($("abCertificateEnabled")?.checked),
       timingMode: $("abTimingMode")?.value || "question",
       durationMinutes: $("abDurationMinutes")?.value || "",
-      durationSeconds: $("abDurationSeconds")?.value || "",
       timePerQuestionSeconds: $("abTimePerQuestionSeconds")?.value || "",
       questionType: $("abQuestionType")?.value || "mcq_single_correct",
       questionMarks: $("abQuestionMarks")?.value || "",
@@ -5993,7 +5991,6 @@ function tryRestoreAssessmentBuilderCache() {
       || String(payload.maxAttempts || "").trim()
       || String(payload.questionsPerAttempt || "").trim()
       || String(payload.durationMinutes || "").trim()
-      || String(payload.durationSeconds || "").trim()
       || String(payload.timePerQuestionSeconds || "").trim()
       || String(payload.questionText || "").trim()
       || String(payload.questionMarks || "").trim()
@@ -6017,7 +6014,6 @@ function tryRestoreAssessmentBuilderCache() {
     $("abCertificateEnabled").checked = Boolean(payload.certificateEnabled);
     $("abTimingMode").value = String(payload.timingMode || "question");
     $("abDurationMinutes").value = String(payload.durationMinutes || "");
-    $("abDurationSeconds").value = String(payload.durationSeconds || "");
     $("abTimePerQuestionSeconds").value = String(payload.timePerQuestionSeconds || "");
     $("abQuestionType").value = String(payload.questionType || "mcq_single_correct");
     $("abQuestionMarks").value = String(payload.questionMarks || "");
@@ -6072,8 +6068,7 @@ function resetAssessmentBuilder() {
   $("abShuffleOptions").checked = true;
   $("abCertificateEnabled").checked = true;
   $("abTimingMode").value = "question";
-  $("abDurationMinutes").value = "";
-  $("abDurationSeconds").value = "";
+  $("abDurationMinutes").value = "25";
   $("abTimePerQuestionSeconds").value = "25";
   $("abQuestionType").value = "mcq_single_correct";
   $("abQuestionText").value = "";
@@ -6120,7 +6115,6 @@ function updateAssessmentSourceMeta() {
 function applyAssessmentTimingMode() {
   const mode = $("abTimingMode")?.value || "question";
   $("abDurationMinutes")?.classList.toggle("hidden", mode !== "assessment");
-  $("abDurationSeconds")?.classList.toggle("hidden", mode !== "assessment");
   $("abTimePerQuestionSeconds")?.classList.toggle("hidden", mode !== "question");
 }
 
@@ -6148,9 +6142,7 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abShuffleOptions").checked = Boolean(assessment.shuffle_options);
   $("abCertificateEnabled").checked = Boolean(assessment.certificate_enabled);
   $("abTimingMode").value = assessment.timing_mode || "question";
-  const totalDurationSeconds = Math.max(0, Number(assessment.duration_minutes || 0) * 60);
-  $("abDurationMinutes").value = String(Math.floor(totalDurationSeconds / 60));
-  $("abDurationSeconds").value = String(totalDurationSeconds % 60);
+  $("abDurationMinutes").value = String(Math.max(25, Number(assessment.duration_minutes || 25)));
   $("abTimePerQuestionSeconds").value = String(assessment.time_per_question_seconds || 25);
   applyAssessmentTimingMode();
   applyAssessmentNegativeMarkingUi();
@@ -6261,7 +6253,6 @@ async function createAssessmentFromBuilder(publishNow) {
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
   const timingMode = $("abTimingMode")?.value || "question";
   const durationMinutesRaw = Number($("abDurationMinutes")?.value || 0);
-  const durationSecondsRaw = Number($("abDurationSeconds")?.value || 0);
   const timePerQuestionSeconds = Number($("abTimePerQuestionSeconds")?.value);
   const questionPool = state.assessmentDraftQuestions || [];
 
@@ -6272,11 +6263,10 @@ async function createAssessmentFromBuilder(publishNow) {
   if (questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
   }
-  if (!Number.isFinite(durationMinutesRaw) || durationMinutesRaw < 0) throw new Error("Duration minutes is invalid");
-  if (!Number.isFinite(durationSecondsRaw) || durationSecondsRaw < 0 || durationSecondsRaw >= 60) throw new Error("Duration seconds must be between 0 and 59");
-  const durationTotalSeconds = (durationMinutesRaw * 60) + durationSecondsRaw;
-  const durationMinutes = Math.max(1, Math.ceil(durationTotalSeconds / 60));
-  if (timingMode === "assessment" && durationTotalSeconds <= 0) throw new Error("Assessment duration must be greater than 0");
+  if (!Number.isFinite(durationMinutesRaw) || ![25, 30, 35, 40, 45].includes(durationMinutesRaw)) {
+    throw new Error("Assessment duration must be 25, 30, 35, 40, or 45 minutes");
+  }
+  const durationMinutes = durationMinutesRaw;
   if (timingMode === "question" && ![25, 30, 35, 40, 45].includes(timePerQuestionSeconds)) {
     throw new Error("Time per question must be 25, 30, 35, 40, or 45 seconds");
   }
@@ -10073,7 +10063,6 @@ function bindEvents() {
     "abQuestionsPerAttempt",
     "abDefaultNegativeMarks",
     "abDurationMinutes",
-    "abDurationSeconds",
     "abTimePerQuestionSeconds",
     "abQuestionType",
     "abQuestionMarks",
@@ -10095,7 +10084,6 @@ function bindEvents() {
     "abQuestionsPerAttempt",
     "abTimingMode",
     "abDurationMinutes",
-    "abDurationSeconds",
     "abTimePerQuestionSeconds",
     "abDefaultNegativeMarks",
   ].forEach((id) => {

@@ -467,7 +467,7 @@
 
               <section class="item ab-step-page">
                 <h3>Assessment Settings</h3>
-                <p class="muted">Define exam behavior, scoring, and timing for student attempts.</p>
+                <p class="muted">Define exam behavior, scoring, and timing for student attempts. <span class="ab-inline-note">Duration is required. Enter valid minutes and/or seconds.</span></p>
                 <div id="abStep2Error" class="meta hidden ab-step2-error"></div>
                 <div class="row wrap gap-sm">
                   <label class="ab-field-wrap"><span class="ab-field-label">Assessment title <span class="required-asterisk">*</span></span>
@@ -499,11 +499,14 @@
                       <option value="assessment">Time per assessment</option>
                     </select>
                   </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Duration minutes <span class="required-asterisk">*</span></span>
-                    <input id="abDurationMinutes" class="filter" type="number" min="0" placeholder="Duration minutes" />
-                  </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Duration seconds <span class="required-asterisk">*</span></span>
-                    <input id="abDurationSeconds" class="filter" type="number" min="0" max="59" placeholder="Duration seconds" />
+                  <label class="ab-field-wrap"><span class="ab-field-label">Assessment duration <span class="required-asterisk">*</span></span>
+                    <select id="abDurationMinutes" class="filter" title="Assessment duration">
+                      <option value="25" selected>25 min/assessment</option>
+                      <option value="30">30 min/assessment</option>
+                      <option value="35">35 min/assessment</option>
+                      <option value="40">40 min/assessment</option>
+                      <option value="45">45 min/assessment</option>
+                    </select>
                   </label>
                   <label class="ab-field-wrap"><span class="ab-field-label">Time per question <span class="required-asterisk">*</span></span>
                     <select id="abTimePerQuestionSeconds" class="filter" title="Time per question">

@@ -224,6 +224,10 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
   width: fit-content;
   max-width: min(100%, 560px);
 }
+.ab-inline-note {
+  color: #475569;
+  font-weight: 600;
+}
 .ab-field-invalid {
   border-color: #dc2626 !important;
   background: #fef2f2 !important;
