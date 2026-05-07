@@ -292,6 +292,22 @@ function speakAssessmentRules() {
   synth.speak(utterance);
 }
 
+async function speakPrecheckPrompt(text) {
+  if (!text || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
+  const synth = window.speechSynthesis;
+  try { synth.cancel(); } catch {}
+  await new Promise((resolve) => {
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.rate = 0.95;
+    u.pitch = 1;
+    u.volume = 1;
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    synth.speak(u);
+    setTimeout(resolve, 3500);
+  });
+}
+
 const PROCTOR_PRECHECK_TASK_LABELS = {
   cameraReady: "Camera quality check",
   audioReady: "Microphone clarity check",
@@ -6335,7 +6351,7 @@ async function runGuidedSpeechCheck() {
   const started = Date.now();
   let voiceFrames = 0;
   let mouthFrames = 0;
-  while (Date.now() - started < 6500) {
+  while (Date.now() - started < 9000) {
     const rms = detectAudioRms();
     if (rms > Math.max(0.03, baseRms * 1.45)) voiceFrames += 1;
     try {
@@ -6351,7 +6367,7 @@ async function runGuidedSpeechCheck() {
         }
       }
     } catch {}
-    if (voiceFrames >= 6 && mouthFrames >= 4) return true;
+    if (voiceFrames >= 5 && mouthFrames >= 3) return true;
     await new Promise((r) => setTimeout(r, 120));
   }
   return false;
@@ -6369,19 +6385,19 @@ async function runMicrophoneClarityCheck() {
     ? floorSamples.reduce((a, b) => a + b, 0) / floorSamples.length
     : 0;
   const baseRms = Math.max(0.008, Number(p.audioBaselineRms || 0), avgFloor);
-  const activeThreshold = Math.max(0.018, baseRms * 1.8);
-  const peakThreshold = Math.max(0.028, baseRms * 2.3);
+  const activeThreshold = Math.max(0.014, baseRms * 1.45);
+  const peakThreshold = Math.max(0.022, baseRms * 1.85);
 
   const started = Date.now();
   let voiceFrames = 0;
   let peak = 0;
-  while (Date.now() - started < 3800) {
+  while (Date.now() - started < 5200) {
     const rms = detectAudioRms();
     peak = Math.max(peak, rms);
     if (rms > activeThreshold) voiceFrames += 1;
     await new Promise((r) => setTimeout(r, 105));
   }
-  return voiceFrames >= 7 && peak >= peakThreshold;
+  return voiceFrames >= 6 && peak >= peakThreshold;
 }
 
 async function runHoldStillCheck() {
@@ -7372,6 +7388,14 @@ async function runProctoringPrecheck(retryCount = 0) {
       "Say this line clearly: My microphone is clear.",
       "My microphone is clear.",
     );
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Microphone check starts in 3 seconds...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Microphone check starts in 2 seconds...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Microphone check starts in 1 second...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Speak now: My microphone is clear.";
+    await speakPrecheckPrompt("Please say: My microphone is clear.");
     let micOk = await runMicrophoneClarityCheck();
     if (!micOk) {
       micOk = await runRulesReadAloudVerification(p.audioBaselineRms).catch(() => false);
@@ -7392,6 +7416,14 @@ async function runProctoringPrecheck(retryCount = 0) {
       "Voice check instruction: Read in normal volume while looking at the camera.",
       "I am ready for this proctored assessment.",
     );
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read-aloud check starts in 3 seconds...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read-aloud check starts in 2 seconds...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read-aloud check starts in 1 second...";
+    await new Promise((r) => setTimeout(r, 900));
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read now: I am ready for this proctored assessment.";
+    await speakPrecheckPrompt("Please read now: I am ready for this proctored assessment.");
     const speechOk = await runGuidedSpeechCheck();
     if (!speechOk) throw new Error("Speech verification failed. Speak clearly and retry.");
     p.precheckChecks.speakPromptDone = true;
