@@ -44,6 +44,8 @@ def evaluate_exam_rules(db: Session, exam: Exam) -> RuleCheckResult:
         if ambiguous_ratio > rule.max_ambiguous_ratio:
             reasons.append("Ambiguous/flagged questions exceed threshold.")
     elif settings.enable_ai_review:
-        reasons.append("AI review is required before publishing.")
+        # Do not hard-block publishing when AI review is unavailable.
+        # AI signals are applied when review data exists.
+        pass
 
     return RuleCheckResult(approved=len(reasons) == 0, reasons=reasons)

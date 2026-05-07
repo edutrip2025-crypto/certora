@@ -8377,8 +8377,10 @@ function renderProviderAssessmentsList() {
         await api("POST", `/exams/${btn.dataset.assessmentPublish}/publish`);
         toast("Assessment published");
         await refreshProviderAssessments();
-      } catch {
-        toast("Failed to publish assessment", "error");
+      } catch (err) {
+        const parsed = parseApiErrorMessage(err);
+        const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
+        toast(`Failed to publish assessment${detail ? `: ${detail}` : ""}`, "error");
       }
     });
   });
