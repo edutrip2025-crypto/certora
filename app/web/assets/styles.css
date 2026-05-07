@@ -227,6 +227,8 @@ input, select, textarea { width: 100%; border: 1px solid #d1d5db; border-radius:
 .ab-inline-note {
   color: #475569;
   font-weight: 600;
+  font-size: .82rem;
+  margin-left: 8px;
 }
 .ab-field-invalid {
   border-color: #dc2626 !important;
