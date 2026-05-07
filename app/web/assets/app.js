@@ -6401,12 +6401,19 @@ async function runMicrophoneClarityCheck(options = {}) {
   const started = Date.now();
   let voiceFrames = 0;
   let peak = 0;
+  let strongFrames = 0;
   while (Date.now() - started < maxDurationMs) {
     const elapsed = Date.now() - started;
     renderPrecheckScriptProgress(scriptText, elapsed / maxDurationMs);
     const rms = detectAudioRms();
     peak = Math.max(peak, rms);
     if (rms > activeThreshold) voiceFrames += 1;
+    if (rms > peakThreshold) strongFrames += 1;
+    // Pass immediately once voice signal is clearly captured.
+    if (voiceFrames >= 6 && strongFrames >= 2) {
+      renderPrecheckScriptProgress(scriptText, 1);
+      return true;
+    }
     await new Promise((r) => setTimeout(r, 105));
   }
   renderPrecheckScriptProgress(scriptText, 1);
