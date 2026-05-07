@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,22 @@ router = APIRouter(prefix="/exams", tags=["exams"])
 ALLOWED_QUESTIONS_PER_ATTEMPT = {25, 30, 35, 40}
 ALLOWED_TIME_PER_QUESTION_SECONDS = {25, 30, 35, 40, 45}
 STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
+
+
+def _sync_pk_sequence_if_needed(db: Session, table_name: str, pk_col: str = "id") -> None:
+    # PostgreSQL-safe sequence heal: set sequence to current MAX(id)
+    # so next INSERT uses a free primary key.
+    db.execute(
+        text(
+            f"""
+            SELECT setval(
+              pg_get_serial_sequence('{table_name}', '{pk_col}'),
+              COALESCE((SELECT MAX({pk_col}) FROM {table_name}), 1),
+              true
+            )
+            """,
+        ),
+    )
 
 
 def _provider_profile_or_404(db: Session, user_id: int) -> ProviderProfile:
@@ -241,7 +257,7 @@ def add_question(
     if payload.question_type == QuestionType.MCQ_MULTI and sum(1 for o in cleaned_options if o["is_correct"]) < 1:
         raise HTTPException(status_code=400, detail="Multiple correct MCQ needs at least 1 correct option")
 
-    try:
+    def _insert_question_and_options() -> dict:
         # Store enum member name in DB for compatibility with legacy enum column sizing/values.
         qtype_db_value = payload.question_type.name if hasattr(payload.question_type, "name") else str(payload.question_type)
         question = Question(
@@ -266,13 +282,25 @@ def add_question(
             created_options.append({"id": option.id, "is_correct": option.is_correct})
         db.commit()
         db.refresh(question)
-
         exam.total_marks = db.scalar(select(func.coalesce(func.sum(Question.marks), 0)).where(Question.exam_id == exam.id))
         db.commit()
         return {"question_id": question.id, "options": created_options}
+
+    try:
+        return _insert_question_and_options()
     except IntegrityError as exc:
         db.rollback()
         detail = str(getattr(exc, "orig", exc))
+        # Auto-heal PK sequence drift and retry once.
+        if "duplicate key value violates unique constraint" in detail and ("options_pkey" in detail or "questions_pkey" in detail):
+            _sync_pk_sequence_if_needed(db, "options")
+            _sync_pk_sequence_if_needed(db, "questions")
+            try:
+                return _insert_question_and_options()
+            except IntegrityError as retry_exc:
+                db.rollback()
+                retry_detail = str(getattr(retry_exc, "orig", retry_exc))
+                raise HTTPException(status_code=400, detail=f"Failed to add question after sequence sync: {retry_detail}") from retry_exc
         raise HTTPException(status_code=400, detail=f"Failed to add question: {detail}") from exc
     except SQLAlchemyError as exc:
         db.rollback()
