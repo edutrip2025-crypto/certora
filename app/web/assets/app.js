@@ -7493,16 +7493,24 @@ async function runProctoringPrecheck(retryCount = 0) {
       );
       return runProctoringPrecheck(retryCount + 1);
     }
-    p.precheckReady = false;
-    p.precheckUnlockAtMs = 0;
-    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "";
-    if (el.apProctorHints) el.apProctorHints.textContent = err?.message || "Re-run checks and follow on-screen prompts.";
+    // Temporary production bypass requested: do not block the exam on pre-check failure.
+    p.precheckReady = true;
+    p.precheckChecks = {
+      cameraReady: true,
+      audioReady: true,
+      speakPromptDone: true,
+      holdStillDone: true,
+    };
+    p.precheckUnlockAtMs = Date.now();
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Pre-check bypass enabled temporarily. You can continue.";
+    if (el.apProctorHints) el.apProctorHints.textContent = `Bypassed pre-check: ${err?.message || "technical check error"}`;
     setPrecheckInstruction(
-      "Pre-check failed. Click Re-run checks.",
+      "Pre-check bypassed temporarily. Continue to instructions.",
       "",
       "",
     );
-    throw err;
+    renderPrecheckChecklist("");
+    return;
   } finally {
     p.precheckInProgress = false;
     shutdownProctoringMedia();
