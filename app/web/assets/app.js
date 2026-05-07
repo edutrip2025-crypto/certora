@@ -292,20 +292,21 @@ function speakAssessmentRules() {
   synth.speak(utterance);
 }
 
-async function speakPrecheckPrompt(text) {
-  if (!text || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
-  const synth = window.speechSynthesis;
-  try { synth.cancel(); } catch {}
-  await new Promise((resolve) => {
-    const u = new SpeechSynthesisUtterance(String(text));
-    u.rate = 0.95;
-    u.pitch = 1;
-    u.volume = 1;
-    u.onend = () => resolve();
-    u.onerror = () => resolve();
-    synth.speak(u);
-    setTimeout(resolve, 3500);
-  });
+function renderPrecheckScriptProgress(script, progress01) {
+  if (!el.apPrecheckVoiceScript) return;
+  const txt = String(script || "").trim();
+  if (!txt) {
+    el.apPrecheckVoiceScript.classList.add("hidden");
+    el.apPrecheckVoiceScript.textContent = "";
+    return;
+  }
+  const words = txt.split(/\s+/).filter(Boolean);
+  const p = Math.max(0, Math.min(1, Number(progress01 || 0)));
+  const fillCount = Math.floor(words.length * p);
+  el.apPrecheckVoiceScript.classList.remove("hidden");
+  el.apPrecheckVoiceScript.innerHTML = words
+    .map((w, i) => `<span style="${i < fillCount ? "color:#0f766e;font-weight:700;" : "color:#6b7280;"}">${escapeHtmlAttr(w)}</span>`)
+    .join(" ");
 }
 
 const PROCTOR_PRECHECK_TASK_LABELS = {
@@ -6344,14 +6345,18 @@ function isPrecheckFullyComplete(p) {
   ].every((key) => Boolean(checks[key]));
 }
 
-async function runGuidedSpeechCheck() {
+async function runGuidedSpeechCheck(options = {}) {
   const p = state.assessmentPreview.proctor;
+  const maxDurationMs = Math.max(9000, Number(options.maxDurationMs || 9000));
+  const scriptText = String(options.scriptText || "");
   const baseMouth = Number(p.faceReference?.mouthOpenRatio || 0.02);
   const baseRms = Number(p.audioBaselineRms || 0.03);
   const started = Date.now();
   let voiceFrames = 0;
   let mouthFrames = 0;
-  while (Date.now() - started < 9000) {
+  while (Date.now() - started < maxDurationMs) {
+    const elapsed = Date.now() - started;
+    renderPrecheckScriptProgress(scriptText, elapsed / maxDurationMs);
     const rms = detectAudioRms();
     if (rms > Math.max(0.03, baseRms * 1.45)) voiceFrames += 1;
     try {
@@ -6367,14 +6372,19 @@ async function runGuidedSpeechCheck() {
         }
       }
     } catch {}
-    if (voiceFrames >= 5 && mouthFrames >= 3) return true;
+    if (voiceFrames >= 5 && mouthFrames >= 3) {
+      renderPrecheckScriptProgress(scriptText, 1);
+      return true;
+    }
     await new Promise((r) => setTimeout(r, 120));
   }
   return false;
 }
 
-async function runMicrophoneClarityCheck() {
+async function runMicrophoneClarityCheck(options = {}) {
   const p = state.assessmentPreview.proctor;
+  const maxDurationMs = Math.max(5200, Number(options.maxDurationMs || 5200));
+  const scriptText = String(options.scriptText || "");
   const warmupStarted = Date.now();
   const floorSamples = [];
   while (Date.now() - warmupStarted < 900) {
@@ -6391,12 +6401,15 @@ async function runMicrophoneClarityCheck() {
   const started = Date.now();
   let voiceFrames = 0;
   let peak = 0;
-  while (Date.now() - started < 5200) {
+  while (Date.now() - started < maxDurationMs) {
+    const elapsed = Date.now() - started;
+    renderPrecheckScriptProgress(scriptText, elapsed / maxDurationMs);
     const rms = detectAudioRms();
     peak = Math.max(peak, rms);
     if (rms > activeThreshold) voiceFrames += 1;
     await new Promise((r) => setTimeout(r, 105));
   }
+  renderPrecheckScriptProgress(scriptText, 1);
   return voiceFrames >= 6 && peak >= peakThreshold;
 }
 
@@ -7394,9 +7407,12 @@ async function runProctoringPrecheck(retryCount = 0) {
     await new Promise((r) => setTimeout(r, 900));
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Microphone check starts in 1 second...";
     await new Promise((r) => setTimeout(r, 900));
-    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Speak now: My microphone is clear.";
-    await speakPrecheckPrompt("Please say: My microphone is clear.");
-    let micOk = await runMicrophoneClarityCheck();
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Speak now: My microphone is clear. You have up to 5 minutes.";
+    renderPrecheckScriptProgress("My microphone is clear.", 0);
+    let micOk = await runMicrophoneClarityCheck({
+      maxDurationMs: 300000,
+      scriptText: "My microphone is clear.",
+    });
     if (!micOk) {
       micOk = await runRulesReadAloudVerification(p.audioBaselineRms).catch(() => false);
     }
@@ -7422,9 +7438,12 @@ async function runProctoringPrecheck(retryCount = 0) {
     await new Promise((r) => setTimeout(r, 900));
     if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read-aloud check starts in 1 second...";
     await new Promise((r) => setTimeout(r, 900));
-    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read now: I am ready for this proctored assessment.";
-    await speakPrecheckPrompt("Please read now: I am ready for this proctored assessment.");
-    const speechOk = await runGuidedSpeechCheck();
+    if (el.apPrecheckStatus) el.apPrecheckStatus.textContent = "Read now: I am ready for this proctored assessment. You have up to 5 minutes.";
+    renderPrecheckScriptProgress("I am ready for this proctored assessment.", 0);
+    const speechOk = await runGuidedSpeechCheck({
+      maxDurationMs: 300000,
+      scriptText: "I am ready for this proctored assessment.",
+    });
     if (!speechOk) throw new Error("Speech verification failed. Speak clearly and retry.");
     p.precheckChecks.speakPromptDone = true;
     renderPrecheckChecklist("holdStillDone");
