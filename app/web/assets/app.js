@@ -6085,8 +6085,12 @@ function updateAssessmentSourceMeta() {
 
 function applyAssessmentTimingMode() {
   const mode = $("abTimingMode")?.value || "question";
-  $("abDurationMinutes")?.classList.toggle("hidden", mode !== "assessment");
-  $("abTimePerQuestionSeconds")?.classList.toggle("hidden", mode !== "question");
+  const durationField = $("abDurationMinutes");
+  const perQuestionField = $("abTimePerQuestionSeconds");
+  const durationWrap = durationField?.closest?.(".ab-field-wrap");
+  const perQuestionWrap = perQuestionField?.closest?.(".ab-field-wrap");
+  durationWrap?.classList.toggle("hidden", mode !== "assessment");
+  perQuestionWrap?.classList.toggle("hidden", mode !== "question");
 }
 
 function renderAssessmentPool() {
@@ -6234,10 +6238,13 @@ async function createAssessmentFromBuilder(publishNow) {
   if (questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
   }
-  if (!Number.isFinite(durationMinutesRaw) || ![25, 30, 35, 40, 45].includes(durationMinutesRaw)) {
-    throw new Error("Assessment duration must be 25, 30, 35, 40, or 45 minutes");
+  let durationMinutes = 25;
+  if (timingMode === "assessment") {
+    if (!Number.isFinite(durationMinutesRaw) || ![25, 30, 35, 40, 45].includes(durationMinutesRaw)) {
+      throw new Error("Assessment duration must be 25, 30, 35, 40, or 45 minutes");
+    }
+    durationMinutes = durationMinutesRaw;
   }
-  const durationMinutes = durationMinutesRaw;
   if (timingMode === "question" && ![25, 30, 35, 40, 45].includes(timePerQuestionSeconds)) {
     throw new Error("Time per question must be 25, 30, 35, 40, or 45 seconds");
   }
