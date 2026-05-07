@@ -6218,7 +6218,7 @@ async function createAssessmentFromBuilder(publishNow) {
     throw new Error("Draft videos are not eligible. Publish the course first.");
   }
   const courseId = getSelectedAssessmentCourseId();
-  if (!courseId) throw new Error("Choose an active/inactive course");
+  if (courseId == null) throw new Error("Choose an active/inactive course or standalone assessment");
   const title = $("abTitle")?.value?.trim() || "";
   const maxAttempts = Number($("abMaxAttempts")?.value);
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
@@ -10162,6 +10162,13 @@ function bindEvents() {
       closeAssessmentBuilder();
       await Promise.all([refreshProviderHome(), refreshProviderAssessments()]);
     } catch (err) {
+      const msg = err?.message || "Failed to save assessment draft";
+      console.error("[assessment_save_error]", err);
+      const inline = $("abStep2Error");
+      if (inline) {
+        inline.textContent = msg;
+        inline.classList.remove("hidden");
+      }
       toast(err?.message || "Failed to save assessment draft", "error");
     }
   });
@@ -10184,6 +10191,13 @@ function bindEvents() {
       closeAssessmentBuilder();
       await Promise.all([refreshProviderHome(), refreshProviderAssessments()]);
     } catch (err) {
+      const msg = err?.message || "Failed to publish assessment";
+      console.error("[assessment_publish_error]", err);
+      const inline = $("abStep2Error");
+      if (inline) {
+        inline.textContent = msg;
+        inline.classList.remove("hidden");
+      }
       toast(err?.message || "Failed to publish assessment", "error");
     }
   });
