@@ -7169,17 +7169,12 @@ function startProctoringMonitoring() {
   };
   p.blurHandler = () => pushProctorWarning("Window focus lost. Switching is not allowed.");
   p.focusHandler = () => {
-    if (el.assessmentPreviewScreen && !document.fullscreenElement && el.assessmentPreviewScreen.requestFullscreen) {
-      el.assessmentPreviewScreen.requestFullscreen().catch(() => {});
-    }
+    // requestFullscreen must be user-gesture initiated; do not invoke from focus event.
   };
   p.fullscreenHandler = () => {
     if (el.assessmentPreviewScreen?.classList.contains("hidden")) return;
     if (!document.fullscreenElement) {
       pushProctorWarning("Exited fullscreen. Fullscreen is required.");
-      if (el.assessmentPreviewScreen?.requestFullscreen) {
-        el.assessmentPreviewScreen.requestFullscreen().catch(() => {});
-      }
     }
   };
   document.addEventListener("visibilitychange", p.visibilityHandler);

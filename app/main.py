@@ -110,10 +110,10 @@ async def apply_security_headers(request: Request, call_next):
             "default-src 'self'; "
             "img-src 'self' data: blob: https:; "
             "media-src 'self' blob: data: https:; "
-            "script-src 'self' https://www.gstatic.com https://www.googleapis.com; "
+            "script-src 'self' https://www.gstatic.com https://www.googleapis.com https://cdn.jsdelivr.net https://storage.googleapis.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' https://www.gstatic.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; "
+            "connect-src 'self' https://www.gstatic.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://cdn.jsdelivr.net https://storage.googleapis.com; "
             f"frame-ancestors {settings.security_csp_frame_ancestors}; "
             "base-uri 'self'; form-action 'self';"
         )
