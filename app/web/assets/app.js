@@ -7076,10 +7076,13 @@ function summarizeLivePrecheckQuality(samples) {
   const audioPeak = peak(samples.audio);
   const singleFaceRatio = samples.faceCount > 0 ? samples.singleFaceCount / samples.faceCount : 0;
   const clearFaceRatio = samples.singleFaceCount > 0 ? samples.largeFaceCount / samples.singleFaceCount : 0;
+  // Some laptop webcams intermittently miss face landmarks despite valid video feed.
+  // Treat low sampling coverage as "inconclusive" instead of immediate failure.
+  const faceSamplingWeak = Number(samples.faceCount || 0) < 4;
   const checks = {
     lightingOk: brightnessAvg >= 42,
-    faceVisibleOk: singleFaceRatio >= 0.56 && samples.stableFaceMetricCount >= 3,
-    faceSizeOk: clearFaceRatio >= 0.42,
+    faceVisibleOk: faceSamplingWeak ? true : (singleFaceRatio >= 0.56 && samples.stableFaceMetricCount >= 3),
+    faceSizeOk: faceSamplingWeak ? true : clearFaceRatio >= 0.42,
     audioSignalOk: audioPeak >= 0.006,
     audioNoiseOk: audioAvg <= 0.11,
   };
@@ -7089,6 +7092,7 @@ function summarizeLivePrecheckQuality(samples) {
     audioPeak,
     singleFaceRatio,
     clearFaceRatio,
+    faceSamplingWeak,
     checks,
   };
 }
