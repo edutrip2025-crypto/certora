@@ -10145,6 +10145,16 @@ function bindEvents() {
   });
   $("abSaveDraftBtn")?.addEventListener("click", async () => {
     try {
+      if (!validateAssessmentStep(1)) {
+        setAssessmentBuilderStep(1);
+        toast("Select assessment source first.", "error");
+        return;
+      }
+      if (!validateAssessmentStep(2)) {
+        setAssessmentBuilderStep(2);
+        toast("Fix assessment settings before saving.", "error");
+        return;
+      }
       persistAssessmentBuilderCache();
       await createAssessmentFromBuilder(false);
       toast("Assessment draft saved");
@@ -10157,6 +10167,16 @@ function bindEvents() {
   });
   $("abPublishBtn")?.addEventListener("click", async () => {
     try {
+      if (!validateAssessmentStep(1)) {
+        setAssessmentBuilderStep(1);
+        toast("Select assessment source first.", "error");
+        return;
+      }
+      if (!validateAssessmentStep(2)) {
+        setAssessmentBuilderStep(2);
+        toast("Fix assessment settings before publishing.", "error");
+        return;
+      }
       persistAssessmentBuilderCache();
       await createAssessmentFromBuilder(true);
       toast("Assessment published");
