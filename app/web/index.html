@@ -481,16 +481,32 @@
           </div>
         </div>
         <div id="assessmentCatalogList" class="list"></div>
-        <div id="assessmentCatalogIssuePanel" class="item hidden">
-          <h3>Assessment Details & Issue</h3>
-          <div id="assessmentCatalogDetail" class="meta">Select an assessment from the list above.</div>
-          <div class="row wrap gap-sm">
-            <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
-            <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
-            <button id="issueAssessmentBtn" class="btn small">Issue</button>
+      </section>
+
+      <section class="panel content hidden assessment-detail-page" id="provider-view-assessment-detail">
+        <div class="row between assessment-detail-head">
+          <div>
+            <button id="backToAssessmentCatalogBtn" class="btn small ghost">Back to Assessments</button>
+            <h2 id="assessmentDetailTitle">Assessment Details</h2>
+            <div id="assessmentCatalogDetail" class="meta">Select an assessment from the catalog.</div>
           </div>
-          <div id="issueAssessmentStatus" class="meta"></div>
-          <div id="issuedAssessmentsList" class="list" style="margin-top:10px;"></div>
+          <div id="assessmentDetailPassBadge" class="assessment-catalog-score">70%</div>
+        </div>
+        <div class="assessment-detail-grid">
+          <div class="item">
+            <h3>Issue Assessment</h3>
+            <p class="muted">Enter candidate details. The candidate receives a one-time link and password valid for 7 days.</p>
+            <div class="row wrap gap-sm assessment-issue-form">
+              <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
+              <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
+              <button id="issueAssessmentBtn" class="btn small">Issue</button>
+            </div>
+            <div id="issueAssessmentStatus" class="meta"></div>
+          </div>
+          <div class="item">
+            <h3>Issued History</h3>
+            <div id="issuedAssessmentsList" class="list"></div>
+          </div>
         </div>
       </section>
 

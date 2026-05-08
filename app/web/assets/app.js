@@ -1366,8 +1366,10 @@ const el = {
   assessmentCatalogDuration: $("assessmentCatalogDuration"),
   assessmentCatalogSort: $("assessmentCatalogSort"),
   refreshAssessmentCatalogBtn: $("refreshAssessmentCatalogBtn"),
-  assessmentCatalogIssuePanel: $("assessmentCatalogIssuePanel"),
   assessmentCatalogDetail: $("assessmentCatalogDetail"),
+  assessmentDetailTitle: $("assessmentDetailTitle"),
+  assessmentDetailPassBadge: $("assessmentDetailPassBadge"),
+  backToAssessmentCatalogBtn: $("backToAssessmentCatalogBtn"),
   issueCandidateName: $("issueCandidateName"),
   issueCandidateEmail: $("issueCandidateEmail"),
   issueAssessmentStatus: $("issueAssessmentStatus"),
@@ -1742,14 +1744,14 @@ function applyAssessmentOnlyMode() {
   if (!ASSESSMENT_ONLY_MODE) return;
   document.body.classList.add("assessment-only-mode");
   // Restrict workspace to assessment flows only.
-  const allowedProviderViews = new Set(["home", "assessments", "assessment-catalog"]);
+  const allowedProviderViews = new Set(["home", "assessments", "assessment-catalog", "assessment-detail"]);
   document.querySelectorAll(".provider-nav-btn").forEach((btn) => {
     const v = String(btn.getAttribute("data-provider-view") || "");
     if (!allowedProviderViews.has(v)) btn.classList.add("hidden");
   });
   document.querySelectorAll(".student-nav-btn").forEach((btn) => btn.classList.add("hidden"));
   document.querySelectorAll(".admin-nav-btn").forEach((btn) => btn.classList.add("hidden"));
-  const keepProvider = new Set(["provider-view-home", "provider-view-assessments", "provider-view-assessment-catalog"]);
+  const keepProvider = new Set(["provider-view-home", "provider-view-assessments", "provider-view-assessment-catalog", "provider-view-assessment-detail"]);
   document.querySelectorAll("#providerView .content").forEach((sec) => {
     if (!keepProvider.has(sec.id)) sec.classList.add("hidden");
   });
@@ -2266,7 +2268,7 @@ async function refreshStudentAssessments() {
 }
 
 function activateProviderSubView(name) {
-  if (ASSESSMENT_ONLY_MODE && !["home", "assessments", "assessment-catalog"].includes(String(name))) {
+  if (ASSESSMENT_ONLY_MODE && !["home", "assessments", "assessment-catalog", "assessment-detail"].includes(String(name))) {
     name = "home";
   }
   if (state.providerUsingStudentViewer && name !== "courses") {
@@ -2293,6 +2295,10 @@ function activateProviderSubView(name) {
   }
   if (name === "assessment-catalog") {
     refreshAssessmentCatalogIssueOptions().catch(() => {});
+    refreshIssuedAssessments().catch(() => {});
+  }
+  if (name === "assessment-detail") {
+    renderSelectedCatalogDetail();
     refreshIssuedAssessments().catch(() => {});
   }
   if (name === "home") {
@@ -8773,9 +8779,19 @@ function renderAssessmentCatalogList() {
     btn.addEventListener("click", () => {
       const examId = Number(btn.getAttribute("data-catalog-select") || 0);
       state.selectedCatalogExamId = examId || null;
-      renderSelectedCatalogDetail();
+      openAssessmentCatalogDetail(examId);
     });
   });
+}
+
+function openAssessmentCatalogDetail(examId) {
+  const selected = Number(examId || 0);
+  if (!selected) return;
+  state.selectedCatalogExamId = selected;
+  if (el.issueCandidateName) el.issueCandidateName.value = "";
+  if (el.issueCandidateEmail) el.issueCandidateEmail.value = "";
+  if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = "";
+  activateProviderSubView("assessment-detail");
 }
 
 function renderSelectedCatalogDetail() {
@@ -8783,31 +8799,37 @@ function renderSelectedCatalogDetail() {
   const selected = Number(state.selectedCatalogExamId || 0);
   const item = (state.assessmentCatalog || []).find((x) => Number(x.exam_id) === selected);
   if (!item) {
-    el.assessmentCatalogIssuePanel?.classList.add("hidden");
     el.assessmentCatalogDetail.textContent = "Select an assessment from the list above.";
+    if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = "Assessment Details";
+    if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = "70%";
     return;
   }
-  el.assessmentCatalogIssuePanel?.classList.remove("hidden");
   const timing = String(item.timing_mode || "assessment") === "question"
     ? `${Number(item.time_per_question_seconds || 0)} seconds per question`
     : `${Number(item.duration_minutes || 0)} minutes total`;
+  if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = item.title || `Assessment #${item.exam_id}`;
+  if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = `${Number(item.pass_score || 70)}%`;
   el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | ${item.title || "-"} | ${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
 }
 
 async function refreshIssuedAssessments() {
-  if (!el.issuedAssessmentsList) return;
   try {
     const rows = await api("GET", "/exams/issued/by-me");
-    renderList(
-      el.issuedAssessmentsList,
-      Array.isArray(rows) ? rows : [],
-      (r) => `
-        <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(r.internal_id || `ASM-${String(r.exam_id || "").padStart(6, "0")}`)})</span> - ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
-        <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")} | Expires: ${r.access_expires_at ? formatTime(r.access_expires_at) : "-"}</div>
-      `,
-      "No issued assessments yet.",
-    );
     const arr = Array.isArray(rows) ? rows : [];
+    if (el.issuedAssessmentsList) {
+      const selected = Number(state.selectedCatalogExamId || 0);
+      const displayRows = selected ? arr.filter((r) => Number(r.exam_id) === selected) : arr;
+      renderList(
+        el.issuedAssessmentsList,
+        displayRows,
+        (r) => `
+          <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(r.internal_id || `ASM-${String(r.exam_id || "").padStart(6, "0")}`)})</span></div>
+          <div class="meta">Candidate: ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
+          <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")} | Expires: ${r.access_expires_at ? formatTime(r.access_expires_at) : "-"}</div>
+        `,
+        selected ? "No candidates issued for this assessment yet." : "No issued assessments yet.",
+      );
+    }
     const issuedCount = arr.length;
     const takenRows = arr.filter((x) => String(x.status || "") === "completed" && Number.isFinite(Number(x.score_pct)));
     const takenCount = takenRows.length;
@@ -10775,6 +10797,9 @@ function bindEvents() {
     } finally {
       setTimeout(() => btn?.classList.remove("is-spinning"), 350);
     }
+  });
+  $("backToAssessmentCatalogBtn")?.addEventListener("click", () => {
+    activateProviderSubView("assessment-catalog");
   });
   $("issueAssessmentBtn")?.addEventListener("click", async () => {
     try {
