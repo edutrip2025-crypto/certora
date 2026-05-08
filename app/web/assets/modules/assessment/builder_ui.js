@@ -11,6 +11,7 @@
   persistAssessmentBuilderCache,
   resetAssessmentBuilder,
   tryRestoreAssessmentBuilderCache,
+  assessmentOnlyMode = false,
 }) {
   const STEP2_REQUIRED_TEXT_FIELDS = [
     "abTitle",
@@ -80,6 +81,11 @@
   function validateAssessmentStep(step) {
     const s = Number(step || 1);
     if (s === 1) {
+      if (assessmentOnlyMode) {
+        const selectNode = $("abCourseSelect");
+        if (selectNode) selectNode.value = "standalone";
+        return true;
+      }
       const source = getAssessmentSourceValue();
       if (source === "standalone") return true;
       const courseId = getSelectedAssessmentCourseId();
@@ -160,6 +166,14 @@
     const publishBtn = $("abPublishBtn");
     if (!meta) return;
     const raw = getAssessmentSourceValue();
+    if (assessmentOnlyMode) {
+      const selectNode = $("abCourseSelect");
+      if (selectNode) selectNode.value = "standalone";
+      meta.textContent = "Standalone assessment selected. Candidates access it only through issued credentials.";
+      if (saveBtn) saveBtn.disabled = false;
+      if (publishBtn) publishBtn.disabled = false;
+      return;
+    }
     if (!raw) {
       meta.textContent = "No course selected.";
       if (saveBtn) saveBtn.disabled = true;
@@ -192,6 +206,15 @@
   function renderAssessmentCourseOptions() {
     const selectNode = $("abCourseSelect");
     if (!selectNode) return;
+    if (assessmentOnlyMode) {
+      selectNode.innerHTML = `<option value="standalone">Standalone Assessment</option>`;
+      selectNode.value = "standalone";
+      selectNode.disabled = true;
+      const filterNode = $("abCourseFilter");
+      if (filterNode) filterNode.disabled = true;
+      updateAssessmentSourceMeta();
+      return;
+    }
     const filter = $("abCourseFilter")?.value || "all";
     const options = [];
 

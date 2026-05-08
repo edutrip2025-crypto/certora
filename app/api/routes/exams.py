@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+import random
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -29,6 +30,7 @@ from app.models.entities import (
 )
 from app.schemas import ExamCreate, ExamOut, ExamRuleUpdate, ExamUpdate, QuestionCreate
 from app.services.ai_review import upsert_ai_review
+from app.services.notifications import send_email
 from app.services.rule_engine import evaluate_exam_rules
 
 router = APIRouter(prefix="/exams", tags=["exams"])
@@ -136,6 +138,49 @@ def _decode_issued_candidate_token(token: str) -> int:
 
 def _internal_assessment_id(exam_id: int) -> str:
     return f"ASM-{int(exam_id):06d}"
+
+
+def _is_expired(value: datetime | None) -> bool:
+    if not value:
+        return False
+    expires_at = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return expires_at < datetime.now(timezone.utc)
+
+
+def _questions_for_issued_attempt(db: Session, issue: AssessmentIssue, exam: Exam) -> list[Question]:
+    questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id).order_by(Question.id.asc())).all())
+    limit = int(exam.questions_per_attempt or 0)
+    if limit <= 0 or limit >= len(questions):
+        return questions
+    shuffled = list(questions)
+    random.Random(int(issue.id)).shuffle(shuffled)
+    selected_ids = {q.id for q in shuffled[:limit]}
+    return [q for q in questions if q.id in selected_ids]
+
+
+def _safe_send_assessment_issue_email(
+    *,
+    to_email: str,
+    candidate_name: str,
+    assessment_title: str,
+    login_link: str,
+    temporary_password: str,
+    expires_at: datetime | None,
+) -> dict:
+    subject = f"Assessment issued: {assessment_title}"
+    expiry_text = expires_at.isoformat() if expires_at else "7 days from issue"
+    body = (
+        f"Hello {candidate_name},\n\n"
+        f"You have been issued the assessment: {assessment_title}.\n\n"
+        f"Assessment link: {login_link}\n"
+        f"One-time password: {temporary_password}\n"
+        f"Credentials expire: {expiry_text}\n\n"
+        "Open the link, enter the password, and complete the assessment in one sitting.\n"
+    )
+    try:
+        return send_email(to_email, subject, body)
+    except Exception as exc:
+        return {"sent": False, "reason": str(exc)}
 
 
 @router.post("", response_model=ExamOut, status_code=status.HTTP_201_CREATED)
@@ -520,13 +565,10 @@ def issue_assessment_to_candidate(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
-    profile = _provider_profile_or_404(db, current_user.id)
+    _provider_profile_or_404(db, current_user.id)
     exam = db.get(Exam, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    course = db.get(Course, exam.course_id)
-    if not course or course.provider_id != profile.id:
-        raise HTTPException(status_code=403, detail="Access denied")
     if exam.status != ExamStatus.PUBLISHED:
         raise HTTPException(status_code=400, detail="Only published assessments can be issued")
 
@@ -549,6 +591,14 @@ def issue_assessment_to_candidate(
     db.refresh(issue)
     base_url = f"{request.url.scheme}://{request.headers.get('host')}"
     login_link = f"{base_url}/?issued_key={issue.access_key}"
+    email_delivery = _safe_send_assessment_issue_email(
+        to_email=candidate_email,
+        candidate_name=candidate_name,
+        assessment_title=exam.title,
+        login_link=login_link,
+        temporary_password=temp_password,
+        expires_at=issue.access_expires_at,
+    )
     return {
         "issued_id": issue.id,
         "exam_id": exam.id,
@@ -557,7 +607,8 @@ def issue_assessment_to_candidate(
         "temporary_password": temp_password,
         "login_link": login_link,
         "credentials_valid_till": issue.access_expires_at,
-        "note": "Send these credentials to candidate email via your mail provider.",
+        "email_delivery": email_delivery,
+        "note": "Credentials were emailed when SMTP is configured. Keep the temporary password visible here as fallback.",
     }
 
 
@@ -595,23 +646,85 @@ def list_issued_assessments_for_provider(
 
 @router.get("/catalog/published")
 def list_published_assessment_catalog(
+    q: str = Query(default="", max_length=120),
+    duration: str = Query(default="all", pattern="^(all|short|standard|long)$"),
+    sort: str = Query(default="latest", pattern="^(latest|title_asc|duration_asc|pass_desc|popular)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
-    rows = db.scalars(
+    rows = list(db.scalars(
         select(Exam)
         .where(Exam.status == ExamStatus.PUBLISHED)
         .order_by(Exam.id.desc()),
-    ).all()
+    ).all())
+    needle = str(q or "").strip().lower()
+    if needle:
+        rows = [
+            exam for exam in rows
+            if needle in (exam.title or "").lower()
+            or needle in _internal_assessment_id(exam.id).lower()
+        ]
+    if duration == "short":
+        rows = [exam for exam in rows if int(exam.duration_minutes or 0) <= 30]
+    elif duration == "standard":
+        rows = [exam for exam in rows if 30 < int(exam.duration_minutes or 0) <= 45]
+    elif duration == "long":
+        rows = [exam for exam in rows if int(exam.duration_minutes or 0) > 45]
+
+    issued_counts = {
+        int(row._mapping["exam_id"]): int(row._mapping["count"] or 0)
+        for row in db.execute(
+            select(AssessmentIssue.exam_id, func.count(AssessmentIssue.id).label("count"))
+            .where(AssessmentIssue.issuer_user_id == current_user.id)
+            .group_by(AssessmentIssue.exam_id),
+        ).all()
+    }
+    taken_counts = {
+        int(row._mapping["exam_id"]): int(row._mapping["count"] or 0)
+        for row in db.execute(
+            select(AssessmentIssue.exam_id, func.count(AssessmentIssue.id).label("count"))
+            .where(
+                AssessmentIssue.issuer_user_id == current_user.id,
+                AssessmentIssue.status == "completed",
+            )
+            .group_by(AssessmentIssue.exam_id),
+        ).all()
+    }
+    question_counts = {
+        int(row._mapping["exam_id"]): int(row._mapping["count"] or 0)
+        for row in db.execute(
+            select(Question.exam_id, func.count(Question.id).label("count"))
+            .group_by(Question.exam_id),
+        ).all()
+    }
+
+    if sort == "title_asc":
+        rows.sort(key=lambda exam: (exam.title or "").lower())
+    elif sort == "duration_asc":
+        rows.sort(key=lambda exam: int(exam.duration_minutes or 0))
+    elif sort == "pass_desc":
+        rows.sort(key=lambda exam: float(exam.pass_score or 70), reverse=True)
+    elif sort == "popular":
+        rows.sort(key=lambda exam: issued_counts.get(int(exam.id), 0), reverse=True)
+    else:
+        rows.sort(key=lambda exam: int(exam.id), reverse=True)
+
     out = []
     for exam in rows:
+        question_count = question_counts.get(int(exam.id), 0)
         out.append(
             {
                 "exam_id": exam.id,
                 "internal_id": _internal_assessment_id(exam.id),
                 "title": exam.title,
                 "duration_minutes": exam.duration_minutes,
+                "timing_mode": getattr(exam, "timing_mode", None),
+                "time_per_question_seconds": getattr(exam, "time_per_question_seconds", None),
                 "pass_score": exam.pass_score,
+                "questions_per_attempt": exam.questions_per_attempt,
+                "question_count": question_count,
+                "issued_count": issued_counts.get(int(exam.id), 0),
+                "taken_count": taken_counts.get(int(exam.id), 0),
             },
         )
     return out
@@ -630,7 +743,7 @@ def issued_candidate_login(payload: IssuedCandidateLoginRequest, db: Session = D
     if not issue or not verify_password(payload.password, issue.candidate_password_hash):
         raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
     now = datetime.now(timezone.utc)
-    if issue.access_expires_at and issue.access_expires_at < now:
+    if _is_expired(issue.access_expires_at):
         raise HTTPException(status_code=401, detail="Credentials expired. Ask issuer for re-issue.")
     if issue.credential_used_at:
         raise HTTPException(status_code=401, detail="Credentials already used. Ask issuer for re-issue.")
@@ -650,7 +763,7 @@ def issued_candidate_login_by_key(access_key: str, payload: IssuedCandidateLogin
     if not issue or not verify_password(payload.password, issue.candidate_password_hash):
         raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
     now = datetime.now(timezone.utc)
-    if issue.access_expires_at and issue.access_expires_at < now:
+    if _is_expired(issue.access_expires_at):
         raise HTTPException(status_code=401, detail="Credentials expired. Ask issuer for re-issue.")
     if issue.credential_used_at:
         raise HTTPException(status_code=401, detail="Credentials already used. Ask issuer for re-issue.")
@@ -681,7 +794,7 @@ def issued_candidate_get_assessment(
         raise HTTPException(status_code=404, detail="Assessment not found")
     if issue.status == "completed":
         return {"status": "completed", "score_pct": issue.score_pct, "passed": issue.passed}
-    questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id).order_by(Question.id.asc())).all())
+    questions = _questions_for_issued_attempt(db, issue, exam)
     payload_questions = []
     for q in questions:
         opts = list(db.scalars(select(Option).where(Option.question_id == q.id).order_by(Option.position.asc(), Option.id.asc())).all())
@@ -699,6 +812,9 @@ def issued_candidate_get_assessment(
         "candidate_name": issue.candidate_name,
         "assessment_title": exam.title,
         "duration_minutes": exam.duration_minutes,
+        "timing_mode": exam.timing_mode,
+        "time_per_question_seconds": exam.time_per_question_seconds,
+        "questions_per_attempt": exam.questions_per_attempt,
         "pass_score": exam.pass_score,
         "questions": payload_questions,
     }
@@ -723,7 +839,7 @@ def issued_candidate_submit(
     if not exam:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id).all()))
+    questions = _questions_for_issued_attempt(db, issue, exam)
     if not questions:
         raise HTTPException(status_code=400, detail="Assessment has no questions")
     total_marks = 0.0

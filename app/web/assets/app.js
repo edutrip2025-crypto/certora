@@ -100,6 +100,9 @@ const state = {
   assessmentQuestionDefaultMarks: null,
   assessmentQuestionDefaultNegativeMarks: null,
   assessmentCatalog: [],
+  assessmentCatalogQuery: "",
+  assessmentCatalogDuration: "all",
+  assessmentCatalogSort: "latest",
   selectedCatalogExamId: null,
   issuedCandidateToken: "",
   issuedAccessKey: "",
@@ -1359,6 +1362,10 @@ const el = {
   providerAssessmentsList: $("providerAssessmentsList"),
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
   assessmentCatalogList: $("assessmentCatalogList"),
+  assessmentCatalogSearch: $("assessmentCatalogSearch"),
+  assessmentCatalogDuration: $("assessmentCatalogDuration"),
+  assessmentCatalogSort: $("assessmentCatalogSort"),
+  refreshAssessmentCatalogBtn: $("refreshAssessmentCatalogBtn"),
   assessmentCatalogIssuePanel: $("assessmentCatalogIssuePanel"),
   assessmentCatalogDetail: $("assessmentCatalogDetail"),
   issueCandidateName: $("issueCandidateName"),
@@ -1643,6 +1650,7 @@ const assessmentBuilderUi = createAssessmentBuilderUi({
   persistAssessmentBuilderCache,
   resetAssessmentBuilder,
   tryRestoreAssessmentBuilderCache,
+  assessmentOnlyMode: ASSESSMENT_ONLY_MODE,
 });
 
 const assessmentPreviewProctorUi = createAssessmentPreviewProctorUi({
@@ -1732,6 +1740,7 @@ function showAuthMode(mode = "login") {
 
 function applyAssessmentOnlyMode() {
   if (!ASSESSMENT_ONLY_MODE) return;
+  document.body.classList.add("assessment-only-mode");
   // Restrict workspace to assessment flows only.
   const allowedProviderViews = new Set(["home", "assessments", "assessment-catalog"]);
   document.querySelectorAll(".provider-nav-btn").forEach((btn) => {
@@ -2014,6 +2023,14 @@ function setBadge(node, value) {
   const v = Number(value || 0);
   node.textContent = String(v);
   node.classList.toggle("hidden", v <= 0);
+}
+
+function debounce(fn, wait = 250) {
+  let timer = null;
+  return (...args) => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), wait);
+  };
 }
 
 function renderList(target, items, renderer, empty = "No data.") {
@@ -8699,9 +8716,23 @@ async function refreshProviderAssessments() {
 
 async function refreshAssessmentCatalogIssueOptions() {
   try {
-    const rows = await api("GET", "/exams/catalog/published");
+    const params = new URLSearchParams();
+    const q = String(el.assessmentCatalogSearch?.value || state.assessmentCatalogQuery || "").trim();
+    const duration = String(el.assessmentCatalogDuration?.value || state.assessmentCatalogDuration || "all");
+    const sort = String(el.assessmentCatalogSort?.value || state.assessmentCatalogSort || "latest");
+    state.assessmentCatalogQuery = q;
+    state.assessmentCatalogDuration = duration;
+    state.assessmentCatalogSort = sort;
+    if (q) params.set("q", q);
+    params.set("duration", duration);
+    params.set("sort", sort);
+    const rows = await api("GET", `/exams/catalog/published?${params.toString()}`);
     const items = Array.isArray(rows) ? rows : [];
     state.assessmentCatalog = items;
+    if (state.selectedCatalogExamId && !items.some((x) => Number(x.exam_id) === Number(state.selectedCatalogExamId))) {
+      state.selectedCatalogExamId = null;
+      renderSelectedCatalogDetail();
+    }
     renderAssessmentCatalogList();
   } catch {
     state.assessmentCatalog = [];
@@ -8716,10 +8747,22 @@ function renderAssessmentCatalogList() {
     el.assessmentCatalogList,
     rows,
     (a) => `
-      <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill status-resolved">published</span></div>
-      <div class='meta'>Assessment ID: ${escapeHtmlAttr(a.internal_id || `ASM-${String(a.exam_id || "").padStart(6, "0")}`)} (Internal)</div>
-      <div class='meta'>Timing: ${Number(a.duration_minutes || 0)} mins/assessment</div>
-      <div class='meta'>Pass score: ${Number(a.pass_score || 70)}%</div>
+      <div class="assessment-catalog-card ${Number(state.selectedCatalogExamId || 0) === Number(a.exam_id || 0) ? "selected-catalog-card" : ""}">
+        <div class="assessment-catalog-main">
+          <div>
+            <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill status-resolved">published</span></div>
+            <div class='meta'>Assessment ID: ${escapeHtmlAttr(a.internal_id || `ASM-${String(a.exam_id || "").padStart(6, "0")}`)} (Internal)</div>
+          </div>
+          <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
+        </div>
+        <div class="assessment-catalog-facts">
+          <span>${Number(a.question_count || 0)} questions</span>
+          <span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>
+          <span>${String(a.timing_mode || "assessment") === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
+          <span>Issued ${Number(a.issued_count || 0)}</span>
+          <span>Taken ${Number(a.taken_count || 0)}</span>
+        </div>
+      </div>
       <div class="actions">
         <button class="btn small" data-catalog-select="${a.exam_id}">View & Issue</button>
       </div>
@@ -8745,7 +8788,10 @@ function renderSelectedCatalogDetail() {
     return;
   }
   el.assessmentCatalogIssuePanel?.classList.remove("hidden");
-  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | Title: ${item.title || "-"} | Duration: ${Number(item.duration_minutes || 0)} mins | Pass: ${Number(item.pass_score || 70)}%`;
+  const timing = String(item.timing_mode || "assessment") === "question"
+    ? `${Number(item.time_per_question_seconds || 0)} seconds per question`
+    : `${Number(item.duration_minutes || 0)} minutes total`;
+  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | ${item.title || "-"} | ${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
 }
 
 async function refreshIssuedAssessments() {
@@ -10709,6 +10755,27 @@ function bindEvents() {
       setTimeout(() => btn?.classList.remove("is-spinning"), 350);
     }
   });
+  $("assessmentCatalogSearch")?.addEventListener("input", debounce(() => {
+    refreshAssessmentCatalogIssueOptions().catch(() => toast("Failed to search assessments", "error"));
+  }, 250));
+  $("assessmentCatalogDuration")?.addEventListener("change", () => {
+    refreshAssessmentCatalogIssueOptions().catch(() => toast("Failed to filter assessments", "error"));
+  });
+  $("assessmentCatalogSort")?.addEventListener("change", () => {
+    refreshAssessmentCatalogIssueOptions().catch(() => toast("Failed to sort assessments", "error"));
+  });
+  $("refreshAssessmentCatalogBtn")?.addEventListener("click", async () => {
+    const btn = $("refreshAssessmentCatalogBtn");
+    btn?.classList.add("is-spinning");
+    try {
+      await refreshAssessmentCatalogIssueOptions();
+      await refreshIssuedAssessments();
+    } catch {
+      toast("Failed to refresh assessment catalog", "error");
+    } finally {
+      setTimeout(() => btn?.classList.remove("is-spinning"), 350);
+    }
+  });
   $("issueAssessmentBtn")?.addEventListener("click", async () => {
     try {
       const examId = Number(state.selectedCatalogExamId || 0);
@@ -10719,7 +10786,8 @@ function bindEvents() {
       }
       const out = await api("POST", `/exams/${examId}/issue`, { candidate_name, candidate_email });
       if (el.issueAssessmentStatus) {
-        el.issueAssessmentStatus.textContent = `Issued. ID ${out.internal_id || ""}. Temp password for ${out.candidate_email}: ${out.temporary_password}. Link: ${out.login_link || "-"}`;
+        const emailState = out.email_delivery?.sent ? "Email sent" : `Email not sent${out.email_delivery?.reason ? ` (${out.email_delivery.reason})` : ""}`;
+        el.issueAssessmentStatus.textContent = `Issued. ID ${out.internal_id || ""}. ${emailState}. Temp password for ${out.candidate_email}: ${out.temporary_password}. Link: ${out.login_link || "-"}`;
       }
       await refreshIssuedAssessments();
     } catch (err) {

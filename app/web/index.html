@@ -456,6 +456,30 @@
       <section class="panel content hidden" id="provider-view-assessment-catalog">
         <h2>Assessments</h2>
         <p class="muted">Select a published assessment to view details and issue it.</p>
+        <div class="row between provider-assessment-toolbar assessment-catalog-toolbar">
+          <div class="search-with-icon assessment-catalog-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>
+            <input id="assessmentCatalogSearch" class="search" type="text" placeholder="Search title or internal ID" />
+          </div>
+          <div class="row gap-sm provider-course-actions provider-assessment-actions assessment-catalog-actions">
+            <select id="assessmentCatalogDuration" class="filter" aria-label="Filter by duration">
+              <option value="all">All durations</option>
+              <option value="short">30 mins or less</option>
+              <option value="standard">31-45 mins</option>
+              <option value="long">Over 45 mins</option>
+            </select>
+            <select id="assessmentCatalogSort" class="filter" aria-label="Sort assessments">
+              <option value="latest">Latest</option>
+              <option value="title_asc">Title A-Z</option>
+              <option value="duration_asc">Shortest first</option>
+              <option value="pass_desc">Highest pass score</option>
+              <option value="popular">Most issued</option>
+            </select>
+            <button id="refreshAssessmentCatalogBtn" class="btn small toolbar-icon-btn" title="Refresh catalog" aria-label="Refresh catalog">
+              <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5v5h-5"/><path d="M4 19v-5h5"/><path d="M20 10a8 8 0 0 0-14.9-3"/><path d="M4 14a8 8 0 0 0 14.9 3"/></svg>
+            </button>
+          </div>
+        </div>
         <div id="assessmentCatalogList" class="list"></div>
         <div id="assessmentCatalogIssuePanel" class="item hidden">
           <h3>Assessment Details & Issue</h3>
@@ -483,7 +507,7 @@
 
         <div class="ab-wizard-shell">
           <div class="ab-stepper">
-            <div class="ab-step-indicator active" data-ab-step-indicator="1"><span>1</span><strong>Course Selection</strong></div>
+            <div class="ab-step-indicator active" data-ab-step-indicator="1"><span>1</span><strong>Assessment Setup</strong></div>
             <div class="ab-step-indicator" data-ab-step-indicator="2"><span>2</span><strong>Assessment Settings</strong></div>
             <div class="ab-step-indicator" data-ab-step-indicator="3"><span>3</span><strong>Questions</strong></div>
           </div>
@@ -491,8 +515,8 @@
           <div class="ab-step-viewport">
             <div id="abStepTrack" class="ab-step-track">
               <section class="item ab-step-page">
-                <h3>Course Selection</h3>
-                <p class="muted">Choose one published course before moving to settings.</p>
+                <h3>Assessment Setup</h3>
+                <p class="muted">Create a standalone assessment that candidates can access only through issued credentials.</p>
                 <div class="row wrap gap-sm">
                   <select id="abCourseFilter" class="filter">
                     <option value="all">All</option>
@@ -501,10 +525,10 @@
                     <option value="draft">Drafts</option>
                   </select>
                   <select id="abCourseSelect" class="filter ab-course-select">
-                    <option value="">Select course or draft video</option>
+                    <option value="standalone">Standalone Assessment</option>
                   </select>
                 </div>
-                <div id="abCourseMeta" class="meta" style="margin-top:10px;">No course selected.</div>
+                <div id="abCourseMeta" class="meta" style="margin-top:10px;">Standalone assessment selected.</div>
                 <div class="row wrap gap-sm" style="margin-top:16px;">
                   <button id="abStep1NextBtn" class="btn primary">Next: Settings</button>
                 </div>
