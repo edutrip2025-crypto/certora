@@ -99,6 +99,8 @@ const state = {
   assessmentEditingExamId: null,
   assessmentQuestionDefaultMarks: null,
   assessmentQuestionDefaultNegativeMarks: null,
+  assessmentCatalog: [],
+  selectedCatalogExamId: null,
   issuedCandidateToken: "",
   issuedAccessKey: "",
   issuedCandidateAssessment: null,
@@ -1357,6 +1359,8 @@ const el = {
   providerAssessmentsList: $("providerAssessmentsList"),
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
   issueExamSelect: $("issueExamSelect"),
+  assessmentCatalogList: $("assessmentCatalogList"),
+  assessmentCatalogDetail: $("assessmentCatalogDetail"),
   issueCandidateName: $("issueCandidateName"),
   issueCandidateEmail: $("issueCandidateEmail"),
   issueAssessmentStatus: $("issueAssessmentStatus"),
@@ -3819,6 +3823,10 @@ async function refreshBilling() {
 }
 
 async function refreshProviderHome() {
+  if (ASSESSMENT_ONLY_MODE) {
+    await refreshIssuedAssessments();
+    return;
+  }
   const data = await api("GET", "/provider/workspace/home");
   renderProviderHomeCards(el.providerHomeStats, data);
 }
@@ -8694,12 +8702,52 @@ async function refreshAssessmentCatalogIssueOptions() {
   try {
     const rows = await api("GET", "/exams/catalog/published");
     const items = Array.isArray(rows) ? rows : [];
+    state.assessmentCatalog = items;
     const opts = [`<option value="">Select published assessment</option>`]
       .concat(items.map((x) => `<option value="${x.exam_id}">${escapeHtmlAttr(x.title || `Assessment #${x.exam_id}`)} | ID: ${escapeHtmlAttr(x.internal_id || "")}</option>`));
     el.issueExamSelect.innerHTML = opts.join("");
+    renderAssessmentCatalogList();
   } catch {
     el.issueExamSelect.innerHTML = `<option value="">Failed to load published assessments</option>`;
+    state.assessmentCatalog = [];
+    renderAssessmentCatalogList();
   }
+}
+
+function renderAssessmentCatalogList() {
+  if (!el.assessmentCatalogList) return;
+  const rows = Array.isArray(state.assessmentCatalog) ? state.assessmentCatalog : [];
+  renderList(
+    el.assessmentCatalogList,
+    rows,
+    (a) => `
+      <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(a.internal_id || "")})</span></div>
+      <div class="meta">Duration: ${Number(a.duration_minutes || 0)} mins | Pass: ${Number(a.pass_score || 70)}%</div>
+      <div class="actions">
+        <button class="btn small" data-catalog-select="${a.exam_id}">View & Issue</button>
+      </div>
+    `,
+    "No published assessments available.",
+  );
+  document.querySelectorAll("[data-catalog-select]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const examId = Number(btn.getAttribute("data-catalog-select") || 0);
+      state.selectedCatalogExamId = examId || null;
+      if (el.issueExamSelect) el.issueExamSelect.value = examId ? String(examId) : "";
+      renderSelectedCatalogDetail();
+    });
+  });
+}
+
+function renderSelectedCatalogDetail() {
+  if (!el.assessmentCatalogDetail) return;
+  const selected = Number(el.issueExamSelect?.value || state.selectedCatalogExamId || 0);
+  const item = (state.assessmentCatalog || []).find((x) => Number(x.exam_id) === selected);
+  if (!item) {
+    el.assessmentCatalogDetail.textContent = "Select an assessment from the list above.";
+    return;
+  }
+  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | Title: ${item.title || "-"} | Duration: ${Number(item.duration_minutes || 0)} mins | Pass: ${Number(item.pass_score || 70)}%`;
 }
 
 async function refreshIssuedAssessments() {
@@ -8711,7 +8759,7 @@ async function refreshIssuedAssessments() {
       Array.isArray(rows) ? rows : [],
       (r) => `
         <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(r.internal_id || `ASM-${String(r.exam_id || "").padStart(6, "0")}`)})</span> - ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
-        <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")}</div>
+        <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")} | Expires: ${r.access_expires_at ? formatTime(r.access_expires_at) : "-"}</div>
       `,
       "No issued assessments yet.",
     );
@@ -10679,6 +10727,10 @@ function bindEvents() {
     } catch (err) {
       if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = err?.message || "Failed to issue assessment";
     }
+  });
+  $("issueExamSelect")?.addEventListener("change", () => {
+    state.selectedCatalogExamId = Number(el.issueExamSelect?.value || 0) || null;
+    renderSelectedCatalogDetail();
   });
   $("issuedCandidateLoginBtn")?.addEventListener("click", async () => {
     try {

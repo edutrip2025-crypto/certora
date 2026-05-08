@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import secrets
 
@@ -541,6 +541,7 @@ def issue_assessment_to_candidate(
         candidate_email=candidate_email,
         candidate_password_hash=hash_password(temp_password),
         access_key=secrets.token_urlsafe(24),
+        access_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         status="issued",
     )
     db.add(issue)
@@ -555,6 +556,7 @@ def issue_assessment_to_candidate(
         "candidate_email": candidate_email,
         "temporary_password": temp_password,
         "login_link": login_link,
+        "credentials_valid_till": issue.access_expires_at,
         "note": "Send these credentials to candidate email via your mail provider.",
     }
 
@@ -584,6 +586,7 @@ def list_issued_assessments_for_provider(
                 "score_pct": row.score_pct,
                 "passed": row.passed,
                 "issued_at": row.issued_at,
+                "access_expires_at": row.access_expires_at,
                 "completed_at": row.completed_at,
             },
         )
@@ -626,6 +629,17 @@ def issued_candidate_login(payload: IssuedCandidateLoginRequest, db: Session = D
     )
     if not issue or not verify_password(payload.password, issue.candidate_password_hash):
         raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
+    now = datetime.now(timezone.utc)
+    if issue.access_expires_at and issue.access_expires_at < now:
+        raise HTTPException(status_code=401, detail="Credentials expired. Ask issuer for re-issue.")
+    if issue.credential_used_at:
+        raise HTTPException(status_code=401, detail="Credentials already used. Ask issuer for re-issue.")
+    issue.credential_used_at = now
+    if issue.status == "issued":
+        issue.status = "started"
+        issue.started_at = now
+    db.add(issue)
+    db.commit()
     token = _create_issued_candidate_token(issue.id)
     return {"token": token}
 
@@ -635,6 +649,17 @@ def issued_candidate_login_by_key(access_key: str, payload: IssuedCandidateLogin
     issue = db.scalar(select(AssessmentIssue).where(AssessmentIssue.access_key == access_key))
     if not issue or not verify_password(payload.password, issue.candidate_password_hash):
         raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
+    now = datetime.now(timezone.utc)
+    if issue.access_expires_at and issue.access_expires_at < now:
+        raise HTTPException(status_code=401, detail="Credentials expired. Ask issuer for re-issue.")
+    if issue.credential_used_at:
+        raise HTTPException(status_code=401, detail="Credentials already used. Ask issuer for re-issue.")
+    issue.credential_used_at = now
+    if issue.status == "issued":
+        issue.status = "started"
+        issue.started_at = now
+    db.add(issue)
+    db.commit()
     token = _create_issued_candidate_token(issue.id)
     return {"token": token}
 

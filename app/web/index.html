@@ -169,7 +169,6 @@
       <section class="panel content" id="provider-view-home">
         <h2>Dashboard</h2>
         <h3>Assessment Analytics</h3>
-        <div id="providerHomeStats" class="stats"></div>
         <div class="stats">
           <div class="stat-card"><div class="stat-title">Assessments Issued</div><div id="issuedCountStat" class="stat-value">0</div></div>
           <div class="stat-card"><div class="stat-title">Assessments Taken</div><div id="takenCountStat" class="stat-value">0</div></div>
@@ -436,7 +435,6 @@
 
       <section class="panel content hidden" id="provider-view-assessments">
         <h2>Custom</h2>
-        <p class="muted">Build MCQ assessments with pooled questions and random delivery per student attempt.</p>
         <div class="row between provider-assessment-toolbar">
           <h3>Assessment List</h3>
           <div class="row gap-sm provider-course-actions provider-assessment-actions">
@@ -457,9 +455,11 @@
 
       <section class="panel content hidden" id="provider-view-assessment-catalog">
         <h2>Assessments</h2>
-        <p class="muted">Choose published assessments and issue them to candidates.</p>
+        <p class="muted">Select a published assessment to view details and issue it.</p>
+        <div id="assessmentCatalogList" class="list"></div>
         <div class="item">
-          <h3>Issue Assessment</h3>
+          <h3>Assessment Details & Issue</h3>
+          <div id="assessmentCatalogDetail" class="meta">Select an assessment from the list above.</div>
           <div class="row wrap gap-sm">
             <select id="issueExamSelect" class="filter">
               <option value="">Select published assessment</option>
