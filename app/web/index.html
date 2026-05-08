@@ -559,10 +559,19 @@
                   <label class="ab-field-wrap"><span class="ab-field-label">Assessment title <span class="required-asterisk">*</span></span>
                     <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
                   </label>
+                  <label class="ab-field-wrap"><span class="ab-field-label">Assessment type <span class="required-asterisk">*</span></span>
+                    <select id="abAssessmentType" class="filter">
+                      <option value="mcq">MCQ Assessment</option>
+                      <option value="coding">Coding Environment</option>
+                      <option value="spreadsheet">Excel / Spreadsheet Simulator</option>
+                      <option value="tax_simulator">Tax / Finance Simulator</option>
+                      <option value="case_study">Case Study / File Upload</option>
+                    </select>
+                  </label>
                   <label class="ab-field-wrap"><span class="ab-field-label">Max attempts <span class="required-asterisk">*</span></span>
                     <input id="abMaxAttempts" class="filter" type="number" min="1" max="3" value="3" placeholder="Max attempts" />
                   </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Questions shown to student <span class="required-asterisk">*</span></span>
+                  <label class="ab-field-wrap ab-mcq-only"><span class="ab-field-label">Questions shown to student <span class="required-asterisk">*</span></span>
                     <select id="abQuestionsPerAttempt" class="filter" title="Questions shown to student">
                       <option value="25">25 questions</option>
                       <option value="30">30 questions</option>
@@ -571,8 +580,23 @@
                     </select>
                   </label>
                 </div>
+                <div class="ab-type-card-row">
+                  <button type="button" class="ab-type-card active" data-ab-type-card="mcq"><strong>MCQ</strong><span>Question pool with options</span></button>
+                  <button type="button" class="ab-type-card" data-ab-type-card="coding"><strong>Coding</strong><span>Code editor task</span></button>
+                  <button type="button" class="ab-type-card" data-ab-type-card="spreadsheet"><strong>Spreadsheet</strong><span>Editable grid task</span></button>
+                  <button type="button" class="ab-type-card" data-ab-type-card="tax_simulator"><strong>Tax Simulator</strong><span>Generic finance workbench</span></button>
+                  <button type="button" class="ab-type-card" data-ab-type-card="case_study"><strong>Case Study</strong><span>File upload/manual review</span></button>
+                </div>
                 <div class="row wrap gap-sm" style="margin-top:10px;">
-                  <label class="checkbox-row"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
+                  <label class="ab-field-wrap"><span class="ab-field-label">Passing score <span class="required-asterisk">*</span></span>
+                    <input id="abPassScore" class="filter" type="number" min="70" max="100" step="1" value="70" placeholder="Passing score %" />
+                  </label>
+                  <label class="ab-field-wrap ab-wide-field"><span class="ab-field-label">Instructions</span>
+                    <textarea id="abInstructions" class="search" rows="2" placeholder="Instructions shown to candidates"></textarea>
+                  </label>
+                </div>
+                <div class="row wrap gap-sm" style="margin-top:10px;">
+                  <label class="checkbox-row ab-mcq-only"><input id="abNegativeMarking" type="checkbox" /><span>Negative marking</span></label>
                   <input id="abDefaultNegativeMarks" class="filter hidden" type="number" min="0" step="0.25" placeholder="Default negative marks/question" />
                   <input id="abShuffleQuestions" type="checkbox" checked class="hidden" />
                   <input id="abShuffleOptions" type="checkbox" checked class="hidden" />
@@ -585,7 +609,7 @@
                       <option value="assessment">Time per assessment</option>
                     </select>
                   </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Assessment duration <span class="required-asterisk">*</span></span>
+                  <label class="ab-field-wrap"><span class="ab-field-label">Total time limit <span class="required-asterisk">*</span></span>
                     <select id="abDurationMinutes" class="filter" title="Assessment duration">
                       <option value="25" selected>25 min/assessment</option>
                       <option value="30">30 min/assessment</option>
@@ -594,7 +618,7 @@
                       <option value="45">45 min/assessment</option>
                     </select>
                   </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Time per question <span class="required-asterisk">*</span></span>
+                  <label class="ab-field-wrap ab-mcq-only"><span class="ab-field-label">Time per question <span class="required-asterisk">*</span></span>
                     <select id="abTimePerQuestionSeconds" class="filter" title="Time per question">
                       <option value="25" selected>25 sec/question</option>
                       <option value="30">30 sec/question</option>
@@ -606,39 +630,86 @@
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:16px;">
                   <button id="abStep2BackBtn" class="btn small">Back</button>
-                  <button id="abStep2NextBtn" class="btn primary">Next: Questions</button>
+                  <button id="abStep2NextBtn" class="btn primary">Next: Content</button>
                 </div>
               </section>
 
               <section class="item ab-step-page">
-                <h3>Questions</h3>
-                <p class="muted">Add MCQ questions and publish when ready. Use scenario or situation-based questions for stronger proctoring outcomes.</p>
-                <div class="row wrap gap-sm">
-                  <select id="abQuestionType" class="filter">
-                    <option value="mcq_single_correct">MCQ - Single Correct</option>
-                    <option value="mcq_multiple_correct">MCQ - Multiple Correct</option>
-                  </select>
-                  <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
-                  <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
-                </div>
-                <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
-                <div class="ab-options-grid" style="margin-top:8px;">
-                  <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
-                  <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
-                  <label class="ab-option-row"><input data-ab-correct="2" type="checkbox" /><input id="abOption3" class="search" type="text" placeholder="Option 3" /></label>
-                  <label class="ab-option-row"><input data-ab-correct="3" type="checkbox" /><input id="abOption4" class="search" type="text" placeholder="Option 4" /></label>
-                </div>
-                <div class="row" style="margin-top:8px;">
-                  <button id="abAddQuestionBtn" class="btn small">Add To Pool</button>
+                <h3>Assessment Content</h3>
+                <p class="muted">Create content for the selected assessment format. One assessment uses one format only.</p>
+                <div id="abMcqContentPanel" class="ab-content-panel">
+                  <div class="row wrap gap-sm">
+                    <select id="abQuestionType" class="filter">
+                      <option value="mcq_single_correct">MCQ - Single Correct</option>
+                      <option value="mcq_multiple_correct">MCQ - Multiple Correct</option>
+                    </select>
+                    <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
+                    <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
+                  </div>
+                  <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
+                  <div class="ab-options-grid" style="margin-top:8px;">
+                    <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
+                    <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
+                    <label class="ab-option-row"><input data-ab-correct="2" type="checkbox" /><input id="abOption3" class="search" type="text" placeholder="Option 3" /></label>
+                    <label class="ab-option-row"><input data-ab-correct="3" type="checkbox" /><input id="abOption4" class="search" type="text" placeholder="Option 4" /></label>
+                  </div>
+                  <div class="row" style="margin-top:8px;">
+                    <button id="abAddQuestionBtn" class="btn small">Add To Pool</button>
+                  </div>
+
+                  <section class="item" style="margin-top:12px;">
+                    <div class="row between">
+                      <h3>Question Pool</h3>
+                      <div id="abPoolMeta" class="meta">0 questions in pool.</div>
+                    </div>
+                    <div id="abQuestionPoolList" class="list"></div>
+                  </section>
                 </div>
 
-                <section class="item" style="margin-top:12px;">
-                  <div class="row between">
-                    <h3>Question Pool</h3>
-                    <div id="abPoolMeta" class="meta">0 questions in pool.</div>
+                <div id="abTaskContentPanel" class="ab-content-panel hidden">
+                  <div class="row wrap gap-sm">
+                    <input id="abTaskTitle" class="search" type="text" placeholder="Task / problem / case title" />
+                    <input id="abTaskMarks" class="filter" type="number" min="1" step="1" placeholder="Marks" />
                   </div>
-                  <div id="abQuestionPoolList" class="list"></div>
-                </section>
+                  <textarea id="abTaskDescription" class="search" rows="4" placeholder="Task description / problem statement / case prompt"></textarea>
+                  <textarea id="abTaskInstructions" class="search" rows="3" placeholder="Task-specific instructions"></textarea>
+
+                  <div id="abCodingFields" class="ab-format-fields">
+                    <input id="abCodingLanguages" class="search" type="text" placeholder="Allowed languages, e.g. Python, JavaScript" />
+                    <textarea id="abStarterCode" class="search" rows="5" placeholder="Starter code"></textarea>
+                    <textarea id="abVisibleTests" class="search" rows="3" placeholder='Visible test cases JSON, e.g. [{"name":"sample","input":"2 3","expected_output":"5"}]'></textarea>
+                    <textarea id="abHiddenTests" class="search" rows="3" placeholder='Hidden test cases JSON'></textarea>
+                    <label class="checkbox-row"><input id="abTaskAutoGrading" type="checkbox" checked /><span>Auto grading enabled</span></label>
+                  </div>
+
+                  <div id="abSpreadsheetFields" class="ab-format-fields hidden">
+                    <textarea id="abInitialSheet" class="search" rows="4" placeholder='Initial spreadsheet data JSON'></textarea>
+                    <textarea id="abExpectedValues" class="search" rows="3" placeholder='Expected final values JSON, e.g. {"B2":1200}'></textarea>
+                    <textarea id="abExpectedFormulas" class="search" rows="3" placeholder='Expected formulas JSON, e.g. {"B3":"=SUM(B1:B2)"}'></textarea>
+                    <input id="abLockedCells" class="search" type="text" placeholder="Locked cells, comma separated, e.g. A1,A2" />
+                    <label class="checkbox-row"><input id="abSpreadsheetAutoGrading" type="checkbox" checked /><span>Auto grading enabled</span></label>
+                  </div>
+
+                  <div id="abTaxFields" class="ab-format-fields hidden">
+                    <textarea id="abClientScenario" class="search" rows="4" placeholder="Client scenario"></textarea>
+                    <input id="abTaxYear" class="search" type="text" placeholder="Tax year" />
+                    <textarea id="abClientDocuments" class="search" rows="3" placeholder="Client documents, one per line"></textarea>
+                    <textarea id="abRequiredForms" class="search" rows="3" placeholder="Required simulated forms, one per line"></textarea>
+                    <textarea id="abScenarioFacts" class="search" rows="3" placeholder="Scenario facts"></textarea>
+                    <textarea id="abExpectedFormValues" class="search" rows="3" placeholder='Expected form values JSON'></textarea>
+                    <textarea id="abComplianceChecks" class="search" rows="3" placeholder="Compliance checks, one per line"></textarea>
+                    <textarea id="abRedFlags" class="search" rows="3" placeholder="Red flags candidate should identify, one per line"></textarea>
+                    <label class="checkbox-row"><input id="abTaxManualReview" type="checkbox" checked /><span>Manual review required</span></label>
+                  </div>
+
+                  <div id="abCaseFields" class="ab-format-fields hidden">
+                    <textarea id="abCasePrompt" class="search" rows="4" placeholder="Case prompt"></textarea>
+                    <input id="abAllowedFileTypes" class="search" type="text" placeholder="Allowed file types, e.g. pdf,docx,xlsx" />
+                    <input id="abMaxFileSize" class="filter" type="number" min="1" value="10" placeholder="Max file size MB" />
+                    <textarea id="abRubric" class="search" rows="4" placeholder="Rubric"></textarea>
+                    <label class="checkbox-row"><input id="abCaseManualReview" type="checkbox" checked /><span>Manual review required</span></label>
+                  </div>
+                </div>
 
                 <div class="row wrap gap-sm" style="margin-top:14px;">
                   <button id="abStep3BackBtn" class="btn small">Back</button>

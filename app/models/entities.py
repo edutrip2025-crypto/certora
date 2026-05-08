@@ -43,6 +43,14 @@ class QuestionType(StrEnum):
     SHORT_ANSWER = "short_answer"
 
 
+class AssessmentType(StrEnum):
+    MCQ = "mcq"
+    CODING = "coding"
+    SPREADSHEET = "spreadsheet"
+    TAX_SIMULATOR = "tax_simulator"
+    CASE_STUDY = "case_study"
+
+
 class ExamStatus(StrEnum):
     DRAFT = "draft"
     IN_REVIEW = "in_review"
@@ -353,12 +361,14 @@ class Exam(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
-    duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    assessment_type: Mapped[str] = mapped_column(String(30), default=AssessmentType.MCQ.value, index=True)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=25)
     timing_mode: Mapped[str] = mapped_column(String(20), default="assessment")
     time_per_question_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     questions_per_attempt: Mapped[int] = mapped_column(Integer, default=0)
     total_marks: Mapped[float] = mapped_column(Float, default=0)
-    pass_score: Mapped[float] = mapped_column(Float, default=60)
+    pass_score: Mapped[float] = mapped_column(Float, default=70)
     negative_marking: Mapped[bool] = mapped_column(Boolean, default=False)
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=False)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -368,6 +378,8 @@ class Exam(Base):
     certificate_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[ExamStatus] = mapped_column(Enum(ExamStatus), default=ExamStatus.DRAFT)
     admin_certification_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Question(Base):
@@ -478,6 +490,44 @@ class AssessmentIssue(Base):
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AssessmentTask(Base):
+    __tablename__ = "assessment_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(30), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    marks: Mapped[float] = mapped_column(Float, default=0)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    expected_output_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    grading_config_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AssessmentSubmission(Base):
+    __tablename__ = "assessment_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), index=True)
+    candidate_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    issue_id: Mapped[int | None] = mapped_column(ForeignKey("assessment_issues.id"), nullable=True, index=True)
+    assessment_type: Mapped[str] = mapped_column(String(30), index=True)
+    submitted_data_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    auto_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    manual_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    time_taken_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proctoring_events_json: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class StudentAnswer(Base):

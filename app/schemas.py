@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.models.entities import (
     ApprovalStatus,
+    AssessmentType,
     DocumentType,
     LessonType,
     ModerationStatus,
@@ -189,7 +190,9 @@ class ResourceCreate(BaseModel):
 class ExamCreate(BaseModel):
     course_id: int
     title: str
-    duration_minutes: int = 60
+    assessment_type: AssessmentType = AssessmentType.MCQ
+    instructions: str = ""
+    duration_minutes: int = 25
     timing_mode: str = "question"
     time_per_question_seconds: int | None = 25
     questions_per_attempt: int = 25
@@ -205,6 +208,8 @@ class ExamCreate(BaseModel):
 
 class ExamUpdate(BaseModel):
     title: str | None = None
+    assessment_type: AssessmentType | None = None
+    instructions: str | None = None
     duration_minutes: int | None = None
     timing_mode: str | None = None
     time_per_question_seconds: int | None = None
@@ -246,6 +251,8 @@ class ExamOut(BaseModel):
     id: int
     course_id: int
     title: str
+    assessment_type: str = "mcq"
+    instructions: str = ""
     duration_minutes: int
     timing_mode: str
     time_per_question_seconds: int | None = None
@@ -258,6 +265,36 @@ class ExamOut(BaseModel):
     admin_certification_approved: bool
 
     model_config = {"from_attributes": True}
+
+
+class AssessmentTaskIn(BaseModel):
+    type: AssessmentType
+    title: str
+    description: str = ""
+    instructions: str = ""
+    marks: float = 0
+    metadata: dict[str, Any] = {}
+    expected_output: dict[str, Any] = {}
+    grading_config: dict[str, Any] = {}
+
+
+class AssessmentTaskOut(BaseModel):
+    id: int
+    assessment_id: int
+    type: str
+    title: str
+    description: str
+    instructions: str
+    marks: float
+    metadata: dict[str, Any]
+    expected_output: dict[str, Any]
+    grading_config: dict[str, Any]
+
+
+class AssessmentSubmissionIn(BaseModel):
+    submitted_data: dict[str, Any] = {}
+    time_taken_seconds: int | None = None
+    proctoring_events: list[Any] | dict[str, Any] | None = None
 
 
 class EnrollmentCreate(BaseModel):

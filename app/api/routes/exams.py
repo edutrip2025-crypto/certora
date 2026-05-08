@@ -16,6 +16,9 @@ from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import (
     AssessmentIssue,
+    AssessmentSubmission,
+    AssessmentTask,
+    AssessmentType,
     Course,
     CourseModule,
     Exam,
@@ -28,7 +31,7 @@ from app.models.entities import (
     User,
     UserRole,
 )
-from app.schemas import ExamCreate, ExamOut, ExamRuleUpdate, ExamUpdate, QuestionCreate
+from app.schemas import AssessmentSubmissionIn, AssessmentTaskIn, ExamCreate, ExamOut, ExamRuleUpdate, ExamUpdate, QuestionCreate
 from app.services.ai_review import upsert_ai_review
 from app.services.notifications import send_email
 from app.services.rule_engine import evaluate_exam_rules
@@ -36,6 +39,7 @@ from app.services.rule_engine import evaluate_exam_rules
 router = APIRouter(prefix="/exams", tags=["exams"])
 ALLOWED_QUESTIONS_PER_ATTEMPT = {25, 30, 35, 40}
 ALLOWED_TIME_PER_QUESTION_SECONDS = {25, 30, 35, 40, 45}
+ALLOWED_ASSESSMENT_TYPES = {x.value for x in AssessmentType}
 STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
 ISSUED_TOKEN_ROLE = "issued_candidate"
 
@@ -107,7 +111,10 @@ class IssuedCandidateLoginRequest(BaseModel):
 
 
 class IssuedCandidateSubmitRequest(BaseModel):
-    answers: dict[str, list[int] | int | None]
+    answers: dict[str, list[int] | int | None] = Field(default_factory=dict)
+    submitted_data: dict = Field(default_factory=dict)
+    time_taken_seconds: int | None = None
+    proctoring_events: list | dict | None = None
 
 
 def _create_issued_candidate_token(issue_id: int) -> str:
@@ -158,6 +165,84 @@ def _questions_for_issued_attempt(db: Session, issue: AssessmentIssue, exam: Exa
     return [q for q in questions if q.id in selected_ids]
 
 
+def _task_to_dict(task: AssessmentTask | None, *, include_expected: bool = False) -> dict | None:
+    if not task:
+        return None
+    out = {
+        "id": task.id,
+        "assessment_id": task.assessment_id,
+        "type": task.type,
+        "title": task.title,
+        "description": task.description,
+        "instructions": task.instructions,
+        "marks": task.marks,
+        "metadata": task.metadata_json or {},
+        "grading_config": task.grading_config_json or {},
+    }
+    if include_expected:
+        out["expected_output"] = task.expected_output_json or {}
+    return out
+
+
+def _score_expected_mapping(submitted: dict, expected: dict, total_marks: float) -> tuple[float, dict]:
+    if not expected:
+        return 0.0, {"matched": 0, "total": 0}
+    matched = 0
+    total = 0
+    for key, expected_value in expected.items():
+        total += 1
+        if submitted.get(key) == expected_value:
+            matched += 1
+    score = round((matched / total) * float(total_marks or 0), 2) if total else 0.0
+    return score, {"matched": matched, "total": total}
+
+
+def _score_task_submission(task: AssessmentTask, submitted_data: dict) -> tuple[float | None, str, dict]:
+    total_marks = float(task.marks or 0)
+    expected = task.expected_output_json or {}
+    grading = task.grading_config_json or {}
+    task_type = str(task.type or "")
+    if task_type == AssessmentType.CODING.value:
+        results = submitted_data.get("test_case_results")
+        if isinstance(results, list) and results:
+            passed = sum(1 for r in results if bool(r.get("passed")))
+            score = round((passed / len(results)) * total_marks, 2)
+            return score, "auto_scored", {"passed_tests": passed, "total_tests": len(results)}
+        tests = expected.get("test_cases") if isinstance(expected, dict) else []
+        if isinstance(tests, list) and tests:
+            code = str(submitted_data.get("code") or "")
+            mock_results = []
+            for test in tests:
+                marker = str(test.get("expected_output") or "").strip()
+                passed = bool(marker and marker in code)
+                mock_results.append({"name": test.get("name") or "test", "passed": passed})
+            passed = sum(1 for r in mock_results if r["passed"])
+            score = round((passed / len(mock_results)) * total_marks, 2)
+            return score, "auto_scored", {"mock": True, "test_case_results": mock_results}
+        return 0.0, "auto_scored", {"mock": True, "message": "No test cases configured"}
+    if task_type == AssessmentType.SPREADSHEET.value:
+        final_sheet = submitted_data.get("final_sheet_json") or {}
+        expected_values = expected.get("expected_final_values") or expected.get("values") or {}
+        score, detail = _score_expected_mapping(final_sheet, expected_values, total_marks)
+        return score, "auto_scored", detail
+    if task_type == AssessmentType.TAX_SIMULATOR.value:
+        entered = submitted_data.get("entered_form_values") or {}
+        expected_values = expected.get("expected_form_values") or {}
+        value_score, value_detail = _score_expected_mapping(entered, expected_values, total_marks * 0.65)
+        expected_flags = set(map(str, expected.get("red_flags") or []))
+        submitted_flags = set(map(str, submitted_data.get("identified_red_flags") or []))
+        flag_score = (len(expected_flags & submitted_flags) / len(expected_flags) * total_marks * 0.35) if expected_flags else 0
+        manual_required = bool(grading.get("manual_review_required", True))
+        return round(value_score + flag_score, 2), ("manual_review" if manual_required else "auto_scored"), {
+            "values": value_detail,
+            "red_flags_matched": len(expected_flags & submitted_flags),
+            "red_flags_total": len(expected_flags),
+        }
+    if task_type == AssessmentType.CASE_STUDY.value:
+        return None, "manual_review", {"rubric": grading.get("rubric") or expected.get("rubric") or ""}
+    return None, "manual_review", {"message": "Unsupported assessment task type"}
+
+
 def _safe_send_assessment_issue_email(
     *,
     to_email: str,
@@ -190,6 +275,9 @@ def create_exam(
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
+    assessment_type = str(payload.assessment_type.value if hasattr(payload.assessment_type, "value") else payload.assessment_type)
+    if assessment_type not in ALLOWED_ASSESSMENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid assessment_type")
     if int(payload.course_id or 0) <= 0:
         course = _get_or_create_standalone_course(db, profile)
         payload.course_id = int(course.id)
@@ -197,6 +285,13 @@ def create_exam(
         course = db.get(Course, payload.course_id)
         if not course or course.provider_id != profile.id:
             raise HTTPException(status_code=404, detail="Course not found")
+    if assessment_type != AssessmentType.MCQ.value:
+        payload.timing_mode = "assessment"
+        payload.time_per_question_seconds = None
+        payload.questions_per_attempt = 0
+        payload.negative_marking = False
+        payload.shuffle_questions = False
+        payload.shuffle_options = False
     if payload.timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
     if float(payload.pass_score) < 70:
@@ -210,10 +305,12 @@ def create_exam(
             raise HTTPException(status_code=400, detail="time_per_question_seconds must be one of: 25, 30, 35, 40, 45")
     if payload.timing_mode == "assessment" and payload.duration_minutes <= 0:
         raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
-    if payload.questions_per_attempt not in ALLOWED_QUESTIONS_PER_ATTEMPT:
+    if assessment_type == AssessmentType.MCQ.value and payload.questions_per_attempt not in ALLOWED_QUESTIONS_PER_ATTEMPT:
         raise HTTPException(status_code=400, detail="questions_per_attempt must be one of: 25, 30, 35, 40")
     try:
-        exam = Exam(**payload.model_dump())
+        data = payload.model_dump()
+        data["assessment_type"] = assessment_type
+        exam = Exam(**data)
         db.add(exam)
         db.flush()
         db.add(ExamRule(exam_id=exam.id))
@@ -237,11 +334,25 @@ def update_exam(
         raise HTTPException(status_code=400, detail="Published exam cannot be edited")
 
     data = payload.model_dump(exclude_unset=True)
+    if "assessment_type" in data and data["assessment_type"] is not None:
+        data["assessment_type"] = str(data["assessment_type"].value if hasattr(data["assessment_type"], "value") else data["assessment_type"])
+        if data["assessment_type"] not in ALLOWED_ASSESSMENT_TYPES:
+            raise HTTPException(status_code=400, detail="Invalid assessment_type")
+    effective_type = data.get("assessment_type", exam.assessment_type or AssessmentType.MCQ.value)
     timing_mode = data.get("timing_mode", exam.timing_mode)
     duration_minutes = data.get("duration_minutes", exam.duration_minutes)
     time_per_question_seconds = data.get("time_per_question_seconds", exam.time_per_question_seconds)
     questions_per_attempt = data.get("questions_per_attempt", exam.questions_per_attempt)
 
+    if effective_type != AssessmentType.MCQ.value:
+        data["timing_mode"] = "assessment"
+        data["time_per_question_seconds"] = None
+        data["questions_per_attempt"] = 0
+        data["negative_marking"] = False
+        data["shuffle_questions"] = False
+        data["shuffle_options"] = False
+        timing_mode = "assessment"
+        questions_per_attempt = 0
     if timing_mode not in {"assessment", "question"}:
         raise HTTPException(status_code=400, detail="timing_mode must be 'assessment' or 'question'")
     pass_score = data.get("pass_score", exam.pass_score)
@@ -257,7 +368,7 @@ def update_exam(
             raise HTTPException(status_code=400, detail="time_per_question_seconds is required for question timing mode")
         if int(time_per_question_seconds) not in ALLOWED_TIME_PER_QUESTION_SECONDS:
             raise HTTPException(status_code=400, detail="time_per_question_seconds must be one of: 25, 30, 35, 40, 45")
-    if questions_per_attempt is not None and int(questions_per_attempt) not in ALLOWED_QUESTIONS_PER_ATTEMPT:
+    if effective_type == AssessmentType.MCQ.value and questions_per_attempt is not None and int(questions_per_attempt) not in ALLOWED_QUESTIONS_PER_ATTEMPT:
         raise HTTPException(status_code=400, detail="questions_per_attempt must be one of: 25, 30, 35, 40")
 
     try:
@@ -452,6 +563,65 @@ def delete_question(
     return {"deleted": True, "question_id": question_id}
 
 
+@router.put("/{exam_id}/task")
+def upsert_assessment_task(
+    exam_id: int,
+    payload: AssessmentTaskIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
+    if exam.status == ExamStatus.PUBLISHED:
+        raise HTTPException(status_code=400, detail="Published assessment cannot be edited")
+    task_type = str(payload.type.value if hasattr(payload.type, "value") else payload.type)
+    if task_type == AssessmentType.MCQ.value:
+        raise HTTPException(status_code=400, detail="MCQ assessments use the question builder")
+    if task_type != str(exam.assessment_type or AssessmentType.MCQ.value):
+        raise HTTPException(status_code=400, detail="Task type must match assessment type")
+    title = str(payload.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Task title is required")
+    if float(payload.marks or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Task marks must be greater than 0")
+    task = db.scalar(select(AssessmentTask).where(AssessmentTask.assessment_id == exam.id))
+    if not task:
+        task = AssessmentTask(assessment_id=exam.id, type=task_type, title=title)
+    task.type = task_type
+    task.title = title
+    task.description = payload.description or ""
+    task.instructions = payload.instructions or ""
+    task.marks = float(payload.marks or 0)
+    task.metadata_json = payload.metadata or {}
+    task.expected_output_json = payload.expected_output or {}
+    task.grading_config_json = payload.grading_config or {}
+    exam.total_marks = float(payload.marks or 0)
+    db.add(task)
+    db.add(exam)
+    db.commit()
+    db.refresh(task)
+    return _task_to_dict(task, include_expected=True)
+
+
+@router.get("/{exam_id}/task")
+def get_assessment_task(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
+):
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    if current_user.role == UserRole.PROVIDER:
+        profile = _provider_profile_or_404(db, current_user.id)
+        course = db.get(Course, exam.course_id)
+        if not course or course.provider_id != profile.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    task = db.scalar(select(AssessmentTask).where(AssessmentTask.assessment_id == exam.id))
+    if not task:
+        raise HTTPException(status_code=404, detail="Assessment task not found")
+    return _task_to_dict(task, include_expected=True)
+
+
 @router.post("/{exam_id}/ai-review/request")
 def request_ai_review(
     exam_id: int,
@@ -519,19 +689,28 @@ def publish_exam(
 
     if settings.enable_ai_review:
         upsert_ai_review(db, exam)
-    total_questions = db.scalar(select(func.count(Question.id)).where(Question.exam_id == exam.id)) or 0
-    if total_questions <= 0:
-        raise HTTPException(status_code=400, detail="At least one question is required")
-    if exam.questions_per_attempt and exam.questions_per_attempt > total_questions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"questions_per_attempt ({exam.questions_per_attempt}) cannot exceed total questions ({total_questions})",
-        )
-    check = evaluate_exam_rules(db, exam)
-    if not check.approved:
-        exam.status = ExamStatus.REJECTED
-        db.commit()
-        raise HTTPException(status_code=400, detail={"message": "Rule check failed", "reasons": check.reasons})
+    assessment_type = str(exam.assessment_type or AssessmentType.MCQ.value)
+    if assessment_type == AssessmentType.MCQ.value:
+        total_questions = db.scalar(select(func.count(Question.id)).where(Question.exam_id == exam.id)) or 0
+        if total_questions <= 0:
+            raise HTTPException(status_code=400, detail="At least one question is required")
+        if exam.questions_per_attempt and exam.questions_per_attempt > total_questions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"questions_per_attempt ({exam.questions_per_attempt}) cannot exceed total questions ({total_questions})",
+            )
+        check = evaluate_exam_rules(db, exam)
+        if not check.approved:
+            exam.status = ExamStatus.REJECTED
+            db.commit()
+            raise HTTPException(status_code=400, detail={"message": "Rule check failed", "reasons": check.reasons})
+    else:
+        task = db.scalar(select(AssessmentTask).where(AssessmentTask.assessment_id == exam.id))
+        if not task:
+            raise HTTPException(status_code=400, detail="Assessment task is required before publishing")
+        if float(task.marks or 0) <= 0:
+            raise HTTPException(status_code=400, detail="Assessment task marks must be greater than 0")
+        exam.total_marks = float(task.marks or 0)
 
     exam.status = ExamStatus.PUBLISHED
     db.commit()
@@ -717,12 +896,15 @@ def list_published_assessment_catalog(
                 "exam_id": exam.id,
                 "internal_id": _internal_assessment_id(exam.id),
                 "title": exam.title,
+                "assessment_type": exam.assessment_type or AssessmentType.MCQ.value,
+                "instructions": exam.instructions or "",
                 "duration_minutes": exam.duration_minutes,
                 "timing_mode": getattr(exam, "timing_mode", None),
                 "time_per_question_seconds": getattr(exam, "time_per_question_seconds", None),
                 "pass_score": exam.pass_score,
                 "questions_per_attempt": exam.questions_per_attempt,
                 "question_count": question_count,
+                "total_marks": exam.total_marks,
                 "issued_count": issued_counts.get(int(exam.id), 0),
                 "taken_count": taken_counts.get(int(exam.id), 0),
             },
@@ -792,9 +974,11 @@ def issued_candidate_get_assessment(
     exam = db.get(Exam, issue.exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    if issue.status == "completed":
+    if issue.status in {"completed", "manual_review"}:
         return {"status": "completed", "score_pct": issue.score_pct, "passed": issue.passed}
-    questions = _questions_for_issued_attempt(db, issue, exam)
+    assessment_type = str(exam.assessment_type or AssessmentType.MCQ.value)
+    task = db.scalar(select(AssessmentTask).where(AssessmentTask.assessment_id == exam.id)) if assessment_type != AssessmentType.MCQ.value else None
+    questions = _questions_for_issued_attempt(db, issue, exam) if assessment_type == AssessmentType.MCQ.value else []
     payload_questions = []
     for q in questions:
         opts = list(db.scalars(select(Option).where(Option.question_id == q.id).order_by(Option.position.asc(), Option.id.asc())).all())
@@ -811,11 +995,15 @@ def issued_candidate_get_assessment(
         "issued_id": issue.id,
         "candidate_name": issue.candidate_name,
         "assessment_title": exam.title,
+        "assessment_type": assessment_type,
+        "instructions": exam.instructions or "",
         "duration_minutes": exam.duration_minutes,
         "timing_mode": exam.timing_mode,
         "time_per_question_seconds": exam.time_per_question_seconds,
         "questions_per_attempt": exam.questions_per_attempt,
         "pass_score": exam.pass_score,
+        "total_marks": exam.total_marks,
+        "task": _task_to_dict(task, include_expected=False),
         "questions": payload_questions,
     }
 
@@ -833,11 +1021,59 @@ def issued_candidate_submit(
     issue = db.get(AssessmentIssue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Issued assessment not found")
-    if issue.status == "completed":
+    if issue.status in {"completed", "manual_review"}:
         raise HTTPException(status_code=409, detail="Assessment already submitted")
     exam = db.get(Exam, issue.exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    assessment_type = str(exam.assessment_type or AssessmentType.MCQ.value)
+    submitted_at = datetime.now(timezone.utc)
+    if assessment_type != AssessmentType.MCQ.value:
+        task = db.scalar(select(AssessmentTask).where(AssessmentTask.assessment_id == exam.id))
+        if not task:
+            raise HTTPException(status_code=400, detail="Assessment task is missing")
+        submitted_data = payload.submitted_data or {}
+        auto_score, submission_status, score_detail = _score_task_submission(task, submitted_data)
+        score_pct = round((float(auto_score or 0) / float(task.marks or 1)) * 100.0, 2) if auto_score is not None and float(task.marks or 0) > 0 else None
+        passed = bool(score_pct is not None and score_pct >= float(exam.pass_score or 70)) if submission_status != "manual_review" else None
+        submission = AssessmentSubmission(
+            assessment_id=exam.id,
+            candidate_id=issue.candidate_user_id,
+            issue_id=issue.id,
+            assessment_type=assessment_type,
+            submitted_data_json=submitted_data,
+            score=auto_score,
+            auto_score=auto_score,
+            manual_score=None,
+            status=submission_status,
+            started_at=issue.started_at,
+            submitted_at=submitted_at,
+            time_taken_seconds=payload.time_taken_seconds,
+            proctoring_events_json=payload.proctoring_events,
+        )
+        db.add(submission)
+        issue.status = "completed" if submission_status != "manual_review" else "manual_review"
+        issue.score_pct = score_pct
+        issue.passed = passed
+        issue.completed_at = submitted_at
+        issue.result_json = {
+            "assessment_type": assessment_type,
+            "score": auto_score,
+            "score_pct": score_pct,
+            "status": submission_status,
+            "detail": score_detail,
+        }
+        db.add(issue)
+        db.commit()
+        return {
+            "status": issue.status,
+            "score_pct": score_pct,
+            "passed": passed,
+            "score": auto_score,
+            "manual_review": submission_status == "manual_review",
+            "detail": score_detail,
+        }
 
     questions = _questions_for_issued_attempt(db, issue, exam)
     if not questions:
@@ -866,8 +1102,24 @@ def issued_candidate_submit(
     issue.status = "completed"
     issue.score_pct = percentage
     issue.passed = passed
-    issue.completed_at = datetime.now(timezone.utc)
+    issue.completed_at = submitted_at
     issue.result_json = {"correct_count": correct_count, "question_count": len(questions), "awarded_marks": awarded_marks, "total_marks": total_marks}
+    db.add(
+        AssessmentSubmission(
+            assessment_id=exam.id,
+            candidate_id=issue.candidate_user_id,
+            issue_id=issue.id,
+            assessment_type=assessment_type,
+            submitted_data_json={"answers": payload.answers or {}},
+            score=awarded_marks,
+            auto_score=awarded_marks,
+            status="auto_scored",
+            started_at=issue.started_at,
+            submitted_at=submitted_at,
+            time_taken_seconds=payload.time_taken_seconds,
+            proctoring_events_json=payload.proctoring_events,
+        ),
+    )
     db.add(issue)
     db.commit()
 

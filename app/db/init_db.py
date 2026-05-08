@@ -225,6 +225,8 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
 
 
 def _migrate_exam_schema_sqlite(conn) -> None:
+    _sqlite_add_column_if_missing(conn, "exams", "assessment_type", "TEXT DEFAULT 'mcq'")
+    _sqlite_add_column_if_missing(conn, "exams", "instructions", "TEXT DEFAULT ''")
     _sqlite_add_column_if_missing(conn, "exams", "timing_mode", "TEXT DEFAULT 'assessment'")
     _sqlite_add_column_if_missing(conn, "exams", "time_per_question_seconds", "INTEGER")
     _sqlite_add_column_if_missing(conn, "exams", "questions_per_attempt", "INTEGER DEFAULT 0")
@@ -235,6 +237,8 @@ def _migrate_exam_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "exams", "certificate_enabled", "BOOLEAN DEFAULT 1")
     _sqlite_add_column_if_missing(conn, "exams", "status", "TEXT DEFAULT 'draft'")
     _sqlite_add_column_if_missing(conn, "exams", "admin_certification_approved", "BOOLEAN DEFAULT 0")
+    _sqlite_add_column_if_missing(conn, "exams", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    _sqlite_add_column_if_missing(conn, "exams", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
 
     _sqlite_add_column_if_missing(conn, "exam_attempts", "assigned_question_ids", "JSON")
 
@@ -254,10 +258,62 @@ def _migrate_exam_schema_sqlite(conn) -> None:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_assessment_issues_access_key ON assessment_issues (access_key)"))
     except Exception:
         pass
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS assessment_tasks (
+                id INTEGER NOT NULL PRIMARY KEY,
+                assessment_id INTEGER NOT NULL UNIQUE REFERENCES exams(id),
+                type VARCHAR(30) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT DEFAULT '',
+                instructions TEXT DEFAULT '',
+                marks FLOAT DEFAULT 0,
+                metadata_json JSON DEFAULT '{}',
+                expected_output_json JSON DEFAULT '{}',
+                grading_config_json JSON DEFAULT '{}',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        ),
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_tasks_assessment_id ON assessment_tasks (assessment_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_tasks_type ON assessment_tasks (type)"))
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS assessment_submissions (
+                id INTEGER NOT NULL PRIMARY KEY,
+                assessment_id INTEGER NOT NULL REFERENCES exams(id),
+                candidate_id INTEGER REFERENCES users(id),
+                issue_id INTEGER REFERENCES assessment_issues(id),
+                assessment_type VARCHAR(30) NOT NULL,
+                submitted_data_json JSON DEFAULT '{}',
+                score FLOAT,
+                auto_score FLOAT,
+                manual_score FLOAT,
+                status VARCHAR(30) DEFAULT 'submitted',
+                started_at DATETIME,
+                submitted_at DATETIME,
+                time_taken_seconds INTEGER,
+                proctoring_events_json JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        ),
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_submissions_assessment_id ON assessment_submissions (assessment_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_submissions_candidate_id ON assessment_submissions (candidate_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_submissions_issue_id ON assessment_submissions (issue_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assessment_submissions_assessment_type ON assessment_submissions (assessment_type)"))
 
 
 def _migrate_exam_schema_postgres(conn) -> None:
     statements = [
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS assessment_type VARCHAR(30) DEFAULT 'mcq'",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS instructions TEXT DEFAULT ''",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS timing_mode VARCHAR(20) DEFAULT 'assessment'",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS time_per_question_seconds INTEGER",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS questions_per_attempt INTEGER DEFAULT 0",
@@ -268,6 +324,8 @@ def _migrate_exam_schema_postgres(conn) -> None:
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS certificate_enabled BOOLEAN DEFAULT TRUE",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft'",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS admin_certification_approved BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE exam_attempts ADD COLUMN IF NOT EXISTS assigned_question_ids JSON",
         "ALTER TABLE questions ADD COLUMN IF NOT EXISTS negative_marks FLOAT DEFAULT 0",
         "ALTER TABLE questions ADD COLUMN IF NOT EXISTS difficulty_tag VARCHAR(20)",
@@ -281,6 +339,48 @@ def _migrate_exam_schema_postgres(conn) -> None:
         "ALTER TABLE assessment_issues ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMPTZ",
         "ALTER TABLE assessment_issues ADD COLUMN IF NOT EXISTS credential_used_at TIMESTAMPTZ",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_assessment_issues_access_key ON assessment_issues(access_key)",
+        """
+        CREATE TABLE IF NOT EXISTS assessment_tasks (
+            id BIGSERIAL PRIMARY KEY,
+            assessment_id BIGINT NOT NULL UNIQUE REFERENCES exams(id),
+            type VARCHAR(30) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT DEFAULT '',
+            instructions TEXT DEFAULT '',
+            marks FLOAT DEFAULT 0,
+            metadata_json JSON DEFAULT '{}'::json,
+            expected_output_json JSON DEFAULT '{}'::json,
+            grading_config_json JSON DEFAULT '{}'::json,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_assessment_tasks_assessment_id ON assessment_tasks(assessment_id)",
+        "CREATE INDEX IF NOT EXISTS ix_assessment_tasks_type ON assessment_tasks(type)",
+        """
+        CREATE TABLE IF NOT EXISTS assessment_submissions (
+            id BIGSERIAL PRIMARY KEY,
+            assessment_id BIGINT NOT NULL REFERENCES exams(id),
+            candidate_id BIGINT REFERENCES users(id),
+            issue_id BIGINT REFERENCES assessment_issues(id),
+            assessment_type VARCHAR(30) NOT NULL,
+            submitted_data_json JSON DEFAULT '{}'::json,
+            score FLOAT,
+            auto_score FLOAT,
+            manual_score FLOAT,
+            status VARCHAR(30) DEFAULT 'submitted',
+            started_at TIMESTAMPTZ,
+            submitted_at TIMESTAMPTZ,
+            time_taken_seconds INTEGER,
+            proctoring_events_json JSON,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_assessment_submissions_assessment_id ON assessment_submissions(assessment_id)",
+        "CREATE INDEX IF NOT EXISTS ix_assessment_submissions_candidate_id ON assessment_submissions(candidate_id)",
+        "CREATE INDEX IF NOT EXISTS ix_assessment_submissions_issue_id ON assessment_submissions(issue_id)",
+        "CREATE INDEX IF NOT EXISTS ix_assessment_submissions_assessment_type ON assessment_submissions(assessment_type)",
     ]
     for stmt in statements:
         try:

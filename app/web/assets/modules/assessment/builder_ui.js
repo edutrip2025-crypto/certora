@@ -15,6 +15,8 @@
 }) {
   const STEP2_REQUIRED_TEXT_FIELDS = [
     "abTitle",
+    "abAssessmentType",
+    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",
@@ -99,9 +101,21 @@
       showStep2Error("");
       clearStep2InvalidStyles();
       const title = $("abTitle")?.value?.trim() || "";
+      const assessmentType = $("abAssessmentType")?.value || "mcq";
       if (!title) {
         markFieldInvalid("abTitle", true);
         showStep2Error("Assessment title is required.");
+        return false;
+      }
+      if (!["mcq", "coding", "spreadsheet", "tax_simulator", "case_study"].includes(assessmentType)) {
+        markFieldInvalid("abAssessmentType", true);
+        showStep2Error("Assessment type is required.");
+        return false;
+      }
+      const passScore = Number($("abPassScore")?.value || 0);
+      if (!Number.isFinite(passScore) || passScore < 70 || passScore > 100) {
+        markFieldInvalid("abPassScore", true);
+        showStep2Error("Passing score must be between 70 and 100.");
         return false;
       }
       const maxAttempts = Number($("abMaxAttempts")?.value);
@@ -111,12 +125,12 @@
         showStep2Error("Max attempts must be between 1 and 3.");
         return false;
       }
-      if (![25, 30, 35, 40].includes(questionsPerAttempt)) {
+      if (assessmentType === "mcq" && ![25, 30, 35, 40].includes(questionsPerAttempt)) {
         markFieldInvalid("abQuestionsPerAttempt", true);
         showStep2Error("Questions shown to student must be one of 25, 30, 35, or 40.");
         return false;
       }
-      const timingMode = $("abTimingMode")?.value || "question";
+      const timingMode = assessmentType === "mcq" ? ($("abTimingMode")?.value || "question") : "assessment";
       if (timingMode === "assessment") {
         const mins = Number($("abDurationMinutes")?.value || 0);
         if (![25, 30, 35, 40, 45].includes(mins)) {
@@ -124,7 +138,7 @@
           showStep2Error("Assessment duration must be 25, 30, 35, 40, or 45 minutes.");
           return false;
         }
-      } else {
+      } else if (assessmentType === "mcq") {
         const perQ = Number($("abTimePerQuestionSeconds")?.value);
         if (![25, 30, 35, 40, 45].includes(perQ)) {
           markFieldInvalid("abTimePerQuestionSeconds", true);

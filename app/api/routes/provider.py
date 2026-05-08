@@ -21,6 +21,7 @@ from app.models.entities import (
     CourseFeedback,
     Enrollment,
     Exam,
+    AssessmentTask,
     Lesson,
     LessonTopic,
     LiveClassMessage,
@@ -1072,10 +1073,16 @@ def provider_assessments(
             select(Question.exam_id, func.count(Question.id)).group_by(Question.exam_id),
         ).all()
     }
+    task_by_exam = {
+        task.assessment_id: task
+        for task in db.scalars(select(AssessmentTask).where(AssessmentTask.assessment_id.in_([exam.id for exam, _ in rows]))).all()
+    } if rows else {}
     return [
         {
             "exam_id": exam.id,
             "title": exam.title,
+            "assessment_type": exam.assessment_type or "mcq",
+            "instructions": exam.instructions or "",
             "course_id": course.id,
             "course_title": ("Standalone Assessment" if str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY else course.title),
             "is_standalone": bool(str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY),
@@ -1090,7 +1097,22 @@ def provider_assessments(
             "duration_minutes": exam.duration_minutes,
             "time_per_question_seconds": exam.time_per_question_seconds,
             "questions_per_attempt": exam.questions_per_attempt,
+            "total_marks": exam.total_marks,
             "question_count": int(question_counts.get(exam.id, 0)),
+            "task": (
+                {
+                    "id": task_by_exam[exam.id].id,
+                    "type": task_by_exam[exam.id].type,
+                    "title": task_by_exam[exam.id].title,
+                    "description": task_by_exam[exam.id].description,
+                    "instructions": task_by_exam[exam.id].instructions,
+                    "marks": task_by_exam[exam.id].marks,
+                    "metadata": task_by_exam[exam.id].metadata_json or {},
+                    "expected_output": task_by_exam[exam.id].expected_output_json or {},
+                    "grading_config": task_by_exam[exam.id].grading_config_json or {},
+                }
+                if exam.id in task_by_exam else None
+            ),
         }
         for exam, course in rows
     ]

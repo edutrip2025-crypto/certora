@@ -96,6 +96,7 @@ const state = {
   studentViewerOriginalNextSibling: null,
   videoDurationByUrl: {},
   assessmentDraftQuestions: [],
+  assessmentDraftTask: null,
   assessmentEditingExamId: null,
   assessmentQuestionDefaultMarks: null,
   assessmentQuestionDefaultNegativeMarks: null,
@@ -108,6 +109,9 @@ const state = {
   issuedCandidateToken: "",
   issuedAccessKey: "",
   issuedCandidateAssessment: null,
+  issuedAssessmentStartedAt: 0,
+  issuedAssessmentTimerId: null,
+  issuedAssessmentSubmitted: false,
   assessmentPreview: {
     mode: "preview",
     attemptId: null,
@@ -1362,6 +1366,15 @@ const el = {
   providerDraftsList: $("providerDraftsList"),
   providerAssessmentsList: $("providerAssessmentsList"),
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
+  abAssessmentType: $("abAssessmentType"),
+  abInstructions: $("abInstructions"),
+  abPassScore: $("abPassScore"),
+  abMcqContentPanel: $("abMcqContentPanel"),
+  abTaskContentPanel: $("abTaskContentPanel"),
+  abTaskTitle: $("abTaskTitle"),
+  abTaskMarks: $("abTaskMarks"),
+  abTaskDescription: $("abTaskDescription"),
+  abTaskInstructions: $("abTaskInstructions"),
   assessmentCatalogList: $("assessmentCatalogList"),
   assessmentCatalogSearch: $("assessmentCatalogSearch"),
   assessmentCatalogDuration: $("assessmentCatalogDuration"),
@@ -6016,6 +6029,9 @@ function persistAssessmentBuilderCache() {
       courseFilter: $("abCourseFilter")?.value || "all",
       courseSelect: $("abCourseSelect")?.value || "",
       title: $("abTitle")?.value || "",
+      assessmentType: $("abAssessmentType")?.value || "mcq",
+      instructions: $("abInstructions")?.value || "",
+      passScore: $("abPassScore")?.value || "70",
       maxAttempts: $("abMaxAttempts")?.value || "",
       questionsPerAttempt: $("abQuestionsPerAttempt")?.value || "",
       negativeMarking: Boolean($("abNegativeMarking")?.checked),
@@ -6038,6 +6054,7 @@ function persistAssessmentBuilderCache() {
         .map((n, idx) => (n.checked ? idx : -1))
         .filter((idx) => idx >= 0),
       questions: state.assessmentDraftQuestions || [],
+      task: buildPersistedAssessmentTaskSnapshot(),
       questionDefaultMarks: state.assessmentQuestionDefaultMarks,
       questionDefaultNegativeMarks: state.assessmentQuestionDefaultNegativeMarks,
       editingExamId: state.assessmentEditingExamId ? Number(state.assessmentEditingExamId) : null,
@@ -6065,6 +6082,8 @@ function tryRestoreAssessmentBuilderCache() {
     const hasFormState = Boolean(
       String(payload.title || "").trim()
       || String(payload.maxAttempts || "").trim()
+      || String(payload.instructions || "").trim()
+      || String(payload.passScore || "").trim()
       || String(payload.questionsPerAttempt || "").trim()
       || String(payload.durationMinutes || "").trim()
       || String(payload.timePerQuestionSeconds || "").trim()
@@ -6081,6 +6100,9 @@ function tryRestoreAssessmentBuilderCache() {
     renderAssessmentCourseOptions();
     $("abCourseSelect").value = String(payload.courseSelect || "");
     $("abTitle").value = String(payload.title || "");
+    $("abAssessmentType").value = String(payload.assessmentType || "mcq");
+    $("abInstructions").value = String(payload.instructions || "");
+    $("abPassScore").value = String(payload.passScore || "70");
     $("abMaxAttempts").value = String(payload.maxAttempts || "");
     $("abQuestionsPerAttempt").value = String(payload.questionsPerAttempt || "");
     $("abNegativeMarking").checked = Boolean(payload.negativeMarking);
@@ -6110,7 +6132,9 @@ function tryRestoreAssessmentBuilderCache() {
       ? Number(payload.questionDefaultNegativeMarks)
       : null;
     state.assessmentDraftQuestions = payload.questions;
+    restoreAssessmentTaskSnapshot(payload.task || {});
     applyAssessmentTimingMode();
+    applyAssessmentTypeUi();
     applyAssessmentNegativeMarkingUi();
     updateAssessmentSourceMeta();
     renderAssessmentPool();
@@ -6130,12 +6154,16 @@ function applyAssessmentNegativeMarkingUi() {
 function resetAssessmentBuilder() {
   state.assessmentEditingExamId = null;
   state.assessmentDraftQuestions = [];
+  state.assessmentDraftTask = null;
   state.assessmentQuestionDefaultMarks = null;
   state.assessmentQuestionDefaultNegativeMarks = null;
   $("abCourseFilter").value = "active";
   $("abCourseSelect").value = "";
   $("abCourseMeta").textContent = "No course selected.";
   $("abTitle").value = "";
+  $("abAssessmentType").value = "mcq";
+  $("abInstructions").value = "";
+  $("abPassScore").value = "70";
   $("abMaxAttempts").value = "3";
   $("abQuestionsPerAttempt").value = "25";
   $("abNegativeMarking").checked = false;
@@ -6150,6 +6178,7 @@ function resetAssessmentBuilder() {
   $("abQuestionText").value = "";
   $("abQuestionMarks").value = "";
   $("abQuestionNegativeMarks").value = "";
+  resetAssessmentTaskFields();
   $("abCourseSelect").disabled = false;
   $("abCourseFilter").disabled = false;
   ["abOption1", "abOption2", "abOption3", "abOption4"].forEach((id) => {
@@ -6162,6 +6191,7 @@ function resetAssessmentBuilder() {
   renderAssessmentPool();
   renderAssessmentCourseOptions();
   applyAssessmentTimingMode();
+  applyAssessmentTypeUi();
   applyAssessmentNegativeMarkingUi();
   const title = $("assessmentBuilderScreen")?.querySelector("h2");
   if (title) title.textContent = "Assessment Builder";
@@ -6190,16 +6220,247 @@ function updateAssessmentSourceMeta() {
 
 function applyAssessmentTimingMode() {
   const mode = $("abTimingMode")?.value || "question";
+  const type = $("abAssessmentType")?.value || "mcq";
   const durationField = $("abDurationMinutes");
   const perQuestionField = $("abTimePerQuestionSeconds");
   const durationWrap = durationField?.closest?.(".ab-field-wrap");
   const perQuestionWrap = perQuestionField?.closest?.(".ab-field-wrap");
-  durationWrap?.classList.toggle("hidden", mode !== "assessment");
-  perQuestionWrap?.classList.toggle("hidden", mode !== "question");
+  durationWrap?.classList.toggle("hidden", type === "mcq" && mode !== "assessment");
+  perQuestionWrap?.classList.toggle("hidden", type !== "mcq" || mode !== "question");
 }
 
 function renderAssessmentPool() {
   return assessmentBuilderUi.renderAssessmentPool();
+}
+
+function applyAssessmentTypeUi() {
+  const type = $("abAssessmentType")?.value || "mcq";
+  const isMcq = type === "mcq";
+  document.querySelectorAll(".ab-mcq-only").forEach((node) => node.classList.toggle("hidden", !isMcq));
+  document.querySelectorAll("[data-ab-type-card]").forEach((node) => {
+    node.classList.toggle("active", String(node.getAttribute("data-ab-type-card") || "") === type);
+  });
+  el.abMcqContentPanel?.classList.toggle("hidden", !isMcq);
+  el.abTaskContentPanel?.classList.toggle("hidden", isMcq);
+  ["abCodingFields", "abSpreadsheetFields", "abTaxFields", "abCaseFields"].forEach((id) => $(id)?.classList.add("hidden"));
+  if (type === "coding") $("abCodingFields")?.classList.remove("hidden");
+  if (type === "spreadsheet") $("abSpreadsheetFields")?.classList.remove("hidden");
+  if (type === "tax_simulator") $("abTaxFields")?.classList.remove("hidden");
+  if (type === "case_study") $("abCaseFields")?.classList.remove("hidden");
+  if (!isMcq && $("abTimingMode")) $("abTimingMode").value = "assessment";
+  applyAssessmentTimingMode();
+}
+
+function parseJsonField(id, fallback) {
+  const raw = String($(id)?.value || "").trim();
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`${id} must contain valid JSON`);
+  }
+}
+
+function linesField(id) {
+  return String($(id)?.value || "")
+    .split(/\r?\n|,/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function buildTaskFromAssessmentForm() {
+  const type = $("abAssessmentType")?.value || "mcq";
+  const title = String(el.abTaskTitle?.value || "").trim();
+  const description = String(el.abTaskDescription?.value || "").trim();
+  const instructions = String(el.abTaskInstructions?.value || "").trim();
+  const marks = Number(el.abTaskMarks?.value || 0);
+  if (!title) throw new Error("Task title is required");
+  if (!description) throw new Error("Task description is required");
+  if (!Number.isFinite(marks) || marks <= 0) throw new Error("Task marks must be greater than 0");
+  const task = {
+    type,
+    title,
+    description,
+    instructions,
+    marks,
+    metadata: {},
+    expected_output: {},
+    grading_config: {},
+  };
+  if (type === "coding") {
+    const visible = parseJsonField("abVisibleTests", []);
+    const hidden = parseJsonField("abHiddenTests", []);
+    task.metadata = {
+      allowed_languages: linesField("abCodingLanguages"),
+      starter_code: String($("abStarterCode")?.value || ""),
+      visible_test_cases: visible,
+    };
+    task.expected_output = { test_cases: [...(Array.isArray(visible) ? visible : []), ...(Array.isArray(hidden) ? hidden : [])] };
+    task.grading_config = { auto_grading_enabled: Boolean($("abTaskAutoGrading")?.checked) };
+  } else if (type === "spreadsheet") {
+    task.metadata = {
+      initial_spreadsheet_data: parseJsonField("abInitialSheet", {}),
+      locked_cells: linesField("abLockedCells"),
+    };
+    task.expected_output = {
+      expected_final_values: parseJsonField("abExpectedValues", {}),
+      expected_formulas: parseJsonField("abExpectedFormulas", {}),
+    };
+    task.grading_config = { auto_grading_enabled: Boolean($("abSpreadsheetAutoGrading")?.checked) };
+  } else if (type === "tax_simulator") {
+    task.metadata = {
+      client_scenario: String($("abClientScenario")?.value || ""),
+      tax_year: String($("abTaxYear")?.value || ""),
+      client_documents: linesField("abClientDocuments"),
+      required_simulated_forms: linesField("abRequiredForms"),
+      scenario_facts: String($("abScenarioFacts")?.value || ""),
+      compliance_checks: linesField("abComplianceChecks"),
+    };
+    task.expected_output = {
+      expected_form_values: parseJsonField("abExpectedFormValues", {}),
+      red_flags: linesField("abRedFlags"),
+    };
+    task.grading_config = { manual_review_required: Boolean($("abTaxManualReview")?.checked) };
+  } else if (type === "case_study") {
+    task.metadata = {
+      case_prompt: String($("abCasePrompt")?.value || description),
+      allowed_file_types: linesField("abAllowedFileTypes"),
+      max_file_size_mb: Number($("abMaxFileSize")?.value || 10),
+    };
+    task.expected_output = { rubric: String($("abRubric")?.value || "") };
+    task.grading_config = { manual_review_required: Boolean($("abCaseManualReview")?.checked), rubric: String($("abRubric")?.value || "") };
+  }
+  return task;
+}
+
+function buildPersistedAssessmentTaskSnapshot() {
+  return {
+    taskTitle: $("abTaskTitle")?.value || "",
+    taskMarks: $("abTaskMarks")?.value || "",
+    taskDescription: $("abTaskDescription")?.value || "",
+    taskInstructions: $("abTaskInstructions")?.value || "",
+    codingLanguages: $("abCodingLanguages")?.value || "",
+    starterCode: $("abStarterCode")?.value || "",
+    visibleTests: $("abVisibleTests")?.value || "",
+    hiddenTests: $("abHiddenTests")?.value || "",
+    taskAutoGrading: Boolean($("abTaskAutoGrading")?.checked),
+    initialSheet: $("abInitialSheet")?.value || "",
+    expectedValues: $("abExpectedValues")?.value || "",
+    expectedFormulas: $("abExpectedFormulas")?.value || "",
+    lockedCells: $("abLockedCells")?.value || "",
+    spreadsheetAutoGrading: Boolean($("abSpreadsheetAutoGrading")?.checked),
+    clientScenario: $("abClientScenario")?.value || "",
+    taxYear: $("abTaxYear")?.value || "",
+    clientDocuments: $("abClientDocuments")?.value || "",
+    requiredForms: $("abRequiredForms")?.value || "",
+    scenarioFacts: $("abScenarioFacts")?.value || "",
+    expectedFormValues: $("abExpectedFormValues")?.value || "",
+    complianceChecks: $("abComplianceChecks")?.value || "",
+    redFlags: $("abRedFlags")?.value || "",
+    taxManualReview: Boolean($("abTaxManualReview")?.checked),
+    casePrompt: $("abCasePrompt")?.value || "",
+    allowedFileTypes: $("abAllowedFileTypes")?.value || "",
+    maxFileSize: $("abMaxFileSize")?.value || "",
+    rubric: $("abRubric")?.value || "",
+    caseManualReview: Boolean($("abCaseManualReview")?.checked),
+  };
+}
+
+function restoreAssessmentTaskSnapshot(t = {}) {
+  Object.entries({
+    abTaskTitle: t.taskTitle,
+    abTaskMarks: t.taskMarks,
+    abTaskDescription: t.taskDescription,
+    abTaskInstructions: t.taskInstructions,
+    abCodingLanguages: t.codingLanguages,
+    abStarterCode: t.starterCode,
+    abVisibleTests: t.visibleTests,
+    abHiddenTests: t.hiddenTests,
+    abInitialSheet: t.initialSheet,
+    abExpectedValues: t.expectedValues,
+    abExpectedFormulas: t.expectedFormulas,
+    abLockedCells: t.lockedCells,
+    abClientScenario: t.clientScenario,
+    abTaxYear: t.taxYear,
+    abClientDocuments: t.clientDocuments,
+    abRequiredForms: t.requiredForms,
+    abScenarioFacts: t.scenarioFacts,
+    abExpectedFormValues: t.expectedFormValues,
+    abComplianceChecks: t.complianceChecks,
+    abRedFlags: t.redFlags,
+    abCasePrompt: t.casePrompt,
+    abAllowedFileTypes: t.allowedFileTypes,
+    abMaxFileSize: t.maxFileSize,
+    abRubric: t.rubric,
+  }).forEach(([id, value]) => {
+    const node = $(id);
+    if (node) node.value = String(value || "");
+  });
+  if ($("abTaskAutoGrading")) $("abTaskAutoGrading").checked = t.taskAutoGrading !== false;
+  if ($("abSpreadsheetAutoGrading")) $("abSpreadsheetAutoGrading").checked = t.spreadsheetAutoGrading !== false;
+  if ($("abTaxManualReview")) $("abTaxManualReview").checked = t.taxManualReview !== false;
+  if ($("abCaseManualReview")) $("abCaseManualReview").checked = t.caseManualReview !== false;
+}
+
+function resetAssessmentTaskFields() {
+  restoreAssessmentTaskSnapshot({
+    taskAutoGrading: true,
+    spreadsheetAutoGrading: true,
+    taxManualReview: true,
+    caseManualReview: true,
+    maxFileSize: "10",
+  });
+}
+
+function jsonPretty(value) {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+function fillAssessmentTaskForEdit(task) {
+  if (!task) return;
+  const meta = task.metadata || {};
+  const expected = task.expected_output || {};
+  const grading = task.grading_config || {};
+  if (el.abTaskTitle) el.abTaskTitle.value = task.title || "";
+  if (el.abTaskMarks) el.abTaskMarks.value = String(task.marks || "");
+  if (el.abTaskDescription) el.abTaskDescription.value = task.description || "";
+  if (el.abTaskInstructions) el.abTaskInstructions.value = task.instructions || "";
+  if (task.type === "coding") {
+    $("abCodingLanguages").value = (meta.allowed_languages || []).join(", ");
+    $("abStarterCode").value = meta.starter_code || "";
+    $("abVisibleTests").value = jsonPretty(meta.visible_test_cases || []);
+    $("abHiddenTests").value = jsonPretty((expected.test_cases || []).filter((t) => !(meta.visible_test_cases || []).some((v) => JSON.stringify(v) === JSON.stringify(t))));
+    $("abTaskAutoGrading").checked = grading.auto_grading_enabled !== false;
+  }
+  if (task.type === "spreadsheet") {
+    $("abInitialSheet").value = jsonPretty(meta.initial_spreadsheet_data || {});
+    $("abExpectedValues").value = jsonPretty(expected.expected_final_values || {});
+    $("abExpectedFormulas").value = jsonPretty(expected.expected_formulas || {});
+    $("abLockedCells").value = (meta.locked_cells || []).join(", ");
+    $("abSpreadsheetAutoGrading").checked = grading.auto_grading_enabled !== false;
+  }
+  if (task.type === "tax_simulator") {
+    $("abClientScenario").value = meta.client_scenario || "";
+    $("abTaxYear").value = meta.tax_year || "";
+    $("abClientDocuments").value = (meta.client_documents || []).join("\n");
+    $("abRequiredForms").value = (meta.required_simulated_forms || []).join("\n");
+    $("abScenarioFacts").value = meta.scenario_facts || "";
+    $("abExpectedFormValues").value = jsonPretty(expected.expected_form_values || {});
+    $("abComplianceChecks").value = (meta.compliance_checks || []).join("\n");
+    $("abRedFlags").value = (expected.red_flags || []).join("\n");
+    $("abTaxManualReview").checked = grading.manual_review_required !== false;
+  }
+  if (task.type === "case_study") {
+    $("abCasePrompt").value = meta.case_prompt || "";
+    $("abAllowedFileTypes").value = (meta.allowed_file_types || []).join(", ");
+    $("abMaxFileSize").value = String(meta.max_file_size_mb || 10);
+    $("abRubric").value = grading.rubric || expected.rubric || "";
+    $("abCaseManualReview").checked = grading.manual_review_required !== false;
+  }
 }
 
 async function openAssessmentBuilderForEdit(assessment) {
@@ -6214,6 +6475,9 @@ async function openAssessmentBuilderForEdit(assessment) {
   if (publishBtn) publishBtn.textContent = "Save & Publish";
 
   $("abTitle").value = assessment.title || "";
+  $("abAssessmentType").value = assessment.assessment_type || "mcq";
+  $("abInstructions").value = assessment.instructions || "";
+  $("abPassScore").value = String(assessment.pass_score || 70);
   $("abMaxAttempts").value = String(Math.min(3, Math.max(1, Number(assessment.max_attempts ?? 3))));
   $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : 25);
   $("abNegativeMarking").checked = Boolean(assessment.negative_marking);
@@ -6225,6 +6489,7 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abDurationMinutes").value = String(Math.max(25, Number(assessment.duration_minutes || 25)));
   $("abTimePerQuestionSeconds").value = String(assessment.time_per_question_seconds || 25);
   applyAssessmentTimingMode();
+  applyAssessmentTypeUi();
   applyAssessmentNegativeMarkingUi();
 
   renderAssessmentCourseOptions();
@@ -6233,19 +6498,24 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abCourseFilter").disabled = true;
   updateAssessmentSourceMeta();
 
-  const existingQuestions = await api("GET", `/exams/${assessment.exam_id}/questions`);
-  state.assessmentDraftQuestions = (existingQuestions || []).map((q) => ({
-    question_id: q.question_id,
-    question_text: q.question_text,
-    question_type: q.question_type,
-    marks: q.marks,
-    negative_marks: q.negative_marks,
-    options: (q.options || []).map((o) => ({
-      option_text: o.option_text,
-      is_correct: o.is_correct,
-      position: o.position,
-    })),
-  }));
+  if (($("abAssessmentType")?.value || "mcq") === "mcq") {
+    const existingQuestions = await api("GET", `/exams/${assessment.exam_id}/questions`);
+    state.assessmentDraftQuestions = (existingQuestions || []).map((q) => ({
+      question_id: q.question_id,
+      question_text: q.question_text,
+      question_type: q.question_type,
+      marks: q.marks,
+      negative_marks: q.negative_marks,
+      options: (q.options || []).map((o) => ({
+        option_text: o.option_text,
+        is_correct: o.is_correct,
+        position: o.position,
+      })),
+    }));
+  } else {
+    const task = assessment.task || await api("GET", `/exams/${assessment.exam_id}/task`).catch(() => null);
+    fillAssessmentTaskForEdit(task);
+  }
   if (state.assessmentDraftQuestions.length) {
     const first = state.assessmentDraftQuestions[0];
     state.assessmentQuestionDefaultMarks = Number(first?.marks) > 0 ? Number(first.marks) : null;
@@ -6329,18 +6599,23 @@ async function createAssessmentFromBuilder(publishNow) {
   const courseId = getSelectedAssessmentCourseId();
   if (courseId == null) throw new Error("Choose an active/inactive course or standalone assessment");
   const title = $("abTitle")?.value?.trim() || "";
+  const assessmentType = $("abAssessmentType")?.value || "mcq";
+  const instructions = $("abInstructions")?.value?.trim() || "";
+  const passScore = Number($("abPassScore")?.value || 70);
   const maxAttempts = Number($("abMaxAttempts")?.value);
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
-  const timingMode = $("abTimingMode")?.value || "question";
+  const timingMode = assessmentType === "mcq" ? ($("abTimingMode")?.value || "question") : "assessment";
   const durationMinutesRaw = Number($("abDurationMinutes")?.value || 0);
   const timePerQuestionSeconds = Number($("abTimePerQuestionSeconds")?.value);
   const questionPool = state.assessmentDraftQuestions || [];
+  const taskPayload = assessmentType === "mcq" ? null : buildTaskFromAssessmentForm();
 
   if (!title) throw new Error("Assessment title is required");
-  if (!questionPool.length) throw new Error("Add at least one question");
+  if (!Number.isFinite(passScore) || passScore < 70 || passScore > 100) throw new Error("Passing score must be between 70 and 100");
+  if (assessmentType === "mcq" && !questionPool.length) throw new Error("Add at least one question");
   if (!Number.isFinite(maxAttempts) || maxAttempts <= 0 || maxAttempts > 3) throw new Error("Max attempts must be between 1 and 3");
-  if (![25, 30, 35, 40].includes(questionsPerAttempt)) throw new Error("Questions shown must be 25, 30, 35, or 40");
-  if (questionsPerAttempt > questionPool.length) {
+  if (assessmentType === "mcq" && ![25, 30, 35, 40].includes(questionsPerAttempt)) throw new Error("Questions shown must be 25, 30, 35, or 40");
+  if (assessmentType === "mcq" && questionsPerAttempt > questionPool.length) {
     throw new Error("Questions shown to student cannot exceed pool size");
   }
   let durationMinutes = 25;
@@ -6350,23 +6625,25 @@ async function createAssessmentFromBuilder(publishNow) {
     }
     durationMinutes = durationMinutesRaw;
   }
-  if (timingMode === "question" && ![25, 30, 35, 40, 45].includes(timePerQuestionSeconds)) {
+  if (assessmentType === "mcq" && timingMode === "question" && ![25, 30, 35, 40, 45].includes(timePerQuestionSeconds)) {
     throw new Error("Time per question must be 25, 30, 35, 40, or 45 seconds");
   }
-  if (questionPool.length < questionsPerAttempt * 2) {
+  if (assessmentType === "mcq" && questionPool.length < questionsPerAttempt * 2) {
     toast("Recommendation: keep at least 2x pool size for better randomization.");
   }
 
   const examPayload = {
     title,
+    assessment_type: assessmentType,
+    instructions,
     duration_minutes: durationMinutes,
     timing_mode: timingMode,
-    time_per_question_seconds: timingMode === "question" ? timePerQuestionSeconds : null,
-    questions_per_attempt: questionsPerAttempt,
-    pass_score: 70,
-    negative_marking: Boolean($("abNegativeMarking")?.checked),
-    shuffle_questions: Boolean($("abShuffleQuestions")?.checked),
-    shuffle_options: Boolean($("abShuffleOptions")?.checked),
+    time_per_question_seconds: assessmentType === "mcq" && timingMode === "question" ? timePerQuestionSeconds : null,
+    questions_per_attempt: assessmentType === "mcq" ? questionsPerAttempt : 0,
+    pass_score: passScore,
+    negative_marking: assessmentType === "mcq" && Boolean($("abNegativeMarking")?.checked),
+    shuffle_questions: assessmentType === "mcq" && Boolean($("abShuffleQuestions")?.checked),
+    shuffle_options: assessmentType === "mcq" && Boolean($("abShuffleOptions")?.checked),
     max_attempts: Math.min(3, Math.max(1, maxAttempts)),
     certificate_enabled: Boolean($("abCertificateEnabled")?.checked),
   };
@@ -6375,17 +6652,25 @@ async function createAssessmentFromBuilder(publishNow) {
   try {
     if (examId) {
       await api("PUT", `/exams/${examId}`, examPayload);
-      for (const q of questionPool) {
-        if (q.question_id) continue;
-        const out = await api("POST", `/exams/${examId}/questions`, q);
-        q.question_id = out.question_id;
+      if (assessmentType === "mcq") {
+        for (const q of questionPool) {
+          if (q.question_id) continue;
+          const out = await api("POST", `/exams/${examId}/questions`, q);
+          q.question_id = out.question_id;
+        }
+      } else {
+        await api("PUT", `/exams/${examId}/task`, taskPayload);
       }
     } else {
       const createdExam = await api("POST", "/exams", { course_id: courseId, ...examPayload });
       examId = createdExam.id;
-      for (const q of questionPool) {
-        const out = await api("POST", `/exams/${examId}/questions`, q);
-        q.question_id = out.question_id;
+      if (assessmentType === "mcq") {
+        for (const q of questionPool) {
+          const out = await api("POST", `/exams/${examId}/questions`, q);
+          q.question_id = out.question_id;
+        }
+      } else {
+        await api("PUT", `/exams/${examId}/task`, taskPayload);
       }
     }
   } catch (err) {
@@ -6394,14 +6679,16 @@ async function createAssessmentFromBuilder(publishNow) {
     throw new Error(`Assessment save failed at exam/questions step (status=${parsed.status || "n/a"}). ${detail || "Unknown error."}`);
   }
   try {
-    await api("POST", `/exams/${examId}/rule`, {
-      min_questions: questionPool.length,
-      min_pass_score: 70,
-      max_easy_ratio: 0.7,
-      min_syllabus_areas: 1,
-      max_duplicate_ratio: 0.1,
-      max_ambiguous_ratio: 0.1,
-    });
+    if (assessmentType === "mcq") {
+      await api("POST", `/exams/${examId}/rule`, {
+        min_questions: questionPool.length,
+        min_pass_score: passScore,
+        max_easy_ratio: 0.7,
+        min_syllabus_areas: 1,
+        max_duplicate_ratio: 0.1,
+        max_ambiguous_ratio: 0.1,
+      });
+    }
   } catch (err) {
     const parsed = parseApiErrorMessage(err);
     const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
@@ -8491,7 +8778,7 @@ function renderProviderAssessmentsList() {
   const q = String(el.providerAssessmentsSearch?.value || "").trim().toLowerCase();
   const rows = q
     ? state.providerAssessments.filter((a) => {
-      const blob = `${a.title || ""} ${a.exam_id || ""} ${a.status || ""}`.toLowerCase();
+      const blob = `${a.title || ""} ${a.exam_id || ""} ${a.status || ""} ${a.assessment_type || ""}`.toLowerCase();
       return blob.includes(q);
     })
     : state.providerAssessments;
@@ -8509,8 +8796,9 @@ function renderProviderAssessmentsList() {
           <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
         </div>
         <div class="assessment-catalog-facts">
-          <span>${Number(a.question_count || 0)} questions</span>
-          <span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>
+          <span>${assessmentTypeLabel(a.assessment_type)}</span>
+          <span>${String(a.assessment_type || "mcq") === "mcq" ? `${Number(a.question_count || 0)} questions` : `${Number(a.total_marks || a.task?.marks || 0)} marks`}</span>
+          ${String(a.assessment_type || "mcq") === "mcq" ? `<span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>` : ""}
           <span>Attempts ${Number(a.max_attempts || 1)}</span>
           <span>${a.timing_mode === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
           <span>${a.certificate_enabled ? "Certificate" : "No certificate"}</span>
@@ -8518,7 +8806,7 @@ function renderProviderAssessmentsList() {
       </div>
       <div class='actions'>
         <button class="btn small" data-assessment-detail="${a.exam_id}">${a.status === "published" ? "View & Issue" : "View Details"}</button>
-        <button class="icon-play-btn" data-assessment-preview="${a.exam_id}" title="Preview assessment" aria-label="Preview assessment">&#9654;</button>
+        ${String(a.assessment_type || "mcq") === "mcq" ? `<button class="icon-play-btn" data-assessment-preview="${a.exam_id}" title="Preview assessment" aria-label="Preview assessment">&#9654;</button>` : ""}
         ${
           a.status === "published"
             ? ""
@@ -8584,6 +8872,17 @@ function renderProviderAssessmentsList() {
       }
     });
   });
+}
+
+function assessmentTypeLabel(value) {
+  const map = {
+    mcq: "MCQ",
+    coding: "Coding",
+    spreadsheet: "Spreadsheet",
+    tax_simulator: "Tax simulator",
+    case_study: "Case study",
+  };
+  return map[String(value || "mcq")] || "Assessment";
 }
 
 async function openStudentAvailableCourseDetail(courseId) {
@@ -8782,8 +9081,9 @@ function renderAssessmentCatalogList() {
           <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
         </div>
         <div class="assessment-catalog-facts">
-          <span>${Number(a.question_count || 0)} questions</span>
-          <span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>
+          <span>${assessmentTypeLabel(a.assessment_type)}</span>
+          <span>${String(a.assessment_type || "mcq") === "mcq" ? `${Number(a.question_count || 0)} questions` : `${Number(a.total_marks || 0)} marks`}</span>
+          ${String(a.assessment_type || "mcq") === "mcq" ? `<span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>` : ""}
           <span>${String(a.timing_mode || "assessment") === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
           <span>Issued ${Number(a.issued_count || 0)}</span>
           <span>Taken ${Number(a.taken_count || 0)}</span>
@@ -8895,12 +9195,15 @@ function renderSelectedCatalogDetail() {
   const timing = String(item.timing_mode || "assessment") === "question"
     ? `${Number(item.time_per_question_seconds || 0)} seconds per question`
     : `${Number(item.duration_minutes || 0)} minutes total`;
+  const contentSummary = String(item.assessment_type || "mcq") === "mcq"
+    ? `${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)}`
+    : `${assessmentTypeLabel(item.assessment_type)} | ${Number(item.total_marks || item.task?.marks || 0)} marks`;
   if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = item.title || `Assessment #${item.exam_id}`;
   if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = `${Number(item.pass_score || 70)}%`;
-  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || `ASM-${String(item.exam_id || "").padStart(6, "0")}`} | ${item.title || "-"} | ${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
+  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || `ASM-${String(item.exam_id || "").padStart(6, "0")}`} | ${item.title || "-"} | ${contentSummary} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
   if (el.assessmentDetailActions) {
     el.assessmentDetailActions.innerHTML = `
-      <button class="btn small" id="assessmentDetailPreviewBtn">Preview</button>
+      ${String(item.assessment_type || "mcq") === "mcq" ? `<button class="btn small" id="assessmentDetailPreviewBtn">Preview</button>` : ""}
       ${
         status === "published"
           ? ""
@@ -8973,9 +9276,17 @@ async function issuedApi(method, path, body) {
 
 function renderIssuedCandidateAssessment(data) {
   state.issuedCandidateAssessment = data;
+  state.issuedAssessmentSubmitted = false;
+  state.issuedAssessmentStartedAt = Date.now();
+  startIssuedAssessmentTimer(data);
   if (el.issuedAssessmentTitle) el.issuedAssessmentTitle.textContent = data.assessment_title || "Issued Assessment";
-  if (el.issuedAssessmentMeta) el.issuedAssessmentMeta.textContent = `Duration: ${data.duration_minutes || 0} mins | Pass: ${data.pass_score || 70}%`;
+  renderIssuedAssessmentMeta();
   if (!el.issuedAssessmentQuestions) return;
+  const type = String(data.assessment_type || "mcq");
+  if (type !== "mcq") {
+    renderIssuedTaskAssessment(data);
+    return;
+  }
   const q = Array.isArray(data.questions) ? data.questions : [];
   el.issuedAssessmentQuestions.innerHTML = q.map((item, idx) => `
     <div class="item">
@@ -8992,17 +9303,238 @@ function renderIssuedCandidateAssessment(data) {
   `).join("");
 }
 
-async function submitIssuedCandidateAssessment() {
-  const data = state.issuedCandidateAssessment;
-  if (!data || !Array.isArray(data.questions)) throw new Error("No issued assessment loaded");
-  const answers = {};
-  data.questions.forEach((q) => {
-    const checked = Array.from(document.querySelectorAll(`input[data-issued-qid="${q.question_id}"]:checked`));
-    answers[String(q.question_id)] = checked.map((n) => Number(n.value));
+function renderIssuedAssessmentMeta() {
+  const data = state.issuedCandidateAssessment || {};
+  if (!el.issuedAssessmentMeta) return;
+  const duration = Number(data.duration_minutes || 0);
+  const pass = Number(data.pass_score || 70);
+  const type = String(data.assessment_type || "mcq").replace(/_/g, " ");
+  const elapsed = Math.max(0, Math.floor((Date.now() - Number(state.issuedAssessmentStartedAt || Date.now())) / 1000));
+  const total = Math.max(0, duration * 60);
+  const remaining = total > 0 ? Math.max(0, total - elapsed) : 0;
+  el.issuedAssessmentMeta.textContent = `Type: ${type} | Duration: ${duration || 0} mins | Time left: ${formatSecondsToClock(remaining)} | Pass: ${pass}%`;
+}
+
+function clearIssuedAssessmentTimer() {
+  if (state.issuedAssessmentTimerId) {
+    window.clearInterval(state.issuedAssessmentTimerId);
+    state.issuedAssessmentTimerId = null;
+  }
+}
+
+function startIssuedAssessmentTimer(data) {
+  clearIssuedAssessmentTimer();
+  const total = Math.max(0, Number(data?.duration_minutes || 0) * 60);
+  if (!total) return;
+  state.issuedAssessmentTimerId = window.setInterval(() => {
+    renderIssuedAssessmentMeta();
+    const elapsed = Math.max(0, Math.floor((Date.now() - Number(state.issuedAssessmentStartedAt || Date.now())) / 1000));
+    if (elapsed >= total && !state.issuedAssessmentSubmitted) {
+      submitIssuedCandidateAssessment({ autoSubmit: true }).catch((err) => {
+        if (el.issuedAssessmentStatus) el.issuedAssessmentStatus.textContent = err?.message || "Auto-submit failed";
+      });
+    }
+  }, 1000);
+}
+
+function issuedTaskSummary(task) {
+  const title = escapeHtmlAttr(task?.title || "Assessment task");
+  const desc = escapeHtmlAttr(task?.description || "");
+  const inst = escapeHtmlAttr(task?.instructions || "");
+  return `
+    <div class="issued-task-summary">
+      <h3>${title}</h3>
+      ${desc ? `<p>${desc}</p>` : ""}
+      ${inst ? `<div class="notice compact">${inst}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderIssuedTaskAssessment(data) {
+  const task = data.task || {};
+  const type = String(data.assessment_type || "");
+  const meta = task.metadata || {};
+  if (type === "coding") {
+    const languages = Array.isArray(meta.allowed_languages) && meta.allowed_languages.length ? meta.allowed_languages : ["javascript", "python"];
+    el.issuedAssessmentQuestions.innerHTML = `
+      ${issuedTaskSummary(task)}
+      <div class="issued-workbench two-col">
+        <section class="panel-card">
+          <h4>Problem</h4>
+          <pre class="issued-pre">${escapeHtmlAttr(task.description || "")}</pre>
+          <h4>Visible test cases</h4>
+          <pre class="issued-pre">${escapeHtmlAttr(JSON.stringify(meta.visible_test_cases || [], null, 2))}</pre>
+        </section>
+        <section class="panel-card">
+          <label class="field-label">Language</label>
+          <select id="issuedCodingLanguage" class="filter">${languages.map((x) => `<option value="${escapeHtmlAttr(x)}">${escapeHtmlAttr(x)}</option>`).join("")}</select>
+          <label class="field-label">Code</label>
+          <textarea id="issuedCodingCode" class="assessment-task-textarea code" spellcheck="false">${escapeHtmlAttr(meta.starter_code || "")}</textarea>
+          <div class="actions"><button type="button" class="btn small" id="issuedRunCodingTestsBtn">Run visible tests</button></div>
+          <div id="issuedCodingTestResults" class="meta">Visible tests not run yet.</div>
+        </section>
+      </div>
+    `;
+    $("issuedRunCodingTestsBtn")?.addEventListener("click", () => runIssuedMockCodingTests(task));
+    return;
+  }
+  if (type === "spreadsheet") {
+    el.issuedAssessmentQuestions.innerHTML = `
+      ${issuedTaskSummary(task)}
+      <div class="issued-workbench two-col">
+        <section class="panel-card">
+          <h4>Initial spreadsheet data</h4>
+          <pre class="issued-pre">${escapeHtmlAttr(JSON.stringify(meta.initial_spreadsheet_data || {}, null, 2))}</pre>
+          <div class="meta">Enter final sheet JSON after completing the task.</div>
+        </section>
+        <section class="panel-card">
+          <label class="field-label">Final sheet JSON</label>
+          <textarea id="issuedSpreadsheetJson" class="assessment-task-textarea code" spellcheck="false">${escapeHtmlAttr(JSON.stringify(meta.initial_spreadsheet_data || {}, null, 2))}</textarea>
+        </section>
+      </div>
+    `;
+    return;
+  }
+  if (type === "tax_simulator") {
+    el.issuedAssessmentQuestions.innerHTML = `
+      ${issuedTaskSummary(task)}
+      <div class="issued-workbench tax-grid">
+        <section class="panel-card">
+          <h4>Client scenario</h4>
+          <p>${escapeHtmlAttr(meta.client_scenario || task.description || "")}</p>
+          <h4>Documents</h4>
+          <ul>${(meta.client_documents || []).map((x) => `<li>${escapeHtmlAttr(x)}</li>`).join("") || "<li>No documents listed.</li>"}</ul>
+        </section>
+        <section class="panel-card">
+          <h4>Simulated forms</h4>
+          <div class="meta">${(meta.required_simulated_forms || []).map(escapeHtmlAttr).join(", ") || "Use relevant generic finance forms."}</div>
+          <label class="field-label">Entered form values JSON</label>
+          <textarea id="issuedTaxValues" class="assessment-task-textarea code" spellcheck="false">{}</textarea>
+        </section>
+        <section class="panel-card">
+          <label class="field-label">Red flags identified</label>
+          <textarea id="issuedTaxRedFlags" class="assessment-task-textarea"></textarea>
+          <label class="field-label">Notes and reasoning</label>
+          <textarea id="issuedTaxNotes" class="assessment-task-textarea"></textarea>
+        </section>
+      </div>
+    `;
+    return;
+  }
+  el.issuedAssessmentQuestions.innerHTML = `
+    ${issuedTaskSummary(task)}
+    <div class="issued-workbench two-col">
+      <section class="panel-card">
+        <h4>Case prompt</h4>
+        <p>${escapeHtmlAttr(meta.case_prompt || task.description || "")}</p>
+        <div class="meta">Allowed files: ${(meta.allowed_file_types || []).map(escapeHtmlAttr).join(", ") || "as instructed"} | Max size: ${escapeHtmlAttr(meta.max_file_size_mb || 10)} MB</div>
+      </section>
+      <section class="panel-card">
+        <label class="field-label">Uploaded file link or filename</label>
+        <input id="issuedCaseFileUrl" class="filter" placeholder="Paste uploaded file URL or filename" />
+        <label class="field-label">Written answer</label>
+        <textarea id="issuedCaseAnswer" class="assessment-task-textarea"></textarea>
+      </section>
+    </div>
+  `;
+}
+
+function runIssuedMockCodingTests(task) {
+  const code = String($("issuedCodingCode")?.value || "");
+  const tests = Array.isArray(task?.metadata?.visible_test_cases) ? task.metadata.visible_test_cases : [];
+  const passed = tests.map((t) => {
+    const expected = String(t?.expected_output ?? t?.expected ?? "");
+    return {
+      name: t?.name || t?.input || "visible test",
+      passed: expected ? code.includes(expected) : Boolean(code.trim()),
+    };
   });
-  const out = await issuedApi("POST", "/exams/issued/submit", { answers });
+  const ok = passed.filter((x) => x.passed).length;
+  const node = $("issuedCodingTestResults");
+  if (node) node.textContent = `Mock visible tests: ${ok}/${passed.length || 1} passed.`;
+}
+
+function parseIssuedJsonTextarea(id, fallback = {}) {
+  const raw = String($(id)?.value || "").trim();
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error("Enter valid JSON before submitting.");
+  }
+}
+
+function collectIssuedSubmissionData() {
+  const data = state.issuedCandidateAssessment || {};
+  const type = String(data.assessment_type || "mcq");
+  if (type === "coding") {
+    return {
+      language: $("issuedCodingLanguage")?.value || "",
+      code: $("issuedCodingCode")?.value || "",
+      test_case_results: [],
+      execution_logs: "Mock browser-side run only.",
+    };
+  }
+  if (type === "spreadsheet") {
+    return {
+      final_sheet_json: parseIssuedJsonTextarea("issuedSpreadsheetJson", {}),
+      formula_results: {},
+    };
+  }
+  if (type === "tax_simulator") {
+    return {
+      selected_forms: data.task?.metadata?.required_simulated_forms || [],
+      entered_form_values: parseIssuedJsonTextarea("issuedTaxValues", {}),
+      identified_red_flags: String($("issuedTaxRedFlags")?.value || "").split(/\r?\n|,/).map((x) => x.trim()).filter(Boolean),
+      notes: $("issuedTaxNotes")?.value || "",
+      reasoning: $("issuedTaxNotes")?.value || "",
+    };
+  }
+  if (type === "case_study") {
+    return {
+      uploaded_file_url: $("issuedCaseFileUrl")?.value || "",
+      written_answer: $("issuedCaseAnswer")?.value || "",
+    };
+  }
+  return {};
+}
+
+async function submitIssuedCandidateAssessment(options = {}) {
+  const data = state.issuedCandidateAssessment;
+  if (!data) throw new Error("No issued assessment loaded");
+  if (state.issuedAssessmentSubmitted) return;
+  const type = String(data.assessment_type || "mcq");
+  const timeTaken = Math.max(0, Math.floor((Date.now() - Number(state.issuedAssessmentStartedAt || Date.now())) / 1000));
+  const answers = {};
+  if (type === "mcq") {
+    if (!Array.isArray(data.questions)) throw new Error("No issued assessment questions loaded");
+    data.questions.forEach((q) => {
+      const checked = Array.from(document.querySelectorAll(`input[data-issued-qid="${q.question_id}"]:checked`));
+      answers[String(q.question_id)] = checked.map((n) => Number(n.value));
+    });
+  }
+  const body = {
+    answers,
+    submitted_data: type === "mcq" ? {} : collectIssuedSubmissionData(),
+    time_taken_seconds: timeTaken,
+    proctoring_events: [],
+  };
+  state.issuedAssessmentSubmitted = true;
+  clearIssuedAssessmentTimer();
+  let out;
+  try {
+    out = await issuedApi("POST", "/exams/issued/submit", body);
+  } catch (err) {
+    state.issuedAssessmentSubmitted = false;
+    startIssuedAssessmentTimer(data);
+    throw err;
+  }
   if (el.issuedAssessmentStatus) {
-    el.issuedAssessmentStatus.textContent = `Submitted. Score ${Number(out.score_pct || 0).toFixed(2)}% | ${out.passed ? "PASS" : "FAIL"}`;
+    if (out.manual_review) {
+      el.issuedAssessmentStatus.textContent = options.autoSubmit ? "Time expired. Submitted for manual review." : "Submitted for manual review.";
+    } else {
+      el.issuedAssessmentStatus.textContent = `Submitted. Score ${Number(out.score_pct || 0).toFixed(2)}% | ${out.passed ? "PASS" : "FAIL"}`;
+    }
   }
 }
 
@@ -10493,6 +11025,18 @@ function bindEvents() {
     updateAssessmentSourceMeta();
     persistAssessmentBuilderCache();
   });
+  $("abAssessmentType")?.addEventListener("change", () => {
+    applyAssessmentTypeUi();
+    persistAssessmentBuilderCache();
+  });
+  document.querySelectorAll("[data-ab-type-card]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const type = String(node.getAttribute("data-ab-type-card") || "mcq");
+      if ($("abAssessmentType")) $("abAssessmentType").value = type;
+      applyAssessmentTypeUi();
+      persistAssessmentBuilderCache();
+    });
+  });
   $("abTimingMode")?.addEventListener("change", () => {
     applyAssessmentTimingMode();
     persistAssessmentBuilderCache();
@@ -10505,11 +11049,38 @@ function bindEvents() {
   [
     "abCourseFilter",
     "abTitle",
+    "abAssessmentType",
+    "abInstructions",
+    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abDefaultNegativeMarks",
     "abDurationMinutes",
     "abTimePerQuestionSeconds",
+    "abTaskTitle",
+    "abTaskMarks",
+    "abTaskDescription",
+    "abTaskInstructions",
+    "abCodingLanguages",
+    "abStarterCode",
+    "abVisibleTests",
+    "abHiddenTests",
+    "abInitialSheet",
+    "abExpectedValues",
+    "abExpectedFormulas",
+    "abLockedCells",
+    "abClientScenario",
+    "abTaxYear",
+    "abClientDocuments",
+    "abRequiredForms",
+    "abScenarioFacts",
+    "abExpectedFormValues",
+    "abComplianceChecks",
+    "abRedFlags",
+    "abCasePrompt",
+    "abAllowedFileTypes",
+    "abMaxFileSize",
+    "abRubric",
     "abQuestionType",
     "abQuestionMarks",
     "abQuestionNegativeMarks",
@@ -10521,11 +11092,13 @@ function bindEvents() {
   ].forEach((id) => {
     $(id)?.addEventListener("input", () => persistAssessmentBuilderCache());
   });
-  ["abQuestionsPerAttempt", "abTimePerQuestionSeconds"].forEach((id) => {
+  ["abQuestionsPerAttempt", "abTimePerQuestionSeconds", "abAssessmentType", "abTaskAutoGrading", "abSpreadsheetAutoGrading", "abTaxManualReview", "abCaseManualReview"].forEach((id) => {
     $(id)?.addEventListener("change", () => persistAssessmentBuilderCache());
   });
   [
     "abTitle",
+    "abAssessmentType",
+    "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",
@@ -10957,6 +11530,7 @@ function bindEvents() {
     });
   });
   $("issuedAssessmentCloseBtn")?.addEventListener("click", () => {
+    clearIssuedAssessmentTimer();
     el.issuedAssessmentAttemptScreen?.classList.add("hidden");
   });
   $("refreshProviderCommentsBtn")?.addEventListener("click", async () => {
