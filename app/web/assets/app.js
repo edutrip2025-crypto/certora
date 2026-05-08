@@ -1358,8 +1358,8 @@ const el = {
   providerDraftsList: $("providerDraftsList"),
   providerAssessmentsList: $("providerAssessmentsList"),
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
-  issueExamSelect: $("issueExamSelect"),
   assessmentCatalogList: $("assessmentCatalogList"),
+  assessmentCatalogIssuePanel: $("assessmentCatalogIssuePanel"),
   assessmentCatalogDetail: $("assessmentCatalogDetail"),
   issueCandidateName: $("issueCandidateName"),
   issueCandidateEmail: $("issueCandidateEmail"),
@@ -8698,17 +8698,12 @@ async function refreshProviderAssessments() {
 }
 
 async function refreshAssessmentCatalogIssueOptions() {
-  if (!el.issueExamSelect) return;
   try {
     const rows = await api("GET", "/exams/catalog/published");
     const items = Array.isArray(rows) ? rows : [];
     state.assessmentCatalog = items;
-    const opts = [`<option value="">Select published assessment</option>`]
-      .concat(items.map((x) => `<option value="${x.exam_id}">${escapeHtmlAttr(x.title || `Assessment #${x.exam_id}`)} | ID: ${escapeHtmlAttr(x.internal_id || "")}</option>`));
-    el.issueExamSelect.innerHTML = opts.join("");
     renderAssessmentCatalogList();
   } catch {
-    el.issueExamSelect.innerHTML = `<option value="">Failed to load published assessments</option>`;
     state.assessmentCatalog = [];
     renderAssessmentCatalogList();
   }
@@ -8721,8 +8716,10 @@ function renderAssessmentCatalogList() {
     el.assessmentCatalogList,
     rows,
     (a) => `
-      <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(a.internal_id || "")})</span></div>
-      <div class="meta">Duration: ${Number(a.duration_minutes || 0)} mins | Pass: ${Number(a.pass_score || 70)}%</div>
+      <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill status-resolved">published</span></div>
+      <div class='meta'>Assessment ID: ${escapeHtmlAttr(a.internal_id || `ASM-${String(a.exam_id || "").padStart(6, "0")}`)} (Internal)</div>
+      <div class='meta'>Timing: ${Number(a.duration_minutes || 0)} mins/assessment</div>
+      <div class='meta'>Pass score: ${Number(a.pass_score || 70)}%</div>
       <div class="actions">
         <button class="btn small" data-catalog-select="${a.exam_id}">View & Issue</button>
       </div>
@@ -8733,7 +8730,6 @@ function renderAssessmentCatalogList() {
     btn.addEventListener("click", () => {
       const examId = Number(btn.getAttribute("data-catalog-select") || 0);
       state.selectedCatalogExamId = examId || null;
-      if (el.issueExamSelect) el.issueExamSelect.value = examId ? String(examId) : "";
       renderSelectedCatalogDetail();
     });
   });
@@ -8741,12 +8737,14 @@ function renderAssessmentCatalogList() {
 
 function renderSelectedCatalogDetail() {
   if (!el.assessmentCatalogDetail) return;
-  const selected = Number(el.issueExamSelect?.value || state.selectedCatalogExamId || 0);
+  const selected = Number(state.selectedCatalogExamId || 0);
   const item = (state.assessmentCatalog || []).find((x) => Number(x.exam_id) === selected);
   if (!item) {
+    el.assessmentCatalogIssuePanel?.classList.add("hidden");
     el.assessmentCatalogDetail.textContent = "Select an assessment from the list above.";
     return;
   }
+  el.assessmentCatalogIssuePanel?.classList.remove("hidden");
   el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | Title: ${item.title || "-"} | Duration: ${Number(item.duration_minutes || 0)} mins | Pass: ${Number(item.pass_score || 70)}%`;
 }
 
@@ -10713,7 +10711,7 @@ function bindEvents() {
   });
   $("issueAssessmentBtn")?.addEventListener("click", async () => {
     try {
-      const examId = Number(el.issueExamSelect?.value || 0);
+      const examId = Number(state.selectedCatalogExamId || 0);
       const candidate_name = String(el.issueCandidateName?.value || "").trim();
       const candidate_email = String(el.issueCandidateEmail?.value || "").trim();
       if (!examId || !candidate_name || !candidate_email) {
@@ -10727,10 +10725,6 @@ function bindEvents() {
     } catch (err) {
       if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = err?.message || "Failed to issue assessment";
     }
-  });
-  $("issueExamSelect")?.addEventListener("change", () => {
-    state.selectedCatalogExamId = Number(el.issueExamSelect?.value || 0) || null;
-    renderSelectedCatalogDetail();
   });
   $("issuedCandidateLoginBtn")?.addEventListener("click", async () => {
     try {
