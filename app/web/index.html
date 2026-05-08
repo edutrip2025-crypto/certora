@@ -140,11 +140,11 @@
           <div class="provider-sidebar-logo-wrap">
             <img src="/assets/classagon_logo.png?v=20260422c" alt="Classagon" class="provider-sidebar-logo" />
           </div>
-          <h3>Provider Workspace</h3>
+          <h3>Workspace</h3>
         </div>
-        <button class="nav-btn active provider-nav-btn" data-provider-view="home">Home</button>
-        <button class="nav-btn provider-nav-btn" data-provider-view="courses">Courses</button>
-        <button class="nav-btn provider-nav-btn" data-provider-view="assessments">Assessments</button>
+        <button class="nav-btn active provider-nav-btn" data-provider-view="home">Dashboard</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="assessments">Custom</button>
+        <button class="nav-btn provider-nav-btn" data-provider-view="assessment-catalog">Assessments</button>
         <button class="nav-btn provider-nav-btn" data-provider-view="feedback">Feedback & Complaints</button>
         <button class="nav-btn provider-nav-btn" data-provider-view="live">Live Class</button>
         <button class="nav-btn provider-nav-btn" data-provider-view="certifications">Certifications</button>
@@ -167,9 +167,14 @@
       </aside>
 
       <section class="panel content" id="provider-view-home">
-        <h2>Home</h2>
-        <h3>Profile Analytics</h3>
+        <h2>Dashboard</h2>
+        <h3>Assessment Analytics</h3>
         <div id="providerHomeStats" class="stats"></div>
+        <div class="stats">
+          <div class="stat-card"><div class="stat-title">Assessments Issued</div><div id="issuedCountStat" class="stat-value">0</div></div>
+          <div class="stat-card"><div class="stat-title">Assessments Taken</div><div id="takenCountStat" class="stat-value">0</div></div>
+          <div class="stat-card"><div class="stat-title">Average Score</div><div id="avgScoreStat" class="stat-value">0%</div></div>
+        </div>
       </section>
 
       <section class="panel content hidden" id="provider-view-courses">
@@ -430,21 +435,8 @@
       </section>
 
       <section class="panel content hidden" id="provider-view-assessments">
-        <h2>Assessments</h2>
+        <h2>Custom</h2>
         <p class="muted">Build MCQ assessments with pooled questions and random delivery per student attempt.</p>
-        <div class="item">
-          <h3>Issue Assessment</h3>
-          <div class="row wrap gap-sm">
-            <select id="issueExamSelect" class="filter">
-              <option value="">Select published assessment</option>
-            </select>
-            <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
-            <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
-            <button id="issueAssessmentBtn" class="btn small">Issue</button>
-          </div>
-          <div id="issueAssessmentStatus" class="meta"></div>
-          <div id="issuedAssessmentsList" class="list" style="margin-top:10px;"></div>
-        </div>
         <div class="row between provider-assessment-toolbar">
           <h3>Assessment List</h3>
           <div class="row gap-sm provider-course-actions provider-assessment-actions">
@@ -461,6 +453,24 @@
           </div>
         </div>
         <div id="providerAssessmentsList" class="list"></div>
+      </section>
+
+      <section class="panel content hidden" id="provider-view-assessment-catalog">
+        <h2>Assessments</h2>
+        <p class="muted">Choose published assessments and issue them to candidates.</p>
+        <div class="item">
+          <h3>Issue Assessment</h3>
+          <div class="row wrap gap-sm">
+            <select id="issueExamSelect" class="filter">
+              <option value="">Select published assessment</option>
+            </select>
+            <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
+            <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
+            <button id="issueAssessmentBtn" class="btn small">Issue</button>
+          </div>
+          <div id="issueAssessmentStatus" class="meta"></div>
+          <div id="issuedAssessmentsList" class="list" style="margin-top:10px;"></div>
+        </div>
       </section>
 
       <section id="assessmentBuilderScreen" class="assessment-screen hidden">

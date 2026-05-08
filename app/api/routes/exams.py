@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -100,7 +100,7 @@ class IssueAssessmentRequest(BaseModel):
 
 
 class IssuedCandidateLoginRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None
     password: str = Field(min_length=6, max_length=120)
 
 
@@ -132,6 +132,10 @@ def _decode_issued_candidate_token(token: str) -> int:
     if issue_id <= 0:
         raise HTTPException(status_code=401, detail="Invalid issued-candidate token payload")
     return issue_id
+
+
+def _internal_assessment_id(exam_id: int) -> str:
+    return f"ASM-{int(exam_id):06d}"
 
 
 @router.post("", response_model=ExamOut, status_code=status.HTTP_201_CREATED)
@@ -512,6 +516,7 @@ def syllabus_map(
 def issue_assessment_to_candidate(
     exam_id: int,
     payload: IssueAssessmentRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.PROVIDER)),
 ):
@@ -535,16 +540,21 @@ def issue_assessment_to_candidate(
         candidate_name=candidate_name,
         candidate_email=candidate_email,
         candidate_password_hash=hash_password(temp_password),
+        access_key=secrets.token_urlsafe(24),
         status="issued",
     )
     db.add(issue)
     db.commit()
     db.refresh(issue)
+    base_url = f"{request.url.scheme}://{request.headers.get('host')}"
+    login_link = f"{base_url}/?issued_key={issue.access_key}"
     return {
         "issued_id": issue.id,
         "exam_id": exam.id,
+        "internal_id": _internal_assessment_id(exam.id),
         "candidate_email": candidate_email,
         "temporary_password": temp_password,
+        "login_link": login_link,
         "note": "Send these credentials to candidate email via your mail provider.",
     }
 
@@ -566,6 +576,7 @@ def list_issued_assessments_for_provider(
             {
                 "issued_id": row.id,
                 "exam_id": row.exam_id,
+                "internal_id": _internal_assessment_id(row.exam_id),
                 "assessment_title": exam.title if exam else f"Assessment #{row.exam_id}",
                 "candidate_name": row.candidate_name,
                 "candidate_email": row.candidate_email,
@@ -579,14 +590,49 @@ def list_issued_assessments_for_provider(
     return out
 
 
+@router.get("/catalog/published")
+def list_published_assessment_catalog(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
+):
+    rows = db.scalars(
+        select(Exam)
+        .where(Exam.status == ExamStatus.PUBLISHED)
+        .order_by(Exam.id.desc()),
+    ).all()
+    out = []
+    for exam in rows:
+        out.append(
+            {
+                "exam_id": exam.id,
+                "internal_id": _internal_assessment_id(exam.id),
+                "title": exam.title,
+                "duration_minutes": exam.duration_minutes,
+                "pass_score": exam.pass_score,
+            },
+        )
+    return out
+
+
 @router.post("/issued/login")
 def issued_candidate_login(payload: IssuedCandidateLoginRequest, db: Session = Depends(get_db)):
+    if not payload.email:
+        raise HTTPException(status_code=400, detail="Email is required")
     email = str(payload.email).strip().lower()
     issue = db.scalar(
         select(AssessmentIssue)
         .where(AssessmentIssue.candidate_email == email)
         .order_by(AssessmentIssue.id.desc()),
     )
+    if not issue or not verify_password(payload.password, issue.candidate_password_hash):
+        raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
+    token = _create_issued_candidate_token(issue.id)
+    return {"token": token}
+
+
+@router.post("/issued/key/{access_key}/login")
+def issued_candidate_login_by_key(access_key: str, payload: IssuedCandidateLoginRequest, db: Session = Depends(get_db)):
+    issue = db.scalar(select(AssessmentIssue).where(AssessmentIssue.access_key == access_key))
     if not issue or not verify_password(payload.password, issue.candidate_password_hash):
         raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
     token = _create_issued_candidate_token(issue.id)

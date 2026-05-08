@@ -247,6 +247,11 @@ def _migrate_exam_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "exam_rules", "min_syllabus_areas", "INTEGER DEFAULT 3")
     _sqlite_add_column_if_missing(conn, "exam_rules", "max_duplicate_ratio", "FLOAT DEFAULT 0.10")
     _sqlite_add_column_if_missing(conn, "exam_rules", "max_ambiguous_ratio", "FLOAT DEFAULT 0.10")
+    _sqlite_add_column_if_missing(conn, "assessment_issues", "access_key", "TEXT")
+    try:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_assessment_issues_access_key ON assessment_issues (access_key)"))
+    except Exception:
+        pass
 
 
 def _migrate_exam_schema_postgres(conn) -> None:
@@ -270,6 +275,8 @@ def _migrate_exam_schema_postgres(conn) -> None:
         "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS min_syllabus_areas INTEGER DEFAULT 3",
         "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS max_duplicate_ratio FLOAT DEFAULT 0.10",
         "ALTER TABLE exam_rules ADD COLUMN IF NOT EXISTS max_ambiguous_ratio FLOAT DEFAULT 0.10",
+        "ALTER TABLE assessment_issues ADD COLUMN IF NOT EXISTS access_key VARCHAR(120)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_assessment_issues_access_key ON assessment_issues(access_key)",
     ]
     for stmt in statements:
         try:

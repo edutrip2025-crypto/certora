@@ -100,6 +100,7 @@ const state = {
   assessmentQuestionDefaultMarks: null,
   assessmentQuestionDefaultNegativeMarks: null,
   issuedCandidateToken: "",
+  issuedAccessKey: "",
   issuedCandidateAssessment: null,
   assessmentPreview: {
     mode: "preview",
@@ -1367,6 +1368,9 @@ const el = {
   issuedAssessmentMeta: $("issuedAssessmentMeta"),
   issuedAssessmentQuestions: $("issuedAssessmentQuestions"),
   issuedAssessmentStatus: $("issuedAssessmentStatus"),
+  issuedCountStat: $("issuedCountStat"),
+  takenCountStat: $("takenCountStat"),
+  avgScoreStat: $("avgScoreStat"),
   providerFeedbackHub: $("providerFeedbackHub"),
   providerFeedbackTiles: $("providerFeedbackTiles"),
   providerComplaintTiles: $("providerComplaintTiles"),
@@ -1725,13 +1729,14 @@ function showAuthMode(mode = "login") {
 function applyAssessmentOnlyMode() {
   if (!ASSESSMENT_ONLY_MODE) return;
   // Restrict workspace to assessment flows only.
+  const allowedProviderViews = new Set(["home", "assessments", "assessment-catalog"]);
   document.querySelectorAll(".provider-nav-btn").forEach((btn) => {
     const v = String(btn.getAttribute("data-provider-view") || "");
-    if (v !== "assessments") btn.classList.add("hidden");
+    if (!allowedProviderViews.has(v)) btn.classList.add("hidden");
   });
   document.querySelectorAll(".student-nav-btn").forEach((btn) => btn.classList.add("hidden"));
   document.querySelectorAll(".admin-nav-btn").forEach((btn) => btn.classList.add("hidden"));
-  const keepProvider = new Set(["provider-view-assessments"]);
+  const keepProvider = new Set(["provider-view-home", "provider-view-assessments", "provider-view-assessment-catalog"]);
   document.querySelectorAll("#providerView .content").forEach((sec) => {
     if (!keepProvider.has(sec.id)) sec.classList.add("hidden");
   });
@@ -2240,7 +2245,9 @@ async function refreshStudentAssessments() {
 }
 
 function activateProviderSubView(name) {
-  if (ASSESSMENT_ONLY_MODE) name = "assessments";
+  if (ASSESSMENT_ONLY_MODE && !["home", "assessments", "assessment-catalog"].includes(String(name))) {
+    name = "home";
+  }
   if (state.providerUsingStudentViewer && name !== "courses") {
     closeProviderUnifiedViewer();
   }
@@ -2261,6 +2268,13 @@ function activateProviderSubView(name) {
     refreshProviderFeedback().catch(() => toast("Failed to load feedback", "error"));
   }
   if (name === "assessments") {
+    refreshIssuedAssessments().catch(() => {});
+  }
+  if (name === "assessment-catalog") {
+    refreshAssessmentCatalogIssueOptions().catch(() => {});
+    refreshIssuedAssessments().catch(() => {});
+  }
+  if (name === "home") {
     refreshIssuedAssessments().catch(() => {});
   }
 }
@@ -8453,7 +8467,7 @@ function renderProviderAssessmentsList() {
     rows,
     (a) => `
       <div><strong>${a.title}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${a.status}</span></div>
-      <div class='meta'>Assessment ID: ${a.exam_id}</div>
+      <div class='meta'>Assessment ID: ASM-${String(a.exam_id || "").padStart(6, "0")} (Internal)</div>
       <div class='meta'>Questions: ${a.question_count} | Student gets: ${a.questions_per_attempt > 0 ? a.questions_per_attempt : a.question_count}</div>
       <div class='meta'>Attempts: ${a.max_attempts}</div>
       <div class='meta'>Timing: ${a.timing_mode === "question" ? `${a.time_per_question_seconds || 0}s/question` : `${a.duration_minutes} mins/assessment`}</div>
@@ -8673,11 +8687,18 @@ async function refreshProviderAssessments() {
   const list = await api("GET", "/provider/workspace/assessments");
   state.providerAssessments = Array.isArray(list) ? list : [];
   renderProviderAssessmentsList();
-  if (el.issueExamSelect) {
-    const published = state.providerAssessments.filter((x) => String(x.status || "").toLowerCase() === "published");
+}
+
+async function refreshAssessmentCatalogIssueOptions() {
+  if (!el.issueExamSelect) return;
+  try {
+    const rows = await api("GET", "/exams/catalog/published");
+    const items = Array.isArray(rows) ? rows : [];
     const opts = [`<option value="">Select published assessment</option>`]
-      .concat(published.map((x) => `<option value="${x.exam_id}">${escapeHtmlAttr(x.title || `Assessment #${x.exam_id}`)}</option>`));
+      .concat(items.map((x) => `<option value="${x.exam_id}">${escapeHtmlAttr(x.title || `Assessment #${x.exam_id}`)} | ID: ${escapeHtmlAttr(x.internal_id || "")}</option>`));
     el.issueExamSelect.innerHTML = opts.join("");
+  } catch {
+    el.issueExamSelect.innerHTML = `<option value="">Failed to load published assessments</option>`;
   }
 }
 
@@ -8689,11 +8710,19 @@ async function refreshIssuedAssessments() {
       el.issuedAssessmentsList,
       Array.isArray(rows) ? rows : [],
       (r) => `
-        <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> - ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
+        <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> <span class="meta">(${escapeHtmlAttr(r.internal_id || `ASM-${String(r.exam_id || "").padStart(6, "0")}`)})</span> - ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
         <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")}</div>
       `,
       "No issued assessments yet.",
     );
+    const arr = Array.isArray(rows) ? rows : [];
+    const issuedCount = arr.length;
+    const takenRows = arr.filter((x) => String(x.status || "") === "completed" && Number.isFinite(Number(x.score_pct)));
+    const takenCount = takenRows.length;
+    const avg = takenCount ? (takenRows.reduce((s, x) => s + Number(x.score_pct || 0), 0) / takenCount) : 0;
+    if (el.issuedCountStat) el.issuedCountStat.textContent = String(issuedCount);
+    if (el.takenCountStat) el.takenCountStat.textContent = String(takenCount);
+    if (el.avgScoreStat) el.avgScoreStat.textContent = `${avg.toFixed(2)}%`;
   } catch {
     renderList(el.issuedAssessmentsList, [], () => "", "Failed to load issued assessments.");
   }
@@ -10644,7 +10673,7 @@ function bindEvents() {
       }
       const out = await api("POST", `/exams/${examId}/issue`, { candidate_name, candidate_email });
       if (el.issueAssessmentStatus) {
-        el.issueAssessmentStatus.textContent = `Issued. Temp password for ${out.candidate_email}: ${out.temporary_password}`;
+        el.issueAssessmentStatus.textContent = `Issued. ID ${out.internal_id || ""}. Temp password for ${out.candidate_email}: ${out.temporary_password}. Link: ${out.login_link || "-"}`;
       }
       await refreshIssuedAssessments();
     } catch (err) {
@@ -10655,8 +10684,14 @@ function bindEvents() {
     try {
       const email = String(el.issuedCandidateEmail?.value || "").trim();
       const password = String(el.issuedCandidatePassword?.value || "").trim();
-      if (!email || !password) throw new Error("Candidate email and password are required");
-      const authOut = await api("POST", "/exams/issued/login", { email, password }, false);
+      if (!password) throw new Error("Password is required");
+      let authOut;
+      if (state.issuedAccessKey) {
+        authOut = await api("POST", `/exams/issued/key/${encodeURIComponent(state.issuedAccessKey)}/login`, { password }, false);
+      } else {
+        if (!email) throw new Error("Candidate email is required");
+        authOut = await api("POST", "/exams/issued/login", { email, password }, false);
+      }
       state.issuedCandidateToken = String(authOut.token || "");
       const data = await issuedApi("GET", "/exams/issued/me");
       if (String(data.status || "") === "completed") {
@@ -11030,6 +11065,17 @@ function bindEvents() {
   }
   bindEvents();
   applyAssessmentOnlyMode();
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const key = String(params.get("issued_key") || "").trim();
+    if (key) {
+      state.issuedAccessKey = key;
+      if (el.issuedCandidateEmail) {
+        el.issuedCandidateEmail.disabled = true;
+        el.issuedCandidateEmail.placeholder = "Email locked by issued link";
+      }
+    }
+  } catch {}
   showAuthMode("login");
   showView("auth");
   try {

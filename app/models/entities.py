@@ -468,6 +468,7 @@ class AssessmentIssue(Base):
     candidate_name: Mapped[str] = mapped_column(String(200))
     candidate_email: Mapped[str] = mapped_column(String(320), index=True)
     candidate_password_hash: Mapped[str] = mapped_column(String(255))
+    access_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="issued", index=True)  # issued | started | completed
     score_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
