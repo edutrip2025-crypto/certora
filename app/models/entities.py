@@ -458,6 +458,25 @@ class ExamAttempt(Base):
     assigned_question_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
 
 
+class AssessmentIssue(Base):
+    __tablename__ = "assessment_issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), index=True)
+    issuer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    candidate_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    candidate_name: Mapped[str] = mapped_column(String(200))
+    candidate_email: Mapped[str] = mapped_column(String(320), index=True)
+    candidate_password_hash: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), default="issued", index=True)  # issued | started | completed
+    score_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class StudentAnswer(Base):
     __tablename__ = "answers"
     __table_args__ = (UniqueConstraint("attempt_id", "question_id", name="uq_attempt_question_answer"),)

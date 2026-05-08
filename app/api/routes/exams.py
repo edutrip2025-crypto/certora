@@ -1,12 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+
+import secrets
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from jose import jwt
+from pydantic import BaseModel, EmailStr, Field
 
 from app.api.deps import require_role
 from app.core.config import get_settings
+from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import (
+    AssessmentIssue,
     Course,
     CourseModule,
     Exam,
@@ -27,6 +35,7 @@ router = APIRouter(prefix="/exams", tags=["exams"])
 ALLOWED_QUESTIONS_PER_ATTEMPT = {25, 30, 35, 40}
 ALLOWED_TIME_PER_QUESTION_SECONDS = {25, 30, 35, 40, 45}
 STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
+ISSUED_TOKEN_ROLE = "issued_candidate"
 
 
 def _sync_pk_sequence_if_needed(db: Session, table_name: str, pk_col: str = "id") -> None:
@@ -83,6 +92,46 @@ def _get_or_create_standalone_course(db: Session, profile: ProviderProfile) -> C
     db.add(course)
     db.flush()
     return course
+
+
+class IssueAssessmentRequest(BaseModel):
+    candidate_name: str = Field(min_length=2, max_length=200)
+    candidate_email: EmailStr
+
+
+class IssuedCandidateLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=120)
+
+
+class IssuedCandidateSubmitRequest(BaseModel):
+    answers: dict[str, list[int] | int | None]
+
+
+def _create_issued_candidate_token(issue_id: int) -> str:
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": f"assessment_issue:{issue_id}",
+        "role": ISSUED_TOKEN_ROLE,
+        "issue_id": issue_id,
+        "exp": now.timestamp() + (60 * 60 * 8),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def _decode_issued_candidate_token(token: str) -> int:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid issued-candidate token") from exc
+    if payload.get("role") != ISSUED_TOKEN_ROLE:
+        raise HTTPException(status_code=403, detail="Invalid token role")
+    issue_id = int(payload.get("issue_id") or 0)
+    if issue_id <= 0:
+        raise HTTPException(status_code=401, detail="Invalid issued-candidate token payload")
+    return issue_id
 
 
 @router.post("", response_model=ExamOut, status_code=status.HTTP_201_CREATED)
@@ -457,3 +506,188 @@ def syllabus_map(
         matches = [q.id for q in questions if module.title.lower() in q.question_text.lower()]
         result.append({"module_id": module.id, "module_title": module.title, "question_matches": matches})
     return result
+
+
+@router.post("/{exam_id}/issue")
+def issue_assessment_to_candidate(
+    exam_id: int,
+    payload: IssueAssessmentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    profile = _provider_profile_or_404(db, current_user.id)
+    exam = db.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    course = db.get(Course, exam.course_id)
+    if not course or course.provider_id != profile.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if exam.status != ExamStatus.PUBLISHED:
+        raise HTTPException(status_code=400, detail="Only published assessments can be issued")
+
+    candidate_email = str(payload.candidate_email).strip().lower()
+    candidate_name = str(payload.candidate_name).strip()
+    temp_password = secrets.token_urlsafe(8)
+    issue = AssessmentIssue(
+        exam_id=exam.id,
+        issuer_user_id=current_user.id,
+        candidate_user_id=None,
+        candidate_name=candidate_name,
+        candidate_email=candidate_email,
+        candidate_password_hash=hash_password(temp_password),
+        status="issued",
+    )
+    db.add(issue)
+    db.commit()
+    db.refresh(issue)
+    return {
+        "issued_id": issue.id,
+        "exam_id": exam.id,
+        "candidate_email": candidate_email,
+        "temporary_password": temp_password,
+        "note": "Send these credentials to candidate email via your mail provider.",
+    }
+
+
+@router.get("/issued/by-me")
+def list_issued_assessments_for_provider(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+):
+    rows = db.scalars(
+        select(AssessmentIssue)
+        .where(AssessmentIssue.issuer_user_id == current_user.id)
+        .order_by(AssessmentIssue.id.desc()),
+    ).all()
+    out = []
+    for row in rows:
+        exam = db.get(Exam, row.exam_id)
+        out.append(
+            {
+                "issued_id": row.id,
+                "exam_id": row.exam_id,
+                "assessment_title": exam.title if exam else f"Assessment #{row.exam_id}",
+                "candidate_name": row.candidate_name,
+                "candidate_email": row.candidate_email,
+                "status": row.status,
+                "score_pct": row.score_pct,
+                "passed": row.passed,
+                "issued_at": row.issued_at,
+                "completed_at": row.completed_at,
+            },
+        )
+    return out
+
+
+@router.post("/issued/login")
+def issued_candidate_login(payload: IssuedCandidateLoginRequest, db: Session = Depends(get_db)):
+    email = str(payload.email).strip().lower()
+    issue = db.scalar(
+        select(AssessmentIssue)
+        .where(AssessmentIssue.candidate_email == email)
+        .order_by(AssessmentIssue.id.desc()),
+    )
+    if not issue or not verify_password(payload.password, issue.candidate_password_hash):
+        raise HTTPException(status_code=401, detail="Invalid issued assessment credentials")
+    token = _create_issued_candidate_token(issue.id)
+    return {"token": token}
+
+
+@router.get("/issued/me")
+def issued_candidate_get_assessment(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    issue_id = _decode_issued_candidate_token(token)
+    issue = db.get(AssessmentIssue, issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issued assessment not found")
+    exam = db.get(Exam, issue.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    if issue.status == "completed":
+        return {"status": "completed", "score_pct": issue.score_pct, "passed": issue.passed}
+    questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id).order_by(Question.id.asc())).all())
+    payload_questions = []
+    for q in questions:
+        opts = list(db.scalars(select(Option).where(Option.question_id == q.id).order_by(Option.position.asc(), Option.id.asc())).all())
+        payload_questions.append(
+            {
+                "question_id": q.id,
+                "question_text": q.question_text,
+                "question_type": q.question_type.value,
+                "options": [{"id": o.id, "text": o.option_text} for o in opts],
+            },
+        )
+    return {
+        "status": issue.status,
+        "issued_id": issue.id,
+        "candidate_name": issue.candidate_name,
+        "assessment_title": exam.title,
+        "duration_minutes": exam.duration_minutes,
+        "pass_score": exam.pass_score,
+        "questions": payload_questions,
+    }
+
+
+@router.post("/issued/submit")
+def issued_candidate_submit(
+    payload: IssuedCandidateSubmitRequest,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    issue_id = _decode_issued_candidate_token(token)
+    issue = db.get(AssessmentIssue, issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issued assessment not found")
+    if issue.status == "completed":
+        raise HTTPException(status_code=409, detail="Assessment already submitted")
+    exam = db.get(Exam, issue.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id).all()))
+    if not questions:
+        raise HTTPException(status_code=400, detail="Assessment has no questions")
+    total_marks = 0.0
+    awarded_marks = 0.0
+    correct_count = 0
+    for q in questions:
+        total_marks += float(q.marks or 0)
+        selected_raw = payload.answers.get(str(q.id))
+        selected_ids: list[int] = []
+        if isinstance(selected_raw, int):
+            selected_ids = [selected_raw]
+        elif isinstance(selected_raw, list):
+            selected_ids = [int(x) for x in selected_raw if str(x).isdigit()]
+        correct_ids = [int(x) for x in db.scalars(select(Option.id).where(Option.question_id == q.id, Option.is_correct.is_(True))).all()]
+        is_correct = set(selected_ids) == set(correct_ids) and len(correct_ids) > 0
+        if is_correct:
+            awarded_marks += float(q.marks or 0)
+            correct_count += 1
+        elif bool(exam.negative_marking):
+            awarded_marks -= float(q.negative_marks or 0)
+
+    percentage = round((awarded_marks / total_marks) * 100.0, 2) if total_marks > 0 else 0.0
+    passed = bool(percentage >= float(exam.pass_score or 70))
+    issue.status = "completed"
+    issue.score_pct = percentage
+    issue.passed = passed
+    issue.completed_at = datetime.now(timezone.utc)
+    issue.result_json = {"correct_count": correct_count, "question_count": len(questions), "awarded_marks": awarded_marks, "total_marks": total_marks}
+    db.add(issue)
+    db.commit()
+
+    return {
+        "status": "completed",
+        "score_pct": percentage,
+        "passed": passed,
+        "correct_count": correct_count,
+        "question_count": len(questions),
+    }

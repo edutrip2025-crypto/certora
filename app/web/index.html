@@ -107,6 +107,31 @@
         <button id="signupBtn" class="btn primary"><span class="material-symbols-rounded" aria-hidden="true">person_add</span> Create Account</button>
         <div class="auth-switch">Already have an account? <button id="showLoginBtn" type="button" class="auth-switch-btn">Back to login</button></div>
       </article>
+
+      <article id="issuedCandidateCard" class="panel auth-card">
+        <h2>Issued Assessment Login</h2>
+        <p>Use credentials shared by recruiter/provider.</p>
+        <label>Candidate Email<input id="issuedCandidateEmail" type="email" /></label>
+        <label>Password<input id="issuedCandidatePassword" type="password" /></label>
+        <button id="issuedCandidateLoginBtn" class="btn primary">Login & Start Assessment</button>
+      </article>
+    </section>
+
+    <section id="issuedAssessmentAttemptScreen" class="assessment-screen hidden">
+      <div class="assessment-screen-head">
+        <div>
+          <h2 id="issuedAssessmentTitle">Issued Assessment</h2>
+          <p id="issuedAssessmentMeta" class="muted"></p>
+        </div>
+        <button id="issuedAssessmentCloseBtn" class="btn small">Close</button>
+      </div>
+      <div class="item">
+        <div id="issuedAssessmentQuestions"></div>
+        <div class="row">
+          <button id="issuedAssessmentSubmitBtn" class="btn primary">Submit Assessment</button>
+        </div>
+        <div id="issuedAssessmentStatus" class="meta"></div>
+      </div>
     </section>
 
     <section id="providerView" class="admin-layout hidden">
@@ -407,6 +432,19 @@
       <section class="panel content hidden" id="provider-view-assessments">
         <h2>Assessments</h2>
         <p class="muted">Build MCQ assessments with pooled questions and random delivery per student attempt.</p>
+        <div class="item">
+          <h3>Issue Assessment</h3>
+          <div class="row wrap gap-sm">
+            <select id="issueExamSelect" class="filter">
+              <option value="">Select published assessment</option>
+            </select>
+            <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
+            <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
+            <button id="issueAssessmentBtn" class="btn small">Issue</button>
+          </div>
+          <div id="issueAssessmentStatus" class="meta"></div>
+          <div id="issuedAssessmentsList" class="list" style="margin-top:10px;"></div>
+        </div>
         <div class="row between provider-assessment-toolbar">
           <h3>Assessment List</h3>
           <div class="row gap-sm provider-course-actions provider-assessment-actions">

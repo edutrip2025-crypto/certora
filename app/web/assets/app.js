@@ -28,6 +28,8 @@ import { renderStudentAvailableCourseScreen } from "./modules/courses/course_scr
 import { createAdminUsersUi } from "./modules/admin/users_ui.js";
 import { createLiveClassroomUi } from "./modules/live/classroom_ui.js";
 
+const ASSESSMENT_ONLY_MODE = true;
+
 const state = {
   auth: null,
   context: null,
@@ -97,6 +99,8 @@ const state = {
   assessmentEditingExamId: null,
   assessmentQuestionDefaultMarks: null,
   assessmentQuestionDefaultNegativeMarks: null,
+  issuedCandidateToken: "",
+  issuedCandidateAssessment: null,
   assessmentPreview: {
     mode: "preview",
     attemptId: null,
@@ -1351,6 +1355,18 @@ const el = {
   providerDraftsList: $("providerDraftsList"),
   providerAssessmentsList: $("providerAssessmentsList"),
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
+  issueExamSelect: $("issueExamSelect"),
+  issueCandidateName: $("issueCandidateName"),
+  issueCandidateEmail: $("issueCandidateEmail"),
+  issueAssessmentStatus: $("issueAssessmentStatus"),
+  issuedAssessmentsList: $("issuedAssessmentsList"),
+  issuedCandidateEmail: $("issuedCandidateEmail"),
+  issuedCandidatePassword: $("issuedCandidatePassword"),
+  issuedAssessmentAttemptScreen: $("issuedAssessmentAttemptScreen"),
+  issuedAssessmentTitle: $("issuedAssessmentTitle"),
+  issuedAssessmentMeta: $("issuedAssessmentMeta"),
+  issuedAssessmentQuestions: $("issuedAssessmentQuestions"),
+  issuedAssessmentStatus: $("issuedAssessmentStatus"),
   providerFeedbackHub: $("providerFeedbackHub"),
   providerFeedbackTiles: $("providerFeedbackTiles"),
   providerComplaintTiles: $("providerComplaintTiles"),
@@ -1673,6 +1689,9 @@ function apiErrorStatus(err) {
 }
 
 function showView(mode) {
+  if (ASSESSMENT_ONLY_MODE && mode !== "auth" && mode !== "provider") {
+    mode = "provider";
+  }
   if (mode === "auth" && state.liveRoom.active) {
     clearLiveRoomState();
     el.liveClassroomScreen?.classList.add("hidden");
@@ -1699,7 +1718,24 @@ function showAuthMode(mode = "login") {
   const loginMode = mode !== "signup";
   el.loginCard?.classList.toggle("hidden", !loginMode);
   el.signupCard?.classList.toggle("hidden", loginMode);
+  $("issuedCandidateCard")?.classList.remove("hidden");
   if (!loginMode) refreshSignupVerificationOptions();
+}
+
+function applyAssessmentOnlyMode() {
+  if (!ASSESSMENT_ONLY_MODE) return;
+  // Restrict workspace to assessment flows only.
+  document.querySelectorAll(".provider-nav-btn").forEach((btn) => {
+    const v = String(btn.getAttribute("data-provider-view") || "");
+    if (v !== "assessments") btn.classList.add("hidden");
+  });
+  document.querySelectorAll(".student-nav-btn").forEach((btn) => btn.classList.add("hidden"));
+  document.querySelectorAll(".admin-nav-btn").forEach((btn) => btn.classList.add("hidden"));
+  const keepProvider = new Set(["provider-view-assessments"]);
+  document.querySelectorAll("#providerView .content").forEach((sec) => {
+    if (!keepProvider.has(sec.id)) sec.classList.add("hidden");
+  });
+  document.querySelectorAll("#studentView .content, #adminView .content").forEach((sec) => sec.classList.add("hidden"));
 }
 
 const SIGNUP_VERIFICATION_OPTIONS = {
@@ -2204,6 +2240,7 @@ async function refreshStudentAssessments() {
 }
 
 function activateProviderSubView(name) {
+  if (ASSESSMENT_ONLY_MODE) name = "assessments";
   if (state.providerUsingStudentViewer && name !== "courses") {
     closeProviderUnifiedViewer();
   }
@@ -2222,6 +2259,9 @@ function activateProviderSubView(name) {
     setProviderFeedbackTab(state.providerFeedbackTab || "feedback");
     if (!state.providerFeedbackDetailMode && !state.providerComplaintsDetailStatus) closeProviderFeedbackDetails();
     refreshProviderFeedback().catch(() => toast("Failed to load feedback", "error"));
+  }
+  if (name === "assessments") {
+    refreshIssuedAssessments().catch(() => {});
   }
 }
 
@@ -8633,6 +8673,87 @@ async function refreshProviderAssessments() {
   const list = await api("GET", "/provider/workspace/assessments");
   state.providerAssessments = Array.isArray(list) ? list : [];
   renderProviderAssessmentsList();
+  if (el.issueExamSelect) {
+    const published = state.providerAssessments.filter((x) => String(x.status || "").toLowerCase() === "published");
+    const opts = [`<option value="">Select published assessment</option>`]
+      .concat(published.map((x) => `<option value="${x.exam_id}">${escapeHtmlAttr(x.title || `Assessment #${x.exam_id}`)}</option>`));
+    el.issueExamSelect.innerHTML = opts.join("");
+  }
+}
+
+async function refreshIssuedAssessments() {
+  if (!el.issuedAssessmentsList) return;
+  try {
+    const rows = await api("GET", "/exams/issued/by-me");
+    renderList(
+      el.issuedAssessmentsList,
+      Array.isArray(rows) ? rows : [],
+      (r) => `
+        <div><strong>${escapeHtmlAttr(r.assessment_title || `Assessment #${r.exam_id}`)}</strong> - ${escapeHtmlAttr(r.candidate_name || "-")} (${escapeHtmlAttr(r.candidate_email || "-")})</div>
+        <div class="meta">Status: ${escapeHtmlAttr(r.status || "issued")} | Score: ${r.score_pct == null ? "-" : Number(r.score_pct).toFixed(2) + "%"} | Result: ${r.passed == null ? "-" : (r.passed ? "PASS" : "FAIL")}</div>
+      `,
+      "No issued assessments yet.",
+    );
+  } catch {
+    renderList(el.issuedAssessmentsList, [], () => "", "Failed to load issued assessments.");
+  }
+}
+
+async function issuedApi(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${state.issuedCandidateToken}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const txt = await res.text();
+  let data = {};
+  try {
+    data = txt ? JSON.parse(txt) : {};
+  } catch {
+    data = {};
+  }
+  if (!res.ok) {
+    throw new Error(data?.detail || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+function renderIssuedCandidateAssessment(data) {
+  state.issuedCandidateAssessment = data;
+  if (el.issuedAssessmentTitle) el.issuedAssessmentTitle.textContent = data.assessment_title || "Issued Assessment";
+  if (el.issuedAssessmentMeta) el.issuedAssessmentMeta.textContent = `Duration: ${data.duration_minutes || 0} mins | Pass: ${data.pass_score || 70}%`;
+  if (!el.issuedAssessmentQuestions) return;
+  const q = Array.isArray(data.questions) ? data.questions : [];
+  el.issuedAssessmentQuestions.innerHTML = q.map((item, idx) => `
+    <div class="item">
+      <div><strong>Q${idx + 1}.</strong> ${escapeHtmlAttr(item.question_text || "")}</div>
+      <div class="row wrap gap-sm" style="margin-top:8px;">
+        ${(item.options || []).map((o) => `
+          <label class="meta" style="display:block; min-width:220px;">
+            <input type="checkbox" data-issued-qid="${item.question_id}" value="${o.id}" />
+            ${escapeHtmlAttr(o.text || "")}
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+async function submitIssuedCandidateAssessment() {
+  const data = state.issuedCandidateAssessment;
+  if (!data || !Array.isArray(data.questions)) throw new Error("No issued assessment loaded");
+  const answers = {};
+  data.questions.forEach((q) => {
+    const checked = Array.from(document.querySelectorAll(`input[data-issued-qid="${q.question_id}"]:checked`));
+    answers[String(q.question_id)] = checked.map((n) => Number(n.value));
+  });
+  const out = await issuedApi("POST", "/exams/issued/submit", { answers });
+  if (el.issuedAssessmentStatus) {
+    el.issuedAssessmentStatus.textContent = `Submitted. Score ${Number(out.score_pct || 0).toFixed(2)}% | ${out.passed ? "PASS" : "FAIL"}`;
+  }
 }
 
 function renderProviderComplaintsDetail() {
@@ -10513,6 +10634,50 @@ function bindEvents() {
       setTimeout(() => btn?.classList.remove("is-spinning"), 350);
     }
   });
+  $("issueAssessmentBtn")?.addEventListener("click", async () => {
+    try {
+      const examId = Number(el.issueExamSelect?.value || 0);
+      const candidate_name = String(el.issueCandidateName?.value || "").trim();
+      const candidate_email = String(el.issueCandidateEmail?.value || "").trim();
+      if (!examId || !candidate_name || !candidate_email) {
+        throw new Error("Assessment, candidate name, and candidate email are required");
+      }
+      const out = await api("POST", `/exams/${examId}/issue`, { candidate_name, candidate_email });
+      if (el.issueAssessmentStatus) {
+        el.issueAssessmentStatus.textContent = `Issued. Temp password for ${out.candidate_email}: ${out.temporary_password}`;
+      }
+      await refreshIssuedAssessments();
+    } catch (err) {
+      if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = err?.message || "Failed to issue assessment";
+    }
+  });
+  $("issuedCandidateLoginBtn")?.addEventListener("click", async () => {
+    try {
+      const email = String(el.issuedCandidateEmail?.value || "").trim();
+      const password = String(el.issuedCandidatePassword?.value || "").trim();
+      if (!email || !password) throw new Error("Candidate email and password are required");
+      const authOut = await api("POST", "/exams/issued/login", { email, password }, false);
+      state.issuedCandidateToken = String(authOut.token || "");
+      const data = await issuedApi("GET", "/exams/issued/me");
+      if (String(data.status || "") === "completed") {
+        throw new Error(`Assessment already completed. Score ${Number(data.score_pct || 0).toFixed(2)}%`);
+      }
+      renderIssuedCandidateAssessment(data);
+      if (el.issuedAssessmentAttemptScreen) el.issuedAssessmentAttemptScreen.classList.remove("hidden");
+      showView("auth");
+      if (el.issuedAssessmentStatus) el.issuedAssessmentStatus.textContent = "";
+    } catch (err) {
+      toast(err?.message || "Failed to login issued candidate", "error");
+    }
+  });
+  $("issuedAssessmentSubmitBtn")?.addEventListener("click", () => {
+    submitIssuedCandidateAssessment().catch((err) => {
+      if (el.issuedAssessmentStatus) el.issuedAssessmentStatus.textContent = err?.message || "Failed to submit";
+    });
+  });
+  $("issuedAssessmentCloseBtn")?.addEventListener("click", () => {
+    el.issuedAssessmentAttemptScreen?.classList.add("hidden");
+  });
   $("refreshProviderCommentsBtn")?.addEventListener("click", async () => {
     const btn = $("refreshProviderCommentsBtn");
     btn?.classList.add("is-spinning");
@@ -10864,6 +11029,7 @@ function bindEvents() {
     applyWorkspaceCollapse(false);
   }
   bindEvents();
+  applyAssessmentOnlyMode();
   showAuthMode("login");
   showView("auth");
   try {
