@@ -104,6 +104,7 @@ const state = {
   assessmentCatalogDuration: "all",
   assessmentCatalogSort: "latest",
   selectedCatalogExamId: null,
+  selectedAssessmentSource: "catalog",
   issuedCandidateToken: "",
   issuedAccessKey: "",
   issuedCandidateAssessment: null,
@@ -1369,6 +1370,7 @@ const el = {
   assessmentCatalogDetail: $("assessmentCatalogDetail"),
   assessmentDetailTitle: $("assessmentDetailTitle"),
   assessmentDetailPassBadge: $("assessmentDetailPassBadge"),
+  assessmentDetailActions: $("assessmentDetailActions"),
   backToAssessmentCatalogBtn: $("backToAssessmentCatalogBtn"),
   issueCandidateName: $("issueCandidateName"),
   issueCandidateEmail: $("issueCandidateEmail"),
@@ -8497,12 +8499,25 @@ function renderProviderAssessmentsList() {
     el.providerAssessmentsList,
     rows,
     (a) => `
-      <div><strong>${a.title}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${a.status}</span></div>
-      <div class='meta'>Assessment ID: ASM-${String(a.exam_id || "").padStart(6, "0")} (Internal)</div>
-      <div class='meta'>Questions: ${a.question_count} | Student gets: ${a.questions_per_attempt > 0 ? a.questions_per_attempt : a.question_count}</div>
-      <div class='meta'>Attempts: ${a.max_attempts}</div>
-      <div class='meta'>Timing: ${a.timing_mode === "question" ? `${a.time_per_question_seconds || 0}s/question` : `${a.duration_minutes} mins/assessment`}</div>
+      <div class="assessment-catalog-card custom-assessment-card ${Number(state.selectedCatalogExamId || 0) === Number(a.exam_id || 0) && state.selectedAssessmentSource === "custom" ? "selected-catalog-card" : ""}">
+        <div class="assessment-catalog-main">
+          <div>
+            <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${escapeHtmlAttr(a.status || "draft")}</span></div>
+            <div class='meta'>Assessment ID: ASM-${String(a.exam_id || "").padStart(6, "0")} (Internal)</div>
+            <div class='meta'>${escapeHtmlAttr(a.course_title || "Standalone Assessment")}</div>
+          </div>
+          <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
+        </div>
+        <div class="assessment-catalog-facts">
+          <span>${Number(a.question_count || 0)} questions</span>
+          <span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>
+          <span>Attempts ${Number(a.max_attempts || 1)}</span>
+          <span>${a.timing_mode === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
+          <span>${a.certificate_enabled ? "Certificate" : "No certificate"}</span>
+        </div>
+      </div>
       <div class='actions'>
+        <button class="btn small" data-assessment-detail="${a.exam_id}">${a.status === "published" ? "View & Issue" : "View Details"}</button>
         <button class="icon-play-btn" data-assessment-preview="${a.exam_id}" title="Preview assessment" aria-label="Preview assessment">&#9654;</button>
         ${
           a.status === "published"
@@ -8515,6 +8530,11 @@ function renderProviderAssessmentsList() {
     `,
     "No assessments yet.",
   );
+  document.querySelectorAll("[data-assessment-detail]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openCustomAssessmentDetail(Number(btn.dataset.assessmentDetail || 0));
+    });
+  });
   document.querySelectorAll("[data-assessment-preview]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
@@ -8788,28 +8808,115 @@ function openAssessmentCatalogDetail(examId) {
   const selected = Number(examId || 0);
   if (!selected) return;
   state.selectedCatalogExamId = selected;
+  state.selectedAssessmentSource = "catalog";
   if (el.issueCandidateName) el.issueCandidateName.value = "";
   if (el.issueCandidateEmail) el.issueCandidateEmail.value = "";
   if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = "";
   activateProviderSubView("assessment-detail");
 }
 
+function openCustomAssessmentDetail(examId) {
+  const selected = Number(examId || 0);
+  if (!selected) return;
+  state.selectedCatalogExamId = selected;
+  state.selectedAssessmentSource = "custom";
+  if (el.issueCandidateName) el.issueCandidateName.value = "";
+  if (el.issueCandidateEmail) el.issueCandidateEmail.value = "";
+  if (el.issueAssessmentStatus) el.issueAssessmentStatus.textContent = "";
+  activateProviderSubView("assessment-detail");
+}
+
+function getSelectedAssessmentDetailItem() {
+  const selected = Number(state.selectedCatalogExamId || 0);
+  if (!selected) return null;
+  const providerItem = (state.providerAssessments || []).find((x) => Number(x.exam_id) === selected);
+  if (state.selectedAssessmentSource === "custom" && providerItem) {
+    return { ...providerItem, internal_id: `ASM-${String(providerItem.exam_id || "").padStart(6, "0")}` };
+  }
+  return (state.assessmentCatalog || []).find((x) => Number(x.exam_id) === selected)
+    || (providerItem ? { ...providerItem, internal_id: `ASM-${String(providerItem.exam_id || "").padStart(6, "0")}` } : null);
+}
+
+function bindAssessmentDetailActions(item) {
+  $("assessmentDetailPreviewBtn")?.addEventListener("click", async () => {
+    try {
+      await openAssessmentPreview(Number(item.exam_id || 0));
+    } catch (err) {
+      toast(err?.message || "Failed to open assessment preview", "error");
+    }
+  });
+  $("assessmentDetailEditBtn")?.addEventListener("click", async () => {
+    try {
+      await openAssessmentBuilderForEdit(item);
+    } catch {
+      toast("Failed to open draft for editing", "error");
+    }
+  });
+  $("assessmentDetailPublishBtn")?.addEventListener("click", async () => {
+    try {
+      await api("POST", `/exams/${item.exam_id}/publish`);
+      toast("Assessment published");
+      await refreshProviderAssessments();
+      await refreshAssessmentCatalogIssueOptions();
+      renderSelectedCatalogDetail();
+    } catch (err) {
+      const parsed = parseApiErrorMessage(err);
+      const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
+      toast(`Failed to publish assessment${detail ? `: ${detail}` : ""}`, "error");
+    }
+  });
+  $("assessmentDetailDeleteBtn")?.addEventListener("click", async () => {
+    const ok = confirm("Delete this draft assessment?");
+    if (!ok) return;
+    try {
+      await api("DELETE", `/exams/${item.exam_id}`);
+      toast("Draft deleted");
+      state.selectedCatalogExamId = null;
+      await refreshProviderAssessments();
+      activateProviderSubView("assessments");
+    } catch (err) {
+      toast(err?.message || "Failed to delete draft", "error");
+    }
+  });
+}
+
 function renderSelectedCatalogDetail() {
   if (!el.assessmentCatalogDetail) return;
-  const selected = Number(state.selectedCatalogExamId || 0);
-  const item = (state.assessmentCatalog || []).find((x) => Number(x.exam_id) === selected);
+  const item = getSelectedAssessmentDetailItem();
   if (!item) {
     el.assessmentCatalogDetail.textContent = "Select an assessment from the list above.";
     if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = "Assessment Details";
     if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = "70%";
+    if (el.assessmentDetailActions) el.assessmentDetailActions.innerHTML = "";
+    if (el.issueAssessmentBtn) el.issueAssessmentBtn.disabled = true;
     return;
   }
+  const status = String(item.status || "published").toLowerCase();
   const timing = String(item.timing_mode || "assessment") === "question"
     ? `${Number(item.time_per_question_seconds || 0)} seconds per question`
     : `${Number(item.duration_minutes || 0)} minutes total`;
   if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = item.title || `Assessment #${item.exam_id}`;
   if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = `${Number(item.pass_score || 70)}%`;
-  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || ""} | ${item.title || "-"} | ${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
+  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || `ASM-${String(item.exam_id || "").padStart(6, "0")}`} | ${item.title || "-"} | ${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
+  if (el.assessmentDetailActions) {
+    el.assessmentDetailActions.innerHTML = `
+      <button class="btn small" id="assessmentDetailPreviewBtn">Preview</button>
+      ${
+        status === "published"
+          ? ""
+          : `<button class="btn small" id="assessmentDetailEditBtn">Edit Draft</button>
+             <button class="btn small" id="assessmentDetailPublishBtn">Publish</button>
+             <button class="btn small danger" id="assessmentDetailDeleteBtn">Delete Draft</button>`
+      }
+    `;
+    bindAssessmentDetailActions(item);
+  }
+  if (el.issueAssessmentBtn) el.issueAssessmentBtn.disabled = status !== "published";
+  if (el.issueAssessmentStatus && status !== "published") {
+    el.issueAssessmentStatus.textContent = "Publish this assessment before issuing it to a candidate.";
+  } else if (el.issueAssessmentStatus && el.issueAssessmentStatus.textContent.startsWith("Publish this assessment")) {
+    el.issueAssessmentStatus.textContent = "";
+  }
 }
 
 async function refreshIssuedAssessments() {
@@ -10799,7 +10906,7 @@ function bindEvents() {
     }
   });
   $("backToAssessmentCatalogBtn")?.addEventListener("click", () => {
-    activateProviderSubView("assessment-catalog");
+    activateProviderSubView(state.selectedAssessmentSource === "custom" ? "assessments" : "assessment-catalog");
   });
   $("issueAssessmentBtn")?.addEventListener("click", async () => {
     try {
