@@ -237,8 +237,10 @@ def _migrate_exam_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "exams", "certificate_enabled", "BOOLEAN DEFAULT 1")
     _sqlite_add_column_if_missing(conn, "exams", "status", "TEXT DEFAULT 'draft'")
     _sqlite_add_column_if_missing(conn, "exams", "admin_certification_approved", "BOOLEAN DEFAULT 0")
-    _sqlite_add_column_if_missing(conn, "exams", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
-    _sqlite_add_column_if_missing(conn, "exams", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    # SQLite cannot add columns with non-constant defaults to an existing table.
+    # ORM/server defaults still apply for newly created databases.
+    _sqlite_add_column_if_missing(conn, "exams", "created_at", "DATETIME")
+    _sqlite_add_column_if_missing(conn, "exams", "updated_at", "DATETIME")
 
     _sqlite_add_column_if_missing(conn, "exam_attempts", "assigned_question_ids", "JSON")
 
