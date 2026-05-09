@@ -9798,6 +9798,17 @@ async function loadSessionContext() {
     b.disabled = false;
   });
 
+  if (ASSESSMENT_ONLY_MODE && ["admin", "provider"].includes(String(context.role || ""))) {
+    showView("provider");
+    activateProviderSubView("home");
+    await Promise.allSettled([
+      refreshProviderHome(),
+      refreshProviderAssessments(),
+      refreshAssessmentCatalogIssueOptions(),
+    ]);
+    return context;
+  }
+
   if (context.role === "admin") {
     showView("admin");
     activateAdminSubView("home");
@@ -10932,7 +10943,9 @@ function bindEvents() {
   });
 
   $("openAssessmentBuilderBtn")?.addEventListener("click", async () => {
-    await Promise.all([refreshProviderContent(), loadProviderDraftsRaw()]);
+    if (!ASSESSMENT_ONLY_MODE) {
+      await Promise.all([refreshProviderContent(), loadProviderDraftsRaw()]);
+    }
     openAssessmentBuilder();
   });
   $("assessmentBuilderCloseBtn")?.addEventListener("click", () => closeAssessmentBuilder());

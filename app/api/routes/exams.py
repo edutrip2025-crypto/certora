@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.entities import (
+    ApprovalStatus,
     AssessmentIssue,
     AssessmentSubmission,
     AssessmentTask,
@@ -26,6 +27,7 @@ from app.models.entities import (
     ExamStatus,
     Option,
     ProviderProfile,
+    ProviderType,
     Question,
     QuestionType,
     User,
@@ -63,7 +65,23 @@ def _sync_pk_sequence_if_needed(db: Session, table_name: str, pk_col: str = "id"
 def _provider_profile_or_404(db: Session, user_id: int) -> ProviderProfile:
     profile = db.scalar(select(ProviderProfile).where(ProviderProfile.user_id == user_id))
     if not profile:
-        raise HTTPException(status_code=404, detail="Provider profile not found")
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Provider profile not found")
+        try:
+            profile = ProviderProfile(
+                user_id=user_id,
+                provider_type=ProviderType.INDIVIDUAL,
+                display_name=user.full_name or str(user.email or "Recruiter").split("@")[0],
+                description="",
+                approval_status=ApprovalStatus.APPROVED if user.role == UserRole.ADMIN else ApprovalStatus.PENDING,
+            )
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Provider profile bootstrap failed: {exc}")
     return profile
 
 
@@ -73,7 +91,11 @@ def _provider_exam_or_403(db: Session, exam_id: int, current_user: User) -> tupl
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     course = db.get(Course, exam.course_id)
-    if not course or course.provider_id != profile.id:
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if current_user.role == UserRole.ADMIN:
+        return profile, exam, course
+    if course.provider_id != profile.id:
         raise HTTPException(status_code=403, detail="Access denied")
     return profile, exam, course
 
@@ -272,7 +294,7 @@ def _safe_send_assessment_issue_email(
 def create_exam(
     payload: ExamCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
     assessment_type = str(payload.assessment_type.value if hasattr(payload.assessment_type, "value") else payload.assessment_type)
@@ -327,7 +349,7 @@ def update_exam(
     exam_id: int,
     payload: ExamUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
     if exam.status == ExamStatus.PUBLISHED:
@@ -386,7 +408,7 @@ def update_exam(
 def delete_exam(
     exam_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
     if exam.status == ExamStatus.PUBLISHED:
@@ -406,7 +428,7 @@ def update_exam_rule(
     exam_id: int,
     payload: ExamRuleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
     exam = db.get(Exam, exam_id)
@@ -435,7 +457,7 @@ def add_question(
     exam_id: int,
     payload: QuestionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     profile = _provider_profile_or_404(db, current_user.id)
     exam = db.get(Exam, exam_id)
@@ -520,7 +542,7 @@ def add_question(
 def list_questions(
     exam_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
     questions = list(db.scalars(select(Question).where(Question.exam_id == exam.id)).all())
@@ -548,7 +570,7 @@ def delete_question(
     exam_id: int,
     question_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
     if exam.status == ExamStatus.PUBLISHED:
@@ -568,7 +590,7 @@ def upsert_assessment_task(
     exam_id: int,
     payload: AssessmentTaskIn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _, exam, _ = _provider_exam_or_403(db, exam_id, current_user)
     if exam.status == ExamStatus.PUBLISHED:
@@ -676,7 +698,7 @@ def get_ai_review(
 def publish_exam(
     exam_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     settings = get_settings()
     profile = _provider_profile_or_404(db, current_user.id)
@@ -742,7 +764,7 @@ def issue_assessment_to_candidate(
     payload: IssueAssessmentRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     _provider_profile_or_404(db, current_user.id)
     exam = db.get(Exam, exam_id)
@@ -794,7 +816,7 @@ def issue_assessment_to_candidate(
 @router.get("/issued/by-me")
 def list_issued_assessments_for_provider(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     rows = db.scalars(
         select(AssessmentIssue)
@@ -1130,3 +1152,4 @@ def issued_candidate_submit(
         "correct_count": correct_count,
         "question_count": len(questions),
     }
+

@@ -1063,10 +1063,13 @@ def delete_course_draft(
 @router.get("/workspace/assessments")
 def provider_assessments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.PROVIDER)),
+    current_user: User = Depends(require_role(UserRole.PROVIDER, UserRole.ADMIN)),
 ):
     provider = _provider_or_404(db, current_user.id)
-    rows = db.execute(select(Exam, Course).join(Course, Course.id == Exam.course_id).where(Course.provider_id == provider.id)).all()
+    query = select(Exam, Course).join(Course, Course.id == Exam.course_id)
+    if current_user.role != UserRole.ADMIN:
+        query = query.where(Course.provider_id == provider.id)
+    rows = db.execute(query).all()
     question_counts = {
         exam_id: count
         for exam_id, count in db.execute(
