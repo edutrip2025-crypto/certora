@@ -192,6 +192,9 @@ class ExamCreate(BaseModel):
     title: str
     assessment_type: AssessmentType = AssessmentType.MCQ
     instructions: str = ""
+    about: str = ""
+    tools: list[str] = []
+    topics: list[str] = []
     duration_minutes: int = 25
     timing_mode: str = "question"
     time_per_question_seconds: int | None = 25
@@ -210,6 +213,9 @@ class ExamUpdate(BaseModel):
     title: str | None = None
     assessment_type: AssessmentType | None = None
     instructions: str | None = None
+    about: str | None = None
+    tools: list[str] | None = None
+    topics: list[str] | None = None
     duration_minutes: int | None = None
     timing_mode: str | None = None
     time_per_question_seconds: int | None = None
@@ -253,6 +259,9 @@ class ExamOut(BaseModel):
     title: str
     assessment_type: str = "mcq"
     instructions: str = ""
+    about: str = ""
+    tools: list[str] = []
+    topics: list[str] = []
     duration_minutes: int
     timing_mode: str
     time_per_question_seconds: int | None = None

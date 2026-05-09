@@ -363,6 +363,9 @@ class Exam(Base):
     title: Mapped[str] = mapped_column(String(255))
     assessment_type: Mapped[str] = mapped_column(String(30), default=AssessmentType.MCQ.value, index=True)
     instructions: Mapped[str] = mapped_column(Text, default="")
+    assessment_about: Mapped[str] = mapped_column(Text, default="")
+    tools_json: Mapped[list] = mapped_column(JSON, default=list)
+    topics_json: Mapped[list] = mapped_column(JSON, default=list)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=25)
     timing_mode: Mapped[str] = mapped_column(String(20), default="assessment")
     time_per_question_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -380,6 +383,18 @@ class Exam(Base):
     admin_certification_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    @property
+    def about(self) -> str:
+        return self.assessment_about or ""
+
+    @property
+    def tools(self) -> list:
+        return list(self.tools_json or [])
+
+    @property
+    def topics(self) -> list:
+        return list(self.topics_json or [])
 
 
 class Question(Base):

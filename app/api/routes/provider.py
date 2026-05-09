@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.entities import (
     ApprovalStatus,
+    AssessmentIssue,
     Certificate,
     Course,
     CourseComment,
@@ -74,6 +75,18 @@ router = APIRouter(prefix="/provider", tags=["provider"])
 _LIVE_SCHEMA_GUARD_DONE = False
 _BUSINESS_REG_ALLOWED = {"cin", "pan", "gst", "national_id", "passport", "tax_id", "other"}
 STANDALONE_ASSESSMENT_CATEGORY = "__standalone_assessment__"
+
+
+def _clean_string_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw = value.replace("\n", ",").split(",")
+    elif isinstance(value, list):
+        raw = value
+    else:
+        raw = []
+    return [str(x).strip() for x in raw if str(x).strip()]
 
 
 def _draft_pricing_breakdown(base_price_amount: float) -> dict:
@@ -1076,6 +1089,20 @@ def provider_assessments(
             select(Question.exam_id, func.count(Question.id)).group_by(Question.exam_id),
         ).all()
     }
+    issued_counts = {
+        int(exam_id): int(count)
+        for exam_id, count in db.execute(
+            select(AssessmentIssue.exam_id, func.count(AssessmentIssue.id)).group_by(AssessmentIssue.exam_id),
+        ).all()
+    }
+    taken_counts = {
+        int(exam_id): int(count)
+        for exam_id, count in db.execute(
+            select(AssessmentIssue.exam_id, func.count(AssessmentIssue.id))
+            .where(AssessmentIssue.status.in_(["completed", "manual_review"]))
+            .group_by(AssessmentIssue.exam_id),
+        ).all()
+    }
     task_by_exam = {
         task.assessment_id: task
         for task in db.scalars(select(AssessmentTask).where(AssessmentTask.assessment_id.in_([exam.id for exam, _ in rows]))).all()
@@ -1086,6 +1113,9 @@ def provider_assessments(
             "title": exam.title,
             "assessment_type": exam.assessment_type or "mcq",
             "instructions": exam.instructions or "",
+            "about": exam.assessment_about or "",
+            "tools": _clean_string_list(exam.tools_json or []),
+            "topics": _clean_string_list(exam.topics_json or []),
             "course_id": course.id,
             "course_title": ("Standalone Assessment" if str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY else course.title),
             "is_standalone": bool(str(course.category or "") == STANDALONE_ASSESSMENT_CATEGORY),
@@ -1102,6 +1132,8 @@ def provider_assessments(
             "questions_per_attempt": exam.questions_per_attempt,
             "total_marks": exam.total_marks,
             "question_count": int(question_counts.get(exam.id, 0)),
+            "issued_count": int(issued_counts.get(exam.id, 0)),
+            "taken_count": int(taken_counts.get(exam.id, 0)),
             "task": (
                 {
                     "id": task_by_exam[exam.id].id,

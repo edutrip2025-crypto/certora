@@ -265,6 +265,56 @@ def _score_task_submission(task: AssessmentTask, submitted_data: dict) -> tuple[
     return None, "manual_review", {"message": "Unsupported assessment task type"}
 
 
+def _clean_string_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw = value.replace("\n", ",").split(",")
+    elif isinstance(value, list):
+        raw = value
+    else:
+        raw = []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _exam_metadata_dict(exam: Exam) -> dict:
+    return {
+        "about": exam.assessment_about or "",
+        "tools": _clean_string_list(exam.tools_json or []),
+        "topics": _clean_string_list(exam.topics_json or []),
+    }
+
+
+def _apply_exam_metadata(data: dict) -> dict:
+    if "about" in data:
+        data["assessment_about"] = str(data.pop("about") or "").strip()
+    if "tools" in data:
+        data["tools_json"] = _clean_string_list(data.pop("tools"))
+    if "topics" in data:
+        data["topics_json"] = _clean_string_list(data.pop("topics"))
+    return data
+
+
+def _validate_exam_metadata_values(*, instructions: str | None, about: str | None, tools, topics) -> None:
+    if not str(instructions or "").strip():
+        raise HTTPException(status_code=400, detail="instructions is required")
+    if not str(about or "").strip():
+        raise HTTPException(status_code=400, detail="about is required")
+    if not _clean_string_list(tools):
+        raise HTTPException(status_code=400, detail="tools is required")
+    if not _clean_string_list(topics):
+        raise HTTPException(status_code=400, detail="topics is required")
+
+
+def _validate_exam_metadata(exam: Exam) -> None:
+    _validate_exam_metadata_values(
+        instructions=exam.instructions,
+        about=exam.assessment_about,
+        tools=exam.tools_json,
+        topics=exam.topics_json,
+    )
+
+
 def _safe_send_assessment_issue_email(
     *,
     to_email: str,
@@ -300,6 +350,12 @@ def create_exam(
     assessment_type = str(payload.assessment_type.value if hasattr(payload.assessment_type, "value") else payload.assessment_type)
     if assessment_type not in ALLOWED_ASSESSMENT_TYPES:
         raise HTTPException(status_code=400, detail="Invalid assessment_type")
+    _validate_exam_metadata_values(
+        instructions=payload.instructions,
+        about=payload.about,
+        tools=payload.tools,
+        topics=payload.topics,
+    )
     if int(payload.course_id or 0) <= 0:
         course = _get_or_create_standalone_course(db, profile)
         payload.course_id = int(course.id)
@@ -330,7 +386,7 @@ def create_exam(
     if assessment_type == AssessmentType.MCQ.value and payload.questions_per_attempt not in ALLOWED_QUESTIONS_PER_ATTEMPT:
         raise HTTPException(status_code=400, detail="questions_per_attempt must be one of: 25, 30, 35, 40")
     try:
-        data = payload.model_dump()
+        data = _apply_exam_metadata(payload.model_dump())
         data["assessment_type"] = assessment_type
         exam = Exam(**data)
         db.add(exam)
@@ -355,7 +411,7 @@ def update_exam(
     if exam.status == ExamStatus.PUBLISHED:
         raise HTTPException(status_code=400, detail="Published exam cannot be edited")
 
-    data = payload.model_dump(exclude_unset=True)
+    data = _apply_exam_metadata(payload.model_dump(exclude_unset=True))
     if "assessment_type" in data and data["assessment_type"] is not None:
         data["assessment_type"] = str(data["assessment_type"].value if hasattr(data["assessment_type"], "value") else data["assessment_type"])
         if data["assessment_type"] not in ALLOWED_ASSESSMENT_TYPES:
@@ -706,8 +762,11 @@ def publish_exam(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     course = db.get(Course, exam.course_id)
-    if not course or course.provider_id != profile.id:
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if current_user.role != UserRole.ADMIN and course.provider_id != profile.id:
         raise HTTPException(status_code=403, detail="Access denied")
+    _validate_exam_metadata(exam)
 
     if settings.enable_ai_review:
         upsert_ai_review(db, exam)
@@ -920,6 +979,7 @@ def list_published_assessment_catalog(
                 "title": exam.title,
                 "assessment_type": exam.assessment_type or AssessmentType.MCQ.value,
                 "instructions": exam.instructions or "",
+                **_exam_metadata_dict(exam),
                 "duration_minutes": exam.duration_minutes,
                 "timing_mode": getattr(exam, "timing_mode", None),
                 "time_per_question_seconds": getattr(exam, "time_per_question_seconds", None),
@@ -1019,6 +1079,7 @@ def issued_candidate_get_assessment(
         "assessment_title": exam.title,
         "assessment_type": assessment_type,
         "instructions": exam.instructions or "",
+        **_exam_metadata_dict(exam),
         "duration_minutes": exam.duration_minutes,
         "timing_mode": exam.timing_mode,
         "time_per_question_seconds": exam.time_per_question_seconds,

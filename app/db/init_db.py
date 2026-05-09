@@ -227,6 +227,9 @@ def _migrate_stream_market_schema_postgres(conn) -> None:
 def _migrate_exam_schema_sqlite(conn) -> None:
     _sqlite_add_column_if_missing(conn, "exams", "assessment_type", "TEXT DEFAULT 'mcq'")
     _sqlite_add_column_if_missing(conn, "exams", "instructions", "TEXT DEFAULT ''")
+    _sqlite_add_column_if_missing(conn, "exams", "assessment_about", "TEXT DEFAULT ''")
+    _sqlite_add_column_if_missing(conn, "exams", "tools_json", "JSON")
+    _sqlite_add_column_if_missing(conn, "exams", "topics_json", "JSON")
     _sqlite_add_column_if_missing(conn, "exams", "timing_mode", "TEXT DEFAULT 'assessment'")
     _sqlite_add_column_if_missing(conn, "exams", "time_per_question_seconds", "INTEGER")
     _sqlite_add_column_if_missing(conn, "exams", "questions_per_attempt", "INTEGER DEFAULT 0")
@@ -316,6 +319,9 @@ def _migrate_exam_schema_postgres(conn) -> None:
     statements = [
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS assessment_type VARCHAR(30) DEFAULT 'mcq'",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS instructions TEXT DEFAULT ''",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS assessment_about TEXT DEFAULT ''",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS tools_json JSON DEFAULT '[]'::json",
+        "ALTER TABLE exams ADD COLUMN IF NOT EXISTS topics_json JSON DEFAULT '[]'::json",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS timing_mode VARCHAR(20) DEFAULT 'assessment'",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS time_per_question_seconds INTEGER",
         "ALTER TABLE exams ADD COLUMN IF NOT EXISTS questions_per_attempt INTEGER DEFAULT 0",

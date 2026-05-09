@@ -1368,6 +1368,9 @@ const el = {
   providerAssessmentsSearch: $("providerAssessmentsSearch"),
   abAssessmentType: $("abAssessmentType"),
   abInstructions: $("abInstructions"),
+  abAbout: $("abAbout"),
+  abTools: $("abTools"),
+  abTopics: $("abTopics"),
   abPassScore: $("abPassScore"),
   abMcqContentPanel: $("abMcqContentPanel"),
   abTaskContentPanel: $("abTaskContentPanel"),
@@ -6031,6 +6034,9 @@ function persistAssessmentBuilderCache() {
       title: $("abTitle")?.value || "",
       assessmentType: $("abAssessmentType")?.value || "mcq",
       instructions: $("abInstructions")?.value || "",
+      about: $("abAbout")?.value || "",
+      tools: $("abTools")?.value || "",
+      topics: $("abTopics")?.value || "",
       passScore: $("abPassScore")?.value || "70",
       maxAttempts: $("abMaxAttempts")?.value || "",
       questionsPerAttempt: $("abQuestionsPerAttempt")?.value || "",
@@ -6083,6 +6089,9 @@ function tryRestoreAssessmentBuilderCache() {
       String(payload.title || "").trim()
       || String(payload.maxAttempts || "").trim()
       || String(payload.instructions || "").trim()
+      || String(payload.about || "").trim()
+      || String(payload.tools || "").trim()
+      || String(payload.topics || "").trim()
       || String(payload.passScore || "").trim()
       || String(payload.questionsPerAttempt || "").trim()
       || String(payload.durationMinutes || "").trim()
@@ -6102,6 +6111,9 @@ function tryRestoreAssessmentBuilderCache() {
     $("abTitle").value = String(payload.title || "");
     $("abAssessmentType").value = String(payload.assessmentType || "mcq");
     $("abInstructions").value = String(payload.instructions || "");
+    if ($("abAbout")) $("abAbout").value = String(payload.about || "");
+    if ($("abTools")) $("abTools").value = String(payload.tools || "");
+    if ($("abTopics")) $("abTopics").value = String(payload.topics || "");
     $("abPassScore").value = String(payload.passScore || "70");
     $("abMaxAttempts").value = String(payload.maxAttempts || "");
     $("abQuestionsPerAttempt").value = String(payload.questionsPerAttempt || "");
@@ -6163,6 +6175,9 @@ function resetAssessmentBuilder() {
   $("abTitle").value = "";
   $("abAssessmentType").value = "mcq";
   $("abInstructions").value = "";
+  if ($("abAbout")) $("abAbout").value = "";
+  if ($("abTools")) $("abTools").value = "";
+  if ($("abTopics")) $("abTopics").value = "";
   $("abPassScore").value = "70";
   $("abMaxAttempts").value = "3";
   $("abQuestionsPerAttempt").value = "25";
@@ -6266,6 +6281,10 @@ function linesField(id) {
     .split(/\r?\n|,/)
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function arrayToLines(value) {
+  return Array.isArray(value) ? value.filter(Boolean).join("\n") : "";
 }
 
 function buildTaskFromAssessmentForm() {
@@ -6477,6 +6496,9 @@ async function openAssessmentBuilderForEdit(assessment) {
   $("abTitle").value = assessment.title || "";
   $("abAssessmentType").value = assessment.assessment_type || "mcq";
   $("abInstructions").value = assessment.instructions || "";
+  if ($("abAbout")) $("abAbout").value = assessment.about || "";
+  if ($("abTools")) $("abTools").value = arrayToLines(assessment.tools || []);
+  if ($("abTopics")) $("abTopics").value = arrayToLines(assessment.topics || []);
   $("abPassScore").value = String(assessment.pass_score || 70);
   $("abMaxAttempts").value = String(Math.min(3, Math.max(1, Number(assessment.max_attempts ?? 3))));
   $("abQuestionsPerAttempt").value = String(assessment.questions_per_attempt > 0 ? assessment.questions_per_attempt : 25);
@@ -6601,6 +6623,9 @@ async function createAssessmentFromBuilder(publishNow) {
   const title = $("abTitle")?.value?.trim() || "";
   const assessmentType = $("abAssessmentType")?.value || "mcq";
   const instructions = $("abInstructions")?.value?.trim() || "";
+  const about = $("abAbout")?.value?.trim() || "";
+  const tools = linesField("abTools");
+  const topics = linesField("abTopics");
   const passScore = Number($("abPassScore")?.value || 70);
   const maxAttempts = Number($("abMaxAttempts")?.value);
   const questionsPerAttempt = Number($("abQuestionsPerAttempt")?.value);
@@ -6611,6 +6636,10 @@ async function createAssessmentFromBuilder(publishNow) {
   const taskPayload = assessmentType === "mcq" ? null : buildTaskFromAssessmentForm();
 
   if (!title) throw new Error("Assessment title is required");
+  if (!instructions) throw new Error("Instructions are required");
+  if (!about) throw new Error("About assessment is required");
+  if (!tools.length) throw new Error("Add at least one tool used");
+  if (!topics.length) throw new Error("Add at least one topic included");
   if (!Number.isFinite(passScore) || passScore < 70 || passScore > 100) throw new Error("Passing score must be between 70 and 100");
   if (assessmentType === "mcq" && !questionPool.length) throw new Error("Add at least one question");
   if (!Number.isFinite(maxAttempts) || maxAttempts <= 0 || maxAttempts > 3) throw new Error("Max attempts must be between 1 and 3");
@@ -6636,6 +6665,9 @@ async function createAssessmentFromBuilder(publishNow) {
     title,
     assessment_type: assessmentType,
     instructions,
+    about,
+    tools,
+    topics,
     duration_minutes: durationMinutes,
     timing_mode: timingMode,
     time_per_question_seconds: assessmentType === "mcq" && timingMode === "question" ? timePerQuestionSeconds : null,
@@ -8785,91 +8817,12 @@ function renderProviderAssessmentsList() {
   renderList(
     el.providerAssessmentsList,
     rows,
-    (a) => `
-      <div class="assessment-catalog-card custom-assessment-card ${Number(state.selectedCatalogExamId || 0) === Number(a.exam_id || 0) && state.selectedAssessmentSource === "custom" ? "selected-catalog-card" : ""}">
-        <div class="assessment-catalog-main">
-          <div>
-            <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill ${a.status === "published" ? "status-resolved" : "status-open"}">${escapeHtmlAttr(a.status || "draft")}</span></div>
-            <div class='meta'>Assessment ID: ASM-${String(a.exam_id || "").padStart(6, "0")} (Internal)</div>
-            <div class='meta'>${escapeHtmlAttr(a.course_title || "Standalone Assessment")}</div>
-          </div>
-          <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
-        </div>
-        <div class="assessment-catalog-facts">
-          <span>${assessmentTypeLabel(a.assessment_type)}</span>
-          <span>${String(a.assessment_type || "mcq") === "mcq" ? `${Number(a.question_count || 0)} questions` : `${Number(a.total_marks || a.task?.marks || 0)} marks`}</span>
-          ${String(a.assessment_type || "mcq") === "mcq" ? `<span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>` : ""}
-          <span>Attempts ${Number(a.max_attempts || 1)}</span>
-          <span>${a.timing_mode === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
-          <span>${a.certificate_enabled ? "Certificate" : "No certificate"}</span>
-        </div>
-      </div>
-      <div class='actions'>
-        <button class="btn small" data-assessment-detail="${a.exam_id}">${a.status === "published" ? "View & Issue" : "View Details"}</button>
-        ${String(a.assessment_type || "mcq") === "mcq" ? `<button class="icon-play-btn" data-assessment-preview="${a.exam_id}" title="Preview assessment" aria-label="Preview assessment">&#9654;</button>` : ""}
-        ${
-          a.status === "published"
-            ? ""
-            : `<button class="btn small icon-action-btn" data-assessment-edit="${a.exam_id}" title="Edit Draft" aria-label="Edit Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4.2l11-11a1.5 1.5 0 0 0 0-2.1l-2.1-2.1a1.5 1.5 0 0 0-2.1 0l-11 11V21z"/><path d="M13.5 6.5l4 4"/></svg></button>
-       <button class="btn small danger icon-action-btn" data-assessment-delete="${a.exam_id}" title="Delete Draft" aria-label="Delete Draft"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 13.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5L5 6"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/></svg></button>
-       <button class="btn small" data-assessment-publish="${a.exam_id}">Publish</button>`
-        }
-      </div>
-    `,
+    (a) => renderAssessmentCard({ ...a, internal_id: `ASM-${String(a.exam_id || "").padStart(6, "0")}` }, { source: "custom" }),
     "No assessments yet.",
   );
   document.querySelectorAll("[data-assessment-detail]").forEach((btn) => {
     btn.addEventListener("click", () => {
       openCustomAssessmentDetail(Number(btn.dataset.assessmentDetail || 0));
-    });
-  });
-  document.querySelectorAll("[data-assessment-preview]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await openAssessmentPreview(Number(btn.dataset.assessmentPreview || 0));
-      } catch (err) {
-        toast(err?.message || "Failed to open assessment preview", "error");
-      }
-    });
-  });
-  document.querySelectorAll("[data-assessment-edit]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const examId = Number(btn.dataset.assessmentEdit || 0);
-      const item = state.providerAssessments.find((x) => Number(x.exam_id) === examId);
-      if (!item) return;
-      try {
-        await openAssessmentBuilderForEdit(item);
-      } catch {
-        toast("Failed to open draft for editing", "error");
-      }
-    });
-  });
-  document.querySelectorAll("[data-assessment-delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const examId = Number(btn.dataset.assessmentDelete || 0);
-      if (!examId) return;
-      const ok = confirm("Delete this draft assessment?");
-      if (!ok) return;
-      try {
-        await api("DELETE", `/exams/${examId}`);
-        toast("Draft deleted");
-        await refreshProviderAssessments();
-      } catch (err) {
-        toast(err?.message || "Failed to delete draft", "error");
-      }
-    });
-  });
-  document.querySelectorAll("[data-assessment-publish]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await api("POST", `/exams/${btn.dataset.assessmentPublish}/publish`);
-        toast("Assessment published");
-        await refreshProviderAssessments();
-      } catch (err) {
-        const parsed = parseApiErrorMessage(err);
-        const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail || {});
-        toast(`Failed to publish assessment${detail ? `: ${detail}` : ""}`, "error");
-      }
     });
   });
 }
@@ -8883,6 +8836,64 @@ function assessmentTypeLabel(value) {
     case_study: "Case study",
   };
   return map[String(value || "mcq")] || "Assessment";
+}
+
+function assessmentStudentQuestionCount(a) {
+  const type = String(a?.assessment_type || "mcq");
+  if (type !== "mcq") return Number(a?.total_marks || a?.task?.marks || 0);
+  const n = Number(a?.questions_per_attempt || a?.question_count || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function assessmentIconSvg(kind) {
+  const icons = {
+    type: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/></svg>`,
+    questions: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8"/><path d="M8 12h5"/><path d="M6 3h12a2 2 0 0 1 2 2v14l-4-2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>`,
+    clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>`,
+    issued: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4z"/><path d="m4 8 8 5 8-5"/></svg>`,
+    taken: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4L19 6"/><path d="M4 20h16"/></svg>`,
+    pass: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"/><path d="M9 12l2 2 4-5"/></svg>`,
+  };
+  return icons[kind] || icons.type;
+}
+
+function assessmentTimingText(a) {
+  return String(a?.timing_mode || "assessment") === "question"
+    ? `${Number(a?.time_per_question_seconds || 0)}s/question`
+    : `${Number(a?.duration_minutes || 0)} mins`;
+}
+
+function renderAssessmentCard(a, { source = "catalog" } = {}) {
+  const selected = Number(state.selectedCatalogExamId || 0) === Number(a.exam_id || 0)
+    && (source !== "custom" || state.selectedAssessmentSource === "custom");
+  const status = String(a.status || (source === "catalog" ? "published" : "draft"));
+  const type = String(a.assessment_type || "mcq");
+  const count = assessmentStudentQuestionCount(a);
+  const countLabel = type === "mcq" ? `${count} ${count === 1 ? "question" : "questions"}` : `${count} marks`;
+  const about = String(a.about || a.instructions || "").trim();
+  return `
+    <article class="assessment-card ${selected ? "selected-catalog-card" : ""}">
+      <div class="assessment-card-top">
+        <div class="assessment-card-title-wrap">
+          <div class="assessment-card-kicker">ID ${escapeHtmlAttr(a.internal_id || `ASM-${String(a.exam_id || "").padStart(6, "0")}`)}</div>
+          <h3>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</h3>
+          ${about ? `<p>${escapeHtmlAttr(about)}</p>` : ""}
+        </div>
+        <div class="assessment-card-score">${Number(a.pass_score || 70)}%</div>
+      </div>
+      <div class="assessment-card-chips">
+        <span>${assessmentIconSvg("type")}${escapeHtmlAttr(assessmentTypeLabel(type))}</span>
+        <span>${assessmentIconSvg("questions")}${escapeHtmlAttr(countLabel)}</span>
+        <span class="dark">${assessmentIconSvg("clock")}${escapeHtmlAttr(assessmentTimingText(a))}</span>
+        <span>${assessmentIconSvg("issued")}Issued ${Number(a.issued_count || 0)}</span>
+        <span>${assessmentIconSvg("taken")}Taken ${Number(a.taken_count || 0)}</span>
+      </div>
+      <div class="assessment-card-footer">
+        <span class="status-pill ${status === "published" ? "status-resolved" : "status-open"}">${escapeHtmlAttr(status)}</span>
+        <button class="btn small assessment-view-btn" data-${source === "custom" ? "assessment-detail" : "catalog-select"}="${a.exam_id}">View</button>
+      </div>
+    </article>
+  `;
 }
 
 async function openStudentAvailableCourseDetail(courseId) {
@@ -9071,28 +9082,7 @@ function renderAssessmentCatalogList() {
   renderList(
     el.assessmentCatalogList,
     rows,
-    (a) => `
-      <div class="assessment-catalog-card ${Number(state.selectedCatalogExamId || 0) === Number(a.exam_id || 0) ? "selected-catalog-card" : ""}">
-        <div class="assessment-catalog-main">
-          <div>
-            <div><strong>${escapeHtmlAttr(a.title || `Assessment #${a.exam_id}`)}</strong> <span class="status-pill status-resolved">published</span></div>
-            <div class='meta'>Assessment ID: ${escapeHtmlAttr(a.internal_id || `ASM-${String(a.exam_id || "").padStart(6, "0")}`)} (Internal)</div>
-          </div>
-          <div class="assessment-catalog-score">${Number(a.pass_score || 70)}%</div>
-        </div>
-        <div class="assessment-catalog-facts">
-          <span>${assessmentTypeLabel(a.assessment_type)}</span>
-          <span>${String(a.assessment_type || "mcq") === "mcq" ? `${Number(a.question_count || 0)} questions` : `${Number(a.total_marks || 0)} marks`}</span>
-          ${String(a.assessment_type || "mcq") === "mcq" ? `<span>Student gets ${Number(a.questions_per_attempt || a.question_count || 0)}</span>` : ""}
-          <span>${String(a.timing_mode || "assessment") === "question" ? `${Number(a.time_per_question_seconds || 0)}s/question` : `${Number(a.duration_minutes || 0)} mins`}</span>
-          <span>Issued ${Number(a.issued_count || 0)}</span>
-          <span>Taken ${Number(a.taken_count || 0)}</span>
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn small" data-catalog-select="${a.exam_id}">View & Issue</button>
-      </div>
-    `,
+    (a) => renderAssessmentCard({ ...a, status: "published" }, { source: "catalog" }),
     "No published assessments available.",
   );
   document.querySelectorAll("[data-catalog-select]").forEach((btn) => {
@@ -9196,11 +9186,39 @@ function renderSelectedCatalogDetail() {
     ? `${Number(item.time_per_question_seconds || 0)} seconds per question`
     : `${Number(item.duration_minutes || 0)} minutes total`;
   const contentSummary = String(item.assessment_type || "mcq") === "mcq"
-    ? `${Number(item.question_count || 0)} questions | Student gets ${Number(item.questions_per_attempt || item.question_count || 0)}`
+    ? `${assessmentStudentQuestionCount(item)} ${assessmentStudentQuestionCount(item) === 1 ? "question" : "questions"}`
     : `${assessmentTypeLabel(item.assessment_type)} | ${Number(item.total_marks || item.task?.marks || 0)} marks`;
+  const tools = Array.isArray(item.tools) && item.tools.length ? item.tools : ["Standard browser"];
+  const topics = Array.isArray(item.topics) && item.topics.length ? item.topics : ["General assessment"];
+  const about = String(item.about || item.instructions || "Assessment details are not available yet.").trim();
   if (el.assessmentDetailTitle) el.assessmentDetailTitle.textContent = item.title || `Assessment #${item.exam_id}`;
   if (el.assessmentDetailPassBadge) el.assessmentDetailPassBadge.textContent = `${Number(item.pass_score || 70)}%`;
-  el.assessmentCatalogDetail.textContent = `ID: ${item.internal_id || `ASM-${String(item.exam_id || "").padStart(6, "0")}`} | ${item.title || "-"} | ${contentSummary} | ${timing} | Pass mark ${Number(item.pass_score || 70)}%`;
+  el.assessmentCatalogDetail.innerHTML = `
+    <div class="assessment-detail-summary">
+      <div class="assessment-detail-id">Internal ID ${escapeHtmlAttr(item.internal_id || `ASM-${String(item.exam_id || "").padStart(6, "0")}`)}</div>
+      <p>${escapeHtmlAttr(about)}</p>
+      <div class="assessment-detail-metrics">
+        <span>${assessmentIconSvg("type")} ${escapeHtmlAttr(assessmentTypeLabel(item.assessment_type))}</span>
+        <span>${assessmentIconSvg("questions")} ${escapeHtmlAttr(contentSummary)}</span>
+        <span>${assessmentIconSvg("clock")} ${escapeHtmlAttr(timing)}</span>
+        <span>${assessmentIconSvg("pass")} Pass mark ${Number(item.pass_score || 70)}%</span>
+      </div>
+      <div class="assessment-detail-sections">
+        <div>
+          <h4>Tools used</h4>
+          <ul>${tools.map((x) => `<li>${escapeHtmlAttr(x)}</li>`).join("")}</ul>
+        </div>
+        <div>
+          <h4>Topics included</h4>
+          <ul>${topics.map((x) => `<li>${escapeHtmlAttr(x)}</li>`).join("")}</ul>
+        </div>
+        <div>
+          <h4>Instructions</h4>
+          <p>${escapeHtmlAttr(item.instructions || "Follow the assessment instructions shown before starting.")}</p>
+        </div>
+      </div>
+    </div>
+  `;
   if (el.assessmentDetailActions) {
     el.assessmentDetailActions.innerHTML = `
       ${String(item.assessment_type || "mcq") === "mcq" ? `<button class="btn small" id="assessmentDetailPreviewBtn">Preview</button>` : ""}
@@ -11064,6 +11082,9 @@ function bindEvents() {
     "abTitle",
     "abAssessmentType",
     "abInstructions",
+    "abAbout",
+    "abTools",
+    "abTopics",
     "abPassScore",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
@@ -11112,6 +11133,10 @@ function bindEvents() {
     "abTitle",
     "abAssessmentType",
     "abPassScore",
+    "abInstructions",
+    "abAbout",
+    "abTools",
+    "abTopics",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",

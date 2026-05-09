@@ -169,10 +169,10 @@
       <section class="panel content" id="provider-view-home">
         <h2>Dashboard</h2>
         <h3>Assessment Analytics</h3>
-        <div class="stats">
-          <div class="stat-card"><div class="stat-title">Assessments Issued</div><div id="issuedCountStat" class="stat-value">0</div></div>
-          <div class="stat-card"><div class="stat-title">Assessments Taken</div><div id="takenCountStat" class="stat-value">0</div></div>
-          <div class="stat-card"><div class="stat-title">Average Score</div><div id="avgScoreStat" class="stat-value">0%</div></div>
+        <div class="stats assessment-dashboard-stats">
+          <div class="stat-card assessment-stat-card"><div class="assessment-stat-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="m4 8 8 5 8-5"/></svg></div><div><div class="stat-title">Assessments Issued</div><div id="issuedCountStat" class="stat-value">0</div></div></div>
+          <div class="stat-card assessment-stat-card"><div class="assessment-stat-icon"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/><path d="M4 20h16"/></svg></div><div><div class="stat-title">Assessments Taken</div><div id="takenCountStat" class="stat-value">0</div></div></div>
+          <div class="stat-card assessment-stat-card"><div class="assessment-stat-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg></div><div><div class="stat-title">Average Score</div><div id="avgScoreStat" class="stat-value">0.00%</div></div></div>
         </div>
       </section>
 
@@ -500,7 +500,7 @@
             <div class="row wrap gap-sm assessment-issue-form">
               <input id="issueCandidateName" class="search" type="text" placeholder="Candidate name" />
               <input id="issueCandidateEmail" class="search" type="email" placeholder="Candidate email" />
-              <button id="issueAssessmentBtn" class="btn small">Issue</button>
+              <button id="issueAssessmentBtn" class="btn small primary">Send Invite</button>
             </div>
             <div id="issueAssessmentStatus" class="meta"></div>
           </div>
@@ -559,15 +559,13 @@
                   <label class="ab-field-wrap"><span class="ab-field-label">Assessment title <span class="required-asterisk">*</span></span>
                     <input id="abTitle" class="search" type="text" placeholder="Assessment title" />
                   </label>
-                  <label class="ab-field-wrap"><span class="ab-field-label">Assessment type <span class="required-asterisk">*</span></span>
-                    <select id="abAssessmentType" class="filter">
-                      <option value="mcq">MCQ Assessment</option>
-                      <option value="coding">Coding Environment</option>
-                      <option value="spreadsheet">Excel / Spreadsheet Simulator</option>
-                      <option value="tax_simulator">Tax / Finance Simulator</option>
-                      <option value="case_study">Case Study / File Upload</option>
-                    </select>
-                  </label>
+                  <select id="abAssessmentType" class="filter hidden" aria-label="Assessment type">
+                    <option value="mcq">MCQ Assessment</option>
+                    <option value="coding">Coding Environment</option>
+                    <option value="spreadsheet">Excel / Spreadsheet Simulator</option>
+                    <option value="tax_simulator">Tax / Finance Simulator</option>
+                    <option value="case_study">Case Study / File Upload</option>
+                  </select>
                   <label class="ab-field-wrap"><span class="ab-field-label">Max attempts <span class="required-asterisk">*</span></span>
                     <input id="abMaxAttempts" class="filter" type="number" min="1" max="3" value="3" placeholder="Max attempts" />
                   </label>
@@ -580,6 +578,7 @@
                     </select>
                   </label>
                 </div>
+                <div class="ab-type-heading">Choose assessment format <span class="required-asterisk">*</span></div>
                 <div class="ab-type-card-row">
                   <button type="button" class="ab-type-card active" data-ab-type-card="mcq"><strong>MCQ</strong><span>Question pool with options</span></button>
                   <button type="button" class="ab-type-card" data-ab-type-card="coding"><strong>Coding</strong><span>Code editor task</span></button>
@@ -591,8 +590,19 @@
                   <label class="ab-field-wrap"><span class="ab-field-label">Passing score <span class="required-asterisk">*</span></span>
                     <input id="abPassScore" class="filter" type="number" min="70" max="100" step="1" value="70" placeholder="Passing score %" />
                   </label>
-                  <label class="ab-field-wrap ab-wide-field"><span class="ab-field-label">Instructions</span>
-                    <textarea id="abInstructions" class="search" rows="2" placeholder="Instructions shown to candidates"></textarea>
+                  <label class="ab-field-wrap ab-wide-field"><span class="ab-field-label">Instructions <span class="required-asterisk">*</span></span>
+                    <textarea id="abInstructions" class="search ab-textarea" rows="3" placeholder="Rules, allowed materials, and what the candidate must know before starting"></textarea>
+                  </label>
+                </div>
+                <div class="ab-metadata-grid">
+                  <label class="ab-field-wrap ab-wide-field"><span class="ab-field-label">About assessment <span class="required-asterisk">*</span></span>
+                    <textarea id="abAbout" class="search ab-textarea" rows="4" placeholder="Short description of what this assessment measures"></textarea>
+                  </label>
+                  <label class="ab-field-wrap"><span class="ab-field-label">Tools used <span class="required-asterisk">*</span></span>
+                    <textarea id="abTools" class="search ab-textarea" rows="4" placeholder="One per line, e.g. Calculator, Code editor, Spreadsheet"></textarea>
+                  </label>
+                  <label class="ab-field-wrap"><span class="ab-field-label">Topics included <span class="required-asterisk">*</span></span>
+                    <textarea id="abTopics" class="search ab-textarea" rows="4" placeholder="One per line, e.g. Payroll forms, Deductions, Filing rules"></textarea>
                   </label>
                 </div>
                 <div class="row wrap gap-sm" style="margin-top:10px;">
@@ -646,7 +656,7 @@
                     <input id="abQuestionMarks" class="filter" type="number" min="1" step="0.5" placeholder="Marks" />
                     <input id="abQuestionNegativeMarks" class="filter" type="number" min="0" step="0.25" placeholder="Negative marks" />
                   </div>
-                  <textarea id="abQuestionText" class="search" rows="3" placeholder="Question text"></textarea>
+                  <textarea id="abQuestionText" class="search ab-textarea" rows="4" placeholder="Question text"></textarea>
                   <div class="ab-options-grid" style="margin-top:8px;">
                     <label class="ab-option-row"><input data-ab-correct="0" type="checkbox" /><input id="abOption1" class="search" type="text" placeholder="Option 1" /></label>
                     <label class="ab-option-row"><input data-ab-correct="1" type="checkbox" /><input id="abOption2" class="search" type="text" placeholder="Option 2" /></label>
@@ -671,8 +681,8 @@
                     <input id="abTaskTitle" class="search" type="text" placeholder="Task / problem / case title" />
                     <input id="abTaskMarks" class="filter" type="number" min="1" step="1" placeholder="Marks" />
                   </div>
-                  <textarea id="abTaskDescription" class="search" rows="4" placeholder="Task description / problem statement / case prompt"></textarea>
-                  <textarea id="abTaskInstructions" class="search" rows="3" placeholder="Task-specific instructions"></textarea>
+                  <textarea id="abTaskDescription" class="search ab-textarea" rows="5" placeholder="Task description / problem statement / case prompt"></textarea>
+                  <textarea id="abTaskInstructions" class="search ab-textarea" rows="4" placeholder="Task-specific instructions"></textarea>
 
                   <div id="abCodingFields" class="ab-format-fields">
                     <input id="abCodingLanguages" class="search" type="text" placeholder="Allowed languages, e.g. Python, JavaScript" />

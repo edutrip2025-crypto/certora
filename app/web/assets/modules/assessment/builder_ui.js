@@ -17,6 +17,10 @@
     "abTitle",
     "abAssessmentType",
     "abPassScore",
+    "abInstructions",
+    "abAbout",
+    "abTools",
+    "abTopics",
     "abMaxAttempts",
     "abQuestionsPerAttempt",
     "abTimingMode",
@@ -116,6 +120,30 @@
       if (!Number.isFinite(passScore) || passScore < 70 || passScore > 100) {
         markFieldInvalid("abPassScore", true);
         showStep2Error("Passing score must be between 70 and 100.");
+        return false;
+      }
+      const instructions = $("abInstructions")?.value?.trim() || "";
+      const about = $("abAbout")?.value?.trim() || "";
+      const tools = $("abTools")?.value?.trim() || "";
+      const topics = $("abTopics")?.value?.trim() || "";
+      if (!instructions) {
+        markFieldInvalid("abInstructions", true);
+        showStep2Error("Instructions are required.");
+        return false;
+      }
+      if (!about) {
+        markFieldInvalid("abAbout", true);
+        showStep2Error("About assessment is required.");
+        return false;
+      }
+      if (!tools) {
+        markFieldInvalid("abTools", true);
+        showStep2Error("Tools used is required.");
+        return false;
+      }
+      if (!topics) {
+        markFieldInvalid("abTopics", true);
+        showStep2Error("Topics included is required.");
         return false;
       }
       const maxAttempts = Number($("abMaxAttempts")?.value);
